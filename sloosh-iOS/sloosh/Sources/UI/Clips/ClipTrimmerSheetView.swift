@@ -3,9 +3,14 @@ import UIKit
 import AVFoundation
 import Combine
 
-// MARK: - Apple Photos Gallery-Style Moment Trimmer & Creator
-// Full portrait, real live video preview, iconic yellow frame with dual grip handles,
-// pinch-to-zoom timeline (0.5x - 5x), 1-minute default duration, up to 10-minute max.
+// MARK: - Flagship Apple Photos Gallery-Style Moment Creator
+// Features:
+// 1. Full-movie scene navigator (mini-map) to jump across the entire 2-hour movie effortlessly.
+// 2. Iconic Apple Photos yellow trim frame with tactile dual-grip handles (||), top/bottom bars, and dimmed outside scrim.
+// 3. Jitter-free coordinateSpace drag gestures with real-time zero-tolerance video seeking.
+// 4. Pinch-to-zoom (0.5x - 5x) + 1-tap zoom pills ([0.5x | 1x | 2x | 5x]).
+// 5. Default duration: 1 minute (60s), Maximum duration: 10 minutes (600s), Minimum: 3s.
+// 6. Real-time looping playback of the selected clip with play/pause overlay.
 
 public struct ClipTrimmerSheetView: View {
     let mediaId: Int
@@ -38,7 +43,8 @@ public struct ClipTrimmerSheetView: View {
     @State private var zoomLevel: Double = 1.0
     @State private var caption: String = ""
 
-    // Pinch-to-zoom interactive state
+    // Gesture tracking state (anchored to gesture start to prevent jitter)
+    @State private var centerDragInitialStart: Double? = nil
     @State private var pinchBaseSpan: Double? = nil
 
     // Player State
@@ -55,7 +61,7 @@ public struct ClipTrimmerSheetView: View {
     private let minDuration: Double = 3.0
     private let maxDuration: Double = 600.0 // 10 minutes maximum
 
-    // Iconic Apple Photos Trim Yellow Accent
+    // Iconic Apple Photos Edit Yellow Accent
     private let trimYellow = Color(red: 1.0, green: 0.82, blue: 0.15)
 
     public init(
@@ -95,21 +101,26 @@ public struct ClipTrimmerSheetView: View {
         self.tmdbId = tmdbId
         self.onPublished = onPublished
 
+        let resolvedTotal = totalDuration > 0 ? totalDuration : max(currentPlaybackTime + 600.0, 1800.0)
+
         // Default duration: 1 minute (60s) centered on current playback time
         let initialStart = max(0.0, currentPlaybackTime - 10.0)
-        let resolvedTotal = totalDuration > 0 ? totalDuration : max(currentPlaybackTime + 600.0, 1200.0)
         let initialEnd = min(resolvedTotal, initialStart + 60.0)
 
         _startTime = State(initialValue: initialStart)
         _endTime = State(initialValue: max(initialStart + 3.0, initialEnd))
         _playbackSec = State(initialValue: initialStart)
 
-        // Visible timeline scene window (approx. 2.5x the initial duration, ~150-180 seconds at 1x)
+        // Scene window: 3 minutes (180s) at 1x zoom
         let span = 180.0
         let wStart = max(0.0, initialStart - 30.0)
         let wEnd = min(resolvedTotal, wStart + span)
         _windowStart = State(initialValue: wStart)
         _windowEnd = State(initialValue: max(wStart + 60.0, wEnd))
+    }
+
+    private var totalMovieDuration: Double {
+        totalDuration > 0 ? totalDuration : max(currentPlaybackTime + 600.0, 1800.0)
     }
 
     private var clipDuration: Double {
@@ -144,13 +155,13 @@ public struct ClipTrimmerSheetView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
-                        // 1. Subtle movie context
+                        // 1. Subtle movie context bar
                         movieContextBar
 
                         // 2. Video Preview Player (16:9, live stream, looped playback)
                         videoPreviewCard
 
-                        // 3. Apple Photos-style Video Trimmer
+                        // 3. Apple Photos Gallery-Style Trimmer Section
                         galleryTrimmerSection
 
                         // 4. Caption Input
@@ -326,8 +337,8 @@ public struct ClipTrimmerSheetView: View {
     // MARK: - Apple Photos Gallery-Style Trimmer Section
 
     private var galleryTrimmerSection: some View {
-        VStack(spacing: 14) {
-            // Header: Timestamps, Duration Pill, and Zoom Controls
+        VStack(spacing: 12) {
+            // 1. Timestamps and Duration Pill Header
             HStack(alignment: .center) {
                 // Start Time
                 VStack(alignment: .leading, spacing: 2) {
@@ -375,9 +386,12 @@ public struct ClipTrimmerSheetView: View {
             }
             .padding(.horizontal, 4)
 
-            // Zoom Scale Switcher (0.5x, 1x, 2x, 5x)
+            // 2. Full Movie Mini-map Navigator (Jump anywhere in the entire film)
+            movieMiniMapNavigator
+
+            // 3. Zoom Scale Switcher (0.5x, 1x, 2x, 5x)
             HStack(spacing: 6) {
-                Text("Масштаб:")
+                Text("Масштаб сцены:")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.4))
 
@@ -402,9 +416,10 @@ public struct ClipTrimmerSheetView: View {
             }
             .padding(.horizontal, 4)
 
-            // The Iconic Yellow Frame Trimmer Bar
+            // 4. The Iconic Photos Yellow Frame Precision Trimmer
             photosFilmstripTrackView
-                .frame(height: 64)
+                .frame(height: 68)
+                .coordinateSpace(name: "trimmerTrack")
                 .simultaneousGesture(
                     MagnificationGesture()
                         .onChanged { val in
@@ -420,7 +435,64 @@ public struct ClipTrimmerSheetView: View {
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    // MARK: - Photos Filmstrip Track View (Iconic Apple Trim Box)
+    // MARK: - Movie Mini-map Navigator (Slim top bar to jump anywhere in the movie)
+
+    private var movieMiniMapNavigator: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geo in
+                let totalW = geo.size.width
+                let movieDuration = max(1.0, totalMovieDuration)
+
+                let navStartX = CGFloat(windowStart / movieDuration) * totalW
+                let navEndX = CGFloat(windowEnd / movieDuration) * totalW
+                let navWidth = max(24.0, navEndX - navStartX)
+
+                ZStack(alignment: .leading) {
+                    // Movie track background
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .frame(height: 18)
+
+                    // Current scene window indicator
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.25))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(trimYellow, lineWidth: 1.5)
+                        )
+                        .frame(width: min(totalW - navStartX, navWidth), height: 18)
+                        .offset(x: max(0, min(totalW - navWidth, navStartX)))
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { val in
+                            handleMiniMapDrag(locationDragX: val.location.x, totalWidth: totalW)
+                        }
+                )
+                .onTapGesture { loc in
+                    handleMiniMapDrag(locationDragX: loc.x, totalWidth: totalW)
+                }
+            }
+            .frame(height: 18)
+
+            HStack {
+                Text("00:00")
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.35))
+                Spacer()
+                Text("Весь фильм")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.3))
+                Spacer()
+                Text(formatSeconds(totalMovieDuration))
+                    .font(.system(size: 9).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+    }
+
+    // MARK: - Photos Filmstrip Track View (Iconic Apple Yellow Box)
 
     private var photosFilmstripTrackView: some View {
         GeometryReader { geo in
@@ -431,44 +503,45 @@ public struct ClipTrimmerSheetView: View {
             let endX = CGFloat((endTime - windowStart) / span) * totalW
             let playheadX = CGFloat((playbackSec - windowStart) / span) * totalW
 
-            let handleWidth: CGFloat = 20.0
+            let handleWidth: CGFloat = 22.0
             let clampedStartX = max(0, min(totalW - (handleWidth * 2), startX))
             let clampedEndX = max(clampedStartX + (handleWidth * 2), min(totalW, endX))
             let clampedPlayheadX = max(0, min(totalW, playheadX))
 
             ZStack(alignment: .leading) {
-                // 1. Filmstrip Track with Ruler Ticks
+                // 1. Filmstrip Ruler Track
                 rulerBackgroundTrack(width: totalW, span: span)
                     .contentShape(Rectangle())
                     .onTapGesture { loc in
-                        // Tap anywhere on track to seek playhead
                         let tappedTime = windowStart + Double(max(0, min(1, loc.x / totalW))) * span
                         seekTo(tappedTime, andPause: true)
                     }
 
-                // 2. Dimmed Scrim Outside Selection (Left & Right)
-                // Left Scrim
+                // 2. Dimmed Outside Scrim (Left & Right)
                 Rectangle()
-                    .fill(Color.black.opacity(0.68))
-                    .frame(width: clampedStartX, height: 64)
+                    .fill(Color.black.opacity(0.70))
+                    .frame(width: clampedStartX, height: 68)
                     .allowsHitTesting(false)
 
-                // Right Scrim
                 Rectangle()
-                    .fill(Color.black.opacity(0.68))
-                    .frame(width: max(0, totalW - clampedEndX), height: 64)
+                    .fill(Color.black.opacity(0.70))
+                    .frame(width: max(0, totalW - clampedEndX), height: 68)
                     .offset(x: clampedEndX)
                     .allowsHitTesting(false)
 
-                // 3. Highlighted Center Area (Draggable to shift whole window)
+                // 3. Center Highlight Area (Draggable to shift whole clip without changing duration)
                 Rectangle()
                     .fill(trimYellow.opacity(0.12))
-                    .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 64)
+                    .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 68)
                     .offset(x: clampedStartX)
+                    .contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 1)
+                        DragGesture(minimumDistance: 1, coordinateSpace: .named("trimmerTrack"))
                             .onChanged { val in
                                 handleCenterBoxDrag(translationX: val.translation.width, totalWidth: totalW, span: span)
+                            }
+                            .onEnded { _ in
+                                centerDragInitialStart = nil
                             }
                     )
 
@@ -486,34 +559,34 @@ public struct ClipTrimmerSheetView: View {
                         .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 3.5)
                         .offset(x: clampedStartX)
                 }
-                .frame(height: 64)
+                .frame(height: 68)
                 .allowsHitTesting(false)
 
-                // 5. Playhead Needle (White Line with Glow)
+                // 5. Playhead Needle (White Line with Drop Shadow)
                 Capsule()
                     .fill(Color.white)
-                    .frame(width: 3, height: 64)
-                    .shadow(color: Color.black.opacity(0.7), radius: 2)
+                    .frame(width: 3, height: 68)
+                    .shadow(color: Color.black.opacity(0.75), radius: 2)
                     .offset(x: clampedPlayheadX - 1.5)
                     .allowsHitTesting(false)
 
-                // 6. Left Handle (Start Handle: Rounded Left with Dual Grip Bars)
+                // 6. Left Handle (Start: Rounded Left with Dual Grip Bars)
                 leftHandleView(handleWidth: handleWidth)
                     .offset(x: clampedStartX)
                     .gesture(
-                        DragGesture(minimumDistance: 1)
+                        DragGesture(minimumDistance: 1, coordinateSpace: .named("trimmerTrack"))
                             .onChanged { val in
-                                handleStartHandleDrag(locationDragX: val.location.x, totalWidth: totalW, span: span)
+                                handleStartHandleDrag(trackLocationX: val.location.x, totalWidth: totalW, span: span)
                             }
                     )
 
-                // 7. Right Handle (End Handle: Rounded Right with Dual Grip Bars)
+                // 7. Right Handle (End: Rounded Right with Dual Grip Bars)
                 rightHandleView(handleWidth: handleWidth)
                     .offset(x: clampedEndX - handleWidth)
                     .gesture(
-                        DragGesture(minimumDistance: 1)
+                        DragGesture(minimumDistance: 1, coordinateSpace: .named("trimmerTrack"))
                             .onChanged { val in
-                                handleEndHandleDrag(locationDragX: val.location.x, totalWidth: totalW, span: span)
+                                handleEndHandleDrag(trackLocationX: val.location.x, totalWidth: totalW, span: span)
                             }
                     )
             }
@@ -529,13 +602,11 @@ public struct ClipTrimmerSheetView: View {
 
     private func leftHandleView(handleWidth: CGFloat) -> some View {
         ZStack {
-            // Expanded invisible touch area for easy grabbing
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: 44, height: 64)
+                .frame(width: 44, height: 68)
                 .contentShape(Rectangle())
 
-            // Visible Handle Shape
             UnevenRoundedRectangle(
                 topLeadingRadius: 10,
                 bottomLeadingRadius: 10,
@@ -543,9 +614,8 @@ public struct ClipTrimmerSheetView: View {
                 topTrailingRadius: 0
             )
             .fill(trimYellow)
-            .frame(width: handleWidth, height: 64)
+            .frame(width: handleWidth, height: 68)
 
-            // Dual Vertical Grip Bars
             HStack(spacing: 2.5) {
                 Capsule()
                     .fill(Color.black.opacity(0.65))
@@ -559,13 +629,11 @@ public struct ClipTrimmerSheetView: View {
 
     private func rightHandleView(handleWidth: CGFloat) -> some View {
         ZStack {
-            // Expanded invisible touch area for easy grabbing
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: 44, height: 64)
+                .frame(width: 44, height: 68)
                 .contentShape(Rectangle())
 
-            // Visible Handle Shape
             UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
@@ -573,9 +641,8 @@ public struct ClipTrimmerSheetView: View {
                 topTrailingRadius: 10
             )
             .fill(trimYellow)
-            .frame(width: handleWidth, height: 64)
+            .frame(width: handleWidth, height: 68)
 
-            // Dual Vertical Grip Bars
             HStack(spacing: 2.5) {
                 Capsule()
                     .fill(Color.black.opacity(0.65))
@@ -593,7 +660,6 @@ public struct ClipTrimmerSheetView: View {
         ZStack(alignment: .leading) {
             Color.white.opacity(0.06)
 
-            // Tick marks based on span
             let step: Double = span > 300 ? 30.0 : (span > 120 ? 15.0 : 5.0)
             let tickCount = max(2, Int(span / step))
 
@@ -619,7 +685,7 @@ public struct ClipTrimmerSheetView: View {
             .padding(.horizontal, 8)
             .allowsHitTesting(false)
         }
-        .frame(height: 64)
+        .frame(height: 68)
     }
 
     // MARK: - Caption Section
@@ -664,11 +730,12 @@ public struct ClipTrimmerSheetView: View {
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
     }
 
-    // MARK: - Gestures: Left Handle, Right Handle, Center Box
+    // MARK: - Gestures: Jitter-Free Left Handle, Right Handle, Center Box
 
-    private func handleStartHandleDrag(locationDragX: CGFloat, totalWidth: CGFloat, span: Double) {
+    private func handleStartHandleDrag(trackLocationX: CGFloat, totalWidth: CGFloat, span: Double) {
         guard totalWidth > 0 else { return }
-        let timeAtLocation = windowStart + Double(max(0, min(1, locationDragX / totalWidth))) * span
+        let fraction = max(0.0, min(1.0, Double(trackLocationX / totalWidth)))
+        let timeAtLocation = windowStart + fraction * span
         let newStart = max(0.0, min(endTime - minDuration, timeAtLocation))
 
         if endTime - newStart > maxDuration {
@@ -677,19 +744,13 @@ public struct ClipTrimmerSheetView: View {
         startTime = newStart
         seekTo(newStart, andPause: true)
         UISelectionFeedbackGenerator().selectionChanged()
-
-        // Auto-expand/pan window when near left edge
-        if locationDragX < 24.0 && windowStart > 0 {
-            let shift = span * 0.1
-            windowStart = max(0.0, windowStart - shift)
-            windowEnd = windowStart + span
-        }
     }
 
-    private func handleEndHandleDrag(locationDragX: CGFloat, totalWidth: CGFloat, span: Double) {
+    private func handleEndHandleDrag(trackLocationX: CGFloat, totalWidth: CGFloat, span: Double) {
         guard totalWidth > 0 else { return }
-        let timeAtLocation = windowStart + Double(max(0, min(1, locationDragX / totalWidth))) * span
-        let maxLimit = totalDuration > 0 ? totalDuration : max(windowEnd + 600.0, 3600.0)
+        let fraction = max(0.0, min(1.0, Double(trackLocationX / totalWidth)))
+        let timeAtLocation = windowStart + fraction * span
+        let maxLimit = totalMovieDuration
         let newEnd = max(startTime + minDuration, min(maxLimit, timeAtLocation))
 
         if newEnd - startTime > maxDuration {
@@ -698,29 +759,48 @@ public struct ClipTrimmerSheetView: View {
         endTime = newEnd
         seekTo(newEnd, andPause: true)
         UISelectionFeedbackGenerator().selectionChanged()
-
-        // Auto-expand/pan window when near right edge
-        if locationDragX > totalWidth - 24.0 {
-            let shift = span * 0.1
-            windowEnd = min(maxLimit, windowEnd + shift)
-            windowStart = max(0.0, windowEnd - span)
-        }
     }
 
     private func handleCenterBoxDrag(translationX: CGFloat, totalWidth: CGFloat, span: Double) {
         guard totalWidth > 0 else { return }
+        if centerDragInitialStart == nil {
+            centerDragInitialStart = startTime
+        }
+        guard let baseStart = centerDragInitialStart else { return }
+
         let deltaSec = Double(translationX / totalWidth) * span
-        guard abs(deltaSec) >= 0.3 else { return }
-
         let currentLen = endTime - startTime
-        let maxLimit = totalDuration > 0 ? totalDuration : max(windowEnd + 600.0, 3600.0)
+        let maxLimit = totalMovieDuration
 
-        let targetStart = max(0.0, min(maxLimit - currentLen, startTime + deltaSec))
+        let targetStart = max(0.0, min(maxLimit - currentLen, baseStart + deltaSec))
         let targetEnd = targetStart + currentLen
 
         startTime = targetStart
         endTime = targetEnd
         seekTo(targetStart, andPause: true)
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func handleMiniMapDrag(locationDragX: CGFloat, totalWidth: CGFloat) {
+        guard totalWidth > 0 else { return }
+        let fraction = max(0.0, min(1.0, Double(locationDragX / totalWidth)))
+        let targetCenter = fraction * totalMovieDuration
+        let windowSpan = windowEnd - windowStart
+
+        let newWStart = max(0.0, min(totalMovieDuration - windowSpan, targetCenter - windowSpan / 2.0))
+        let newWEnd = newWStart + windowSpan
+
+        windowStart = newWStart
+        windowEnd = newWEnd
+
+        // Keep current clip within visible window
+        let clipLen = endTime - startTime
+        if startTime < newWStart || startTime > newWEnd {
+            startTime = max(newWStart, min(newWEnd - clipLen, targetCenter - clipLen / 2.0))
+            endTime = startTime + clipLen
+            seekTo(startTime, andPause: true)
+        }
+
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
@@ -751,9 +831,19 @@ public struct ClipTrimmerSheetView: View {
                 newSpan = max(baseDuration * 1.8, 180.0)
             }
 
-            let maxLimit = totalDuration > 0 ? totalDuration : max(center + newSpan, 3600.0)
-            let wStart = max(0.0, center - newSpan / 2.0)
-            let wEnd = min(maxLimit, wStart + newSpan)
+            let maxLimit = totalMovieDuration
+            var wStart = max(0.0, center - newSpan / 2.0)
+            var wEnd = min(maxLimit, wStart + newSpan)
+
+            // Ensure selection is never outside window
+            if wStart > startTime {
+                wStart = max(0.0, startTime - 10.0)
+                wEnd = min(maxLimit, wStart + newSpan)
+            }
+            if wEnd < endTime {
+                wEnd = min(maxLimit, endTime + 10.0)
+                wStart = max(0.0, wEnd - newSpan)
+            }
 
             windowStart = wStart
             windowEnd = max(wStart + 30.0, wEnd)
@@ -770,10 +860,19 @@ public struct ClipTrimmerSheetView: View {
 
         let targetSpan = max(30.0, min(1800.0, base / Double(scale)))
         let center = (startTime + endTime) / 2.0
-        let maxLimit = totalDuration > 0 ? totalDuration : max(center + targetSpan, 3600.0)
+        let maxLimit = totalMovieDuration
 
-        let wStart = max(0.0, center - targetSpan / 2.0)
-        let wEnd = min(maxLimit, wStart + targetSpan)
+        var wStart = max(0.0, center - targetSpan / 2.0)
+        var wEnd = min(maxLimit, wStart + targetSpan)
+
+        if wStart > startTime {
+            wStart = max(0.0, startTime - 10.0)
+            wEnd = min(maxLimit, wStart + targetSpan)
+        }
+        if wEnd < endTime {
+            wEnd = min(maxLimit, endTime + 10.0)
+            wStart = max(0.0, wEnd - targetSpan)
+        }
 
         windowStart = wStart
         windowEnd = max(wStart + 20.0, wEnd)
