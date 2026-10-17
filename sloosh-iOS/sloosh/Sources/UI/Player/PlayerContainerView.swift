@@ -336,8 +336,7 @@ private struct BlurTransitionModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(isActive ? 0 : 1)
-            .blur(radius: isActive ? 20 : 0)
-            .scaleEffect(isActive ? 1.2 : 1.0)
+            .scaleEffect(isActive ? 1.15 : 1.0)
     }
 }
 
