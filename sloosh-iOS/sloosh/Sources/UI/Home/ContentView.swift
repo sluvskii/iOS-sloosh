@@ -175,6 +175,11 @@ struct ContentView: View {
                     selectedTab = .home
                 }
             }
+            .onChange(of: deepLinkManager.targetClipId) { _, newValue in
+                if newValue != nil {
+                    selectedTab = .clips
+                }
+            }
         }
     }
 

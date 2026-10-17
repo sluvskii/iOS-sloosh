@@ -48,6 +48,16 @@ public struct MovieClip: Identifiable, Codable, Equatable, Hashable, Sendable {
         return "Момент из фильма"
     }
 
+    public var displayThumbnailUrl: String? {
+        if let path = posterPath ?? backdropPath, !path.isEmpty {
+            if path.hasPrefix("http://") || path.hasPrefix("https://") {
+                return path
+            }
+            return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/w500\(path)"
+        }
+        return nil
+    }
+
     public var formattedDuration: String {
         let totalSec = Int(duration.rounded())
         if totalSec >= 60 {

@@ -16,6 +16,7 @@ public struct UserProfileDetailView: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var tagCopiedToast: Bool = false
     @State private var activeMomentClip: MovieClip? = nil
+    @State private var sharingClip: MovieClip? = nil
     @State private var showDirectChat: Bool = false
     @State private var scrollOffsetY: CGFloat = 0.0
 
@@ -168,6 +169,9 @@ public struct UserProfileDetailView: View {
             ClipsFeedView(customClips: authorClips, initialClipId: clip.id, isModal: true)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
+        }
+        .sheet(item: $sharingClip) { clip in
+            ShareToFriendSheet(clip: clip)
         }
         .confirmationDialog(
             "Удалить чат с \(user.displayTitle)?",
@@ -424,6 +428,13 @@ public struct UserProfileDetailView: View {
                         AuthorMomentPosterCard(clip: clip, cardStyle: cardStyle) {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             self.activeMomentClip = clip
+                        }
+                        .contextMenu {
+                            Button {
+                                self.sharingClip = clip
+                            } label: {
+                                Label("Поделиться", systemImage: "paperplane")
+                            }
                         }
                     }
                 }
