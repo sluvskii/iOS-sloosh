@@ -135,7 +135,7 @@ final class ClipTrimSession: ObservableObject {
 
     // MARK: - Coordinate Mapping
 
-    func x(for time: Double, width: CGFloat) -> CGFloat {
+    func screenX(for time: Double, width: CGFloat) -> CGFloat {
         guard viewSpan > 0, width > 0 else { return 0 }
         return CGFloat((time - viewStart) / viewSpan) * width
     }
@@ -153,8 +153,8 @@ final class ClipTrimSession: ObservableObject {
 
     func dragBegan(atX x: CGFloat, width: CGFloat) {
         guard !isPinching else { return }
-        let startX = x(for: selectionStart, width: width)
-        let endX = x(for: selectionEnd, width: width)
+        let startX = screenX(for: selectionStart, width: width)
+        let endX = screenX(for: selectionEnd, width: width)
 
         dragOriginTouchX = x
         dragOriginStart = selectionStart
@@ -648,7 +648,7 @@ struct PlayerClipTrimmerView: View {
 
                 // Рамка выделения с ручками
                 selectionFrame(width: width)
-                    .offset(x: session.x(for: session.selectionStart, width: width))
+                    .offset(x: session.screenX(for: session.selectionStart, width: width))
 
                 // Плейхед (позиция превью)
                 playheadMarker(width: width)
@@ -680,7 +680,7 @@ struct PlayerClipTrimmerView: View {
             ForEach(firstIndex...max(firstIndex, lastIndex), id: \.self) { index in
                 let slotTime = (Double(index) + 0.5) * slotSpan
                 slotView(bucket: session.bucketKey(for: slotTime), slotWidth: slotWidth)
-                    .offset(x: session.x(for: Double(index) * slotSpan, width: width))
+                    .offset(x: session.screenX(for: Double(index) * slotSpan, width: width))
             }
         }
         .frame(width: width, height: trackHeight, alignment: .leading)
@@ -708,8 +708,8 @@ struct PlayerClipTrimmerView: View {
     }
 
     private func dimmingOverlay(width: CGFloat) -> some View {
-        let startX = session.x(for: session.selectionStart, width: width)
-        let endX = session.x(for: session.selectionEnd, width: width)
+        let startX = session.screenX(for: session.selectionStart, width: width)
+        let endX = session.screenX(for: session.selectionEnd, width: width)
         return HStack(spacing: 0) {
             Rectangle()
                 .fill(Color.black.opacity(0.70))
@@ -725,8 +725,8 @@ struct PlayerClipTrimmerView: View {
     }
 
     private func selectionFrame(width: CGFloat) -> some View {
-        let startX = session.x(for: session.selectionStart, width: width)
-        let endX = session.x(for: session.selectionEnd, width: width)
+        let startX = session.screenX(for: session.selectionStart, width: width)
+        let endX = session.screenX(for: session.selectionEnd, width: width)
         let frameWidth = max(24, endX - startX)
 
         return HStack(spacing: 0) {
@@ -765,7 +765,7 @@ struct PlayerClipTrimmerView: View {
     }
 
     private func playheadMarker(width: CGFloat) -> some View {
-        let px = session.x(for: session.playheadTime, width: width)
+        let px = session.screenX(for: session.playheadTime, width: width)
         return Group {
             if px >= 0 && px <= width {
                 Rectangle()
@@ -813,8 +813,8 @@ struct PlayerClipTrimmerView: View {
     private var handleTimecodesRow: some View {
         GeometryReader { proxy in
             let width = max(60.0, proxy.size.width)
-            let startX = session.x(for: session.selectionStart, width: width)
-            let endX = session.x(for: session.selectionEnd, width: width)
+            let startX = session.screenX(for: session.selectionStart, width: width)
+            let endX = session.screenX(for: session.selectionEnd, width: width)
 
             ZStack(alignment: .leading) {
                 timecodeBadge(formatTimecode(session.selectionStart))
