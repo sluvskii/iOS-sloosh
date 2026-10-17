@@ -106,6 +106,82 @@ final class ClipTrimSession: ObservableObject {
 
     func activate() {
         scheduleFilmstripReload()
+        // Захватываем начальный кадр выделения без лишних перемоток
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            guard let self, !self.vm.isPlaying else { return }
+            if let frame = self.vm.captureCurrentFrame() {
+                let key = self.bucketKey(for: self.selectionStart)
+                if self.frames[key] == nil {
+                    self.frames[key] = frame
+                }
+            }
+        }
+    }
+
+    // MARK: - Presets & Quick Zoom
+
+    var isZoomedOut: Bool {
+        viewSpan >= duration - 1.0
+    }
+
+    func toggleZoomFit() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            if isZoomedOut {
+                let selSpan = selectionEnd - selectionStart
+                let targetSpan = min(duration, max(90.0, selSpan * 2.0))
+                let center = (selectionStart + selectionEnd) / 2.0
+                viewSpan = targetSpan
+                let maxStart = max(0.0, duration - targetSpan)
+                viewStart = max(0.0, min(maxStart, center - targetSpan / 2.0))
+            } else {
+                viewStart = 0
+                viewSpan = duration
+            }
+        }
+        scheduleFilmstripReload()
+    }
+
+    func applyPreset(seconds: Double) {
+        let center = (selectionStart + selectionEnd) / 2.0
+        let newLen = min(duration, max(minSelection, seconds))
+        var newStart = max(0.0, center - newLen / 2.0)
+        var newEnd = newStart + newLen
+        if newEnd > duration {
+            newEnd = duration
+            newStart = max(0.0, duration - newLen)
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            selectionStart = newStart
+            selectionEnd = newEnd
+            let span = max(viewSpan, newLen * 1.35)
+            viewSpan = min(duration, span)
+            let maxStart = max(0.0, duration - viewSpan)
+            viewStart = max(0.0, min(maxStart, center - viewSpan / 2.0))
+        }
+        commitSelection()
+        vm.seekClip(to: newStart)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        scheduleFilmstripReload()
+
+        // Захватываем кадр нового начала
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 70_000_000)
+            guard let self, !self.vm.isPlaying else { return }
+            if let frame = self.vm.captureCurrentFrame() {
+                let key = self.bucketKey(for: self.selectionStart)
+                self.frames[key] = frame
+            }
+        }
+    }
+
+    func samplePlayingFrame(at time: Double) {
+        let key = bucketKey(for: time)
+        guard frames[key] == nil else { return }
+        if let frame = vm.captureCurrentFrame() {
+            frames[key] = frame
+        }
     }
 
     func deactivate() {
@@ -535,8 +611,18 @@ struct PlayerClipTrimmerView: View {
                 session.scheduleFilmstripReload()
             }
         }
+        .onChange(of: vm.currentTime) { _, newTime in
+            if vm.isClipMode && vm.isPlaying {
+                session.samplePlayingFrame(at: newTime)
+            }
+        }
         .sheet(isPresented: $isShowingPublishSheet) {
-            PublishMomentSheet(vm: vm)
+            PublishMomentSheet(
+                vm: vm,
+                coverImage: session.frames[session.bucketKey(for: session.selectionStart)] ?? vm.captureCurrentFrame(),
+                startTime: session.selectionStart,
+                endTime: session.selectionEnd
+            )
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: vm.isPlaying)
     }
@@ -548,8 +634,6 @@ struct PlayerClipTrimmerView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                // Детерминированно: тап всегда играет выделение с его начала (как в Photos),
-                // повторный тап — пауза. Никакой неоднозначности togglePlayPause после seek'ов.
                 if vm.isPlaying {
                     vm.pauseClipPreview()
                 } else {
@@ -569,7 +653,7 @@ struct PlayerClipTrimmerView: View {
             }
     }
 
-    // MARK: - Top Bar (Отмена • Длительность • Готово)
+    // MARK: - Top Bar (Отмена • Превью/Длительность • Готово)
 
     private var topBar: some View {
         HStack {
@@ -590,14 +674,28 @@ struct PlayerClipTrimmerView: View {
 
             Spacer()
 
-            // Длительность момента — главный параметр редактора
-            Text(formattedDuration(session.selectionEnd - session.selectionStart))
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .monospacedDigit()
+            // Интерактивный бейдж превью и длительности момента
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if vm.isPlaying {
+                    vm.pauseClipPreview()
+                } else {
+                    vm.playClipPreview()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(formattedDuration(session.selectionEnd - session.selectionStart))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .glassEffect(.regular, in: .capsule)
+                .glassEffect(.regular.interactive(), in: .capsule)
+            }
+            .buttonStyle(.plain)
 
             Spacer()
 
@@ -605,26 +703,28 @@ struct PlayerClipTrimmerView: View {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 isShowingPublishSheet = true
             } label: {
-                Text("Готово")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
-                    .background(Color.white)
-                    .clipShape(Capsule())
-                    .shadow(color: Color.white.opacity(0.25), radius: 6)
+                HStack(spacing: 5) {
+                    Text("Готово")
+                        .font(.system(size: 15, weight: .bold))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(Color.white)
+                .clipShape(Capsule())
+                .shadow(color: Color.white.opacity(0.25), radius: 6)
             }
             .buttonStyle(.glassPress)
         }
     }
 
-    // MARK: - Bottom Studio (дорожка + бейджи + границы окна)
+    // MARK: - Bottom Studio (пресеты + дорожка + бейджи + границы окна)
 
     private var bottomStudio: some View {
         VStack(spacing: 10) {
-            if !pinchHintShown {
-                pinchHint
-            }
+            presetChipsRow
             filmstripTrack
                 .frame(height: trackHeight)
             handleTimecodesRow
@@ -636,19 +736,48 @@ struct PlayerClipTrimmerView: View {
         }
     }
 
-    private var pinchHint: some View {
-        Text("Сведите или разведите пальцы, чтобы изменить масштаб дорожки")
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.white.opacity(0.6))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .glassEffect(.regular, in: .capsule)
-            .task {
-                try? await Task.sleep(nanoseconds: 4_500_000_000)
-                withAnimation(.easeOut(duration: 0.4)) {
-                    pinchHintShown = true
+    private var presetChipsRow: some View {
+        HStack(spacing: 8) {
+            presetChip(title: "15 с", seconds: 15)
+            presetChip(title: "30 с", seconds: 30)
+            presetChip(title: "1 мин", seconds: 60)
+            presetChip(title: "2 мин", seconds: 120)
+
+            Spacer()
+
+            Button {
+                session.toggleZoomFit()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: session.isZoomedOut ? "viewfinder" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(session.isZoomedOut ? "К моменту" : "Всё видео")
+                        .font(.system(size: 12, weight: .medium))
                 }
+                .foregroundStyle(.white.opacity(0.85))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .glassEffect(.regular.interactive(), in: .capsule)
             }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func presetChip(title: String, seconds: Double) -> some View {
+        let isSelected = abs((session.selectionEnd - session.selectionStart) - seconds) < 0.8
+        return Button {
+            session.applyPreset(seconds: seconds)
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                .foregroundStyle(isSelected ? Color.black : Color.white.opacity(0.9))
+                .padding(.horizontal, 11)
+                .padding(.vertical, 5)
+                .background(isSelected ? Color.slooshAccent : Color.clear)
+                .clipShape(Capsule())
+                .glassEffect(isSelected ? .identity : .regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Filmstrip Track
@@ -671,6 +800,9 @@ struct PlayerClipTrimmerView: View {
                 // Рамка выделения с ручками
                 selectionFrame(width: width)
                     .offset(x: session.screenX(for: session.selectionStart, width: width))
+
+                // Нативный плейхед (белая стрелка/игла воспроизведения)
+                playheadIndicator(width: width)
             }
             .frame(width: width, height: trackHeight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -744,6 +876,29 @@ struct PlayerClipTrimmerView: View {
             }
             .frame(width: slotWidth, height: trackHeight)
             .clipped()
+        }
+    }
+
+    @ViewBuilder
+    private func playheadIndicator(width: CGFloat) -> some View {
+        let current = vm.currentTime
+        if current >= session.selectionStart - 0.2 && current <= session.selectionEnd + 0.2 {
+            let x = session.screenX(for: current, width: width)
+            ZStack(alignment: .top) {
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: 3, height: trackHeight)
+                    .shadow(color: Color.black.opacity(0.6), radius: 3)
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: Color.black.opacity(0.5), radius: 2)
+                    .offset(y: -2)
+            }
+            .offset(x: x - 1.5)
+            .allowsHitTesting(false)
+            .animation(.linear(duration: 0.1), value: current)
         }
     }
 
@@ -945,59 +1100,285 @@ struct PlayerClipTrimmerView: View {
     }
 }
 
-// MARK: - Native Publish Sheet
+// MARK: - Native Publish Sheet (Флагманская карточка публикации момента)
 
 private struct PublishMomentSheet: View {
     @ObservedObject var vm: PlayerViewModel
+    let coverImage: UIImage?
+    let startTime: Double
+    let endTime: Double
     @Environment(\.dismiss) private var dismiss
+
+    @State private var caption: String = ""
+    @State private var isPublishing: Bool = false
+    @State private var errorMessage: String? = nil
+    @FocusState private var isCaptionFocused: Bool
+
+    private var duration: Double {
+        max(1.0, endTime - startTime)
+    }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Подпись к моменту (необязательно)", text: $vm.clipCaption, axis: .vertical)
-                        .lineLimit(2...4)
-                } footer: {
-                    Text("Момент будет опубликован в общую ленту моментов.")
-                }
+            ScrollView {
+                VStack(spacing: 16) {
+                    // 1. Превью момента с бейджами и длительностью
+                    mediaPreviewCard
 
-                if let error = vm.clipPublishErrorMessage {
-                    Section {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.system(size: 13))
+                    // 2. Ввод подписи к моменту
+                    captionCard
+
+                    // 3. Бейдж автора
+                    authorCard
+
+                    if let errorMessage {
+                        errorCard(errorMessage)
                     }
+
+                    // 4. Кнопка публикации
+                    publishButton
+                        .padding(.top, 4)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Color.black.ignoresSafeArea())
             .navigationTitle("Новый момент")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        publish()
+                        dismiss()
                     } label: {
-                        if vm.isClipPublishing {
-                            ProgressView()
-                        } else {
-                            Text("Опубликовать")
-                                .fontWeight(.bold)
-                        }
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white.opacity(0.6))
                     }
-                    .disabled(vm.isClipPublishing)
+                    .disabled(isPublishing)
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
+        .presentationDetents([.fraction(0.85), .large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            caption = vm.clipCaption
+        }
+    }
+
+    // MARK: - Media Preview Card
+
+    private var mediaPreviewCard: some View {
+        HStack(spacing: 14) {
+            // Кадр момента с плашкой длительности
+            ZStack(alignment: .bottomTrailing) {
+                if let coverImage {
+                    Image(uiImage: coverImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else if let artworkUrl = vm.backdropUrl ?? vm.posterUrl {
+                    AsyncCachedImage(urlString: artworkUrl) {
+                        Rectangle().fill(Color.white.opacity(0.08))
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    }
+                } else {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                }
+
+                Text(formattedDuration(duration))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.75))
+                    .clipShape(Capsule())
+                    .padding(6)
+            }
+            .frame(width: 120, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            )
+
+            // Данные фильма / серии
+            VStack(alignment: .leading, spacing: 4) {
+                Text(!vm.fallbackTitle.isEmpty ? vm.fallbackTitle : (vm.isMovie ? "Фильм" : "Сериал"))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    if !vm.isMovie, let s = vm.currentSeason, let e = vm.currentEpisode {
+                        Text("\(s) сезон, \(e) серия")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+
+                    if let voice = vm.currentTranslationName, !voice.isEmpty {
+                        Text(voice)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.slooshAccent)
+                            .lineLimit(1)
+                    }
+                }
+
+                Text(timecodeRangeFormatted)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    // MARK: - Caption Card
+
+    private var captionCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Подпись к моменту", systemImage: "quote.bubble.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+
+                Spacer()
+
+                Text("\(caption.count)/200")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(caption.count > 200 ? Color.red : .white.opacity(0.4))
+            }
+
+            TextField("Добавьте яркую подпись к моменту...", text: $caption, axis: .vertical)
+                .font(.system(size: 15))
+                .lineLimit(3...5)
+                .focused($isCaptionFocused)
+                .onChange(of: caption) { _, newVal in
+                    if newVal.count > 200 {
+                        caption = String(newVal.prefix(200))
+                    }
+                    vm.clipCaption = caption
+                }
+
+            Text("Момент увидят зрители в общей ленте и в вашем профиле.")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.4))
+        }
+        .padding(14)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    // MARK: - Author Card
+
+    private var authorCard: some View {
+        HStack(spacing: 12) {
+            let user = AuthRepository.shared.currentUser
+            let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Зритель"
+
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 36, height: 36)
+
+                if let photoUrl = user?.photoURL, let url = URL(string: photoUrl) {
+                    AsyncCachedImage(url: url) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white.opacity(0.6))
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    }
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                } else {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(authorName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Text("Автор момента")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+
+            Spacer()
+
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(Color.slooshAccent.opacity(0.85))
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+
+    private func errorCard(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.red.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Publish Button
+
+    private var publishButton: some View {
+        Button {
+            publish()
+        } label: {
+            HStack(spacing: 8) {
+                if isPublishing {
+                    ProgressView()
+                        .tint(.black)
+                    Text("Публикуем момент...")
+                        .font(.system(size: 16, weight: .bold))
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 16, weight: .bold))
+                    Text("Опубликовать момент")
+                        .font(.system(size: 16, weight: .bold))
+                }
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(Color.slooshAccent)
+            .clipShape(Capsule())
+            .shadow(color: Color.slooshAccent.opacity(0.35), radius: 10, y: 3)
+        }
+        .buttonStyle(.glassPress)
+        .disabled(isPublishing)
     }
 
     private func publish() {
-        guard !vm.isClipPublishing else { return }
+        guard !isPublishing else { return }
+        isPublishing = true
+        errorMessage = nil
+        vm.clipCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         Task {
@@ -1011,9 +1392,34 @@ private struct PublishMomentSheet: View {
                     iconColor: Color.slooshAccent
                 )
             } catch {
+                isPublishing = false
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                vm.clipPublishErrorMessage = "Не удалось опубликовать момент. Проверьте интернет."
+                errorMessage = "Не удалось опубликовать момент. Проверьте интернет."
             }
         }
+    }
+
+    private var timecodeRangeFormatted: String {
+        func fmt(_ sec: Double) -> String {
+            let total = Int(max(0, sec))
+            let h = total / 3600
+            let m = (total % 3600) / 60
+            let s = total % 60
+            if h > 0 {
+                return String(format: "%d:%02d:%02d", h, m, s)
+            }
+            return String(format: "%02d:%02d", m, s)
+        }
+        return "\(fmt(startTime)) – \(fmt(endTime))"
+    }
+
+    private func formattedDuration(_ interval: Double) -> String {
+        let total = Int(round(max(1.0, interval)))
+        let minutes = total / 60
+        let seconds = total % 60
+        if minutes > 0 {
+            return String(format: "%d:%02d", minutes, seconds)
+        }
+        return String(format: "0:%02d", seconds)
     }
 }

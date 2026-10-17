@@ -1395,6 +1395,8 @@ class PlayerViewModel: ObservableObject {
 
     func enterClipMode() {
         attachVideoOutputIfNeeded()
+        player?.pause()
+        isPlaying = false
         let current = (currentTime.isFinite && !currentTime.isNaN && currentTime >= 0) ? currentTime : 0
         let dur = currentDuration > 0 ? currentDuration : (current + 600)
         let s = max(0.0, current - 10.0)
@@ -1410,7 +1412,6 @@ class PlayerViewModel: ObservableObject {
         // Нативное поведение видеоредакторов: при входе в обрезку воспроизведение на паузе,
         // кадр выделения показан статично. Превью момента — по тапу на центр (с зацикливанием).
         seekClip(to: clipStartTime)
-        player?.pause()
     }
 
     func exitClipMode() {
@@ -1456,17 +1457,17 @@ class PlayerViewModel: ObservableObject {
     /// Показывает, что пользователь хочет играть превью выделения (сбрасывается паузой).
     var isClipPreviewRequested = false
 
-    /// Нативный просмотр момента: точный seek к началу выделения и запуск воспроизведения.
-    /// Вызывается тапом по центру — всегда начинает с начала выделения (как в Photos).
+    /// Нативный просмотр момента: запуск воспроизведения выделения.
+    /// Если воспроизведение уже внутри диапазона — продолжаем; если снаружи или в конце — начинаем с начала.
     func playClipPreview() {
         guard let player else { return }
         isClipPreviewRequested = true
-        let target = max(0.0, clipStartTime)
+        let needsRestart = currentTime < clipStartTime - 0.2 || currentTime >= clipEndTime - 0.5
+        let target = needsRestart ? max(0.0, clipStartTime) : currentTime
         let time = CMTime(seconds: target, preferredTimescale: 600)
         let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
             guard let self else { return }
-            // Пока шёл seek, пользователь мог передумать (тапнул паузу/вышел из режима)
             guard self.isClipMode, self.isClipPreviewRequested else { return }
             self.player?.play()
             self.isPlaying = true
@@ -1529,18 +1530,22 @@ class PlayerViewModel: ObservableObject {
         let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Зритель"
         let authorAvatar = user?.photoURL
 
+        let s = max(0.0, clipStartTime)
+        let e = max(s + Self.clipMinDuration, clipEndTime)
+        let resolvedTitle = !fallbackTitle.isEmpty ? fallbackTitle : (isMovie ? "Фильм" : "Сериал")
+
         let clip = MovieClip(
             mediaId: tmdbId ?? currentKpId ?? 0,
             mediaType: isMovie ? "movie" : "tv",
-            title: fallbackTitle,
+            title: resolvedTitle,
             posterPath: posterUrl,
             backdropPath: backdropUrl,
             logoPath: logoUrl,
             season: currentSeason,
             episode: currentEpisode,
             translationName: currentTranslationName,
-            startTime: clipStartTime,
-            endTime: clipEndTime,
+            startTime: s,
+            endTime: e,
             caption: clipCaption.trimmingCharacters(in: .whitespacesAndNewlines),
             authorId: authorId,
             authorName: authorName,
@@ -1552,6 +1557,7 @@ class PlayerViewModel: ObservableObject {
         )
 
         try await ClipsRepository.shared.publishClip(clip)
+        clipCaption = ""
         exitClipMode()
     }
 
@@ -2659,6 +2665,9 @@ class PlayerViewModel: ObservableObject {
                         // чтобы не конфликтовать со scrub-превью триммера на паузе.
                         if t >= self.clipEndTime || t < self.clipStartTime - 0.5 {
                             self.seekClip(to: self.clipStartTime)
+                            if player.rate < 0.01 && self.isClipPreviewRequested {
+                                player.play()
+                            }
                             return
                         }
                     }
