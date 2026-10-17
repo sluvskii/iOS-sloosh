@@ -88,7 +88,13 @@ final class ClipPlaybackCoordinator: ObservableObject {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         let savedQuality = UserDefaults.standard.string(forKey: "sloosh_moments_quality") ?? "Авто"
-        self.currentQuality = savedQuality
+        // Сохранённое когда-то качество выше 1080p сбрасываем — iPhone его не воспроизводит
+        let savedHeight = Int(savedQuality.replacingOccurrences(of: "p", with: "")) ?? 0
+        let resolvedQuality = (savedQuality != "Авто" && savedHeight > 1080) ? "Авто" : savedQuality
+        self.currentQuality = resolvedQuality
+        if resolvedQuality != savedQuality {
+            UserDefaults.standard.set(resolvedQuality, forKey: "sloosh_moments_quality")
+        }
     }
 
     func setupPlayer(for clip: MovieClip, allClips: [MovieClip] = [], isRetry: Bool = false) {
@@ -149,7 +155,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
                     let h2 = Int($1.replacingOccurrences(of: "p", with: "")) ?? 0
                     return h1 > h2
                 }
-                self.availableQualities = ["Авто"] + sortedKeys
+                // Качества выше 1080p с балансира приходят в кодеке, который iPhone
+                // не воспроизводит — в меню их не показываем вовсе
+                let cappedKeys = sortedKeys.filter { key in
+                    (Int(key.replacingOccurrences(of: "p", with: "")) ?? 0) <= 1080
+                }
+                self.availableQualities = ["Авто"] + cappedKeys
             }
 
             let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
@@ -337,6 +348,10 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func setQuality(_ quality: String) {
+        // Выше 1080p не переключаемся: кодек с балансира не поддерживается iPhone
+        if quality != "Авто", (Int(quality.replacingOccurrences(of: "p", with: "")) ?? 0) > 1080 {
+            return
+        }
         currentQuality = quality
         UserDefaults.standard.set(quality, forKey: "sloosh_moments_quality")
         ToastManager.shared.show(title: "Качество: \(quality)", icon: "gearshape.fill", iconColor: .white)
@@ -444,8 +459,10 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 heights.insert(h)
             }
         }
-        if !heights.isEmpty {
-            let sortedHeights = heights.sorted(by: >)
+        // Выше 1080p не предлагаем: кодек таких дорожек с балансира не поддерживается iPhone
+        let cappedHeights = heights.filter { $0 <= 1080 }
+        if !cappedHeights.isEmpty {
+            let sortedHeights = cappedHeights.sorted(by: >)
             var list = ["Авто"]
             for h in sortedHeights {
                 list.append("\(h)p")
