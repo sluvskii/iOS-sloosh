@@ -694,9 +694,6 @@ struct PlayerClipTrimmerView: View {
                 // Рамка выделения с ручками
                 selectionFrame(width: width)
                     .offset(x: session.screenX(for: session.selectionStart, width: width))
-
-                // Наглядный плейхед текущей позиции воспроизведения
-                playheadNeedle(width: width)
             }
             .frame(width: width, height: trackHeight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -710,20 +707,6 @@ struct PlayerClipTrimmerView: View {
             .onChange(of: proxy.size.width) { _, newWidth in
                 session.trackLayoutChanged(width: newWidth)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func playheadNeedle(width: CGFloat) -> some View {
-        let cur = vm.currentTime
-        if cur >= session.selectionStart - 0.25 && cur <= session.selectionEnd + 0.25 {
-            let needleX = session.screenX(for: cur, width: width)
-            Capsule()
-                .fill(Color.white)
-                .frame(width: 2.5, height: trackHeight)
-                .shadow(color: .black.opacity(0.85), radius: 3, x: 0, y: 1)
-                .offset(x: max(0, min(width - 2.5, needleX - 1.25)))
-                .allowsHitTesting(false)
         }
     }
 
