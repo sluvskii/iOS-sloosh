@@ -398,6 +398,8 @@ class PlayerViewModel: ObservableObject {
     private var subtitleFetchTask: Task<Void, Never>?
     private var legibleDelegate: LegibleOutputDelegate?
     private var legibleOutput: AVPlayerItemLegibleOutput?
+    /// Выход кадров декодера для захвата кадров плёнки триммера.
+    private var videoOutput: AVPlayerItemVideoOutput?
 
     // MARK: - PiP
     @Published var isPiPActive = false
@@ -1456,6 +1458,37 @@ class PlayerViewModel: ObservableObject {
         isPlaying = false
     }
 
+    /// Захват текущего кадра из работающего декодера плеера (AVPlayerItemVideoOutput).
+    /// Это тот же конвейер, что рендерит картинку на экран, поэтому кадр получается
+    /// всегда, когда видео вообще воспроизводится (в отличие от AVAssetImageGenerator,
+    /// который на проксированных HLS-стримах может молча не выдать ни кадра).
+    func captureCurrentFrame() -> UIImage? {
+        guard let player, let item = player.currentItem, let videoOutput else { return nil }
+        let itemTime = item.currentTime()
+        guard let pixelBuffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) else {
+            return nil
+        }
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        // Даунскейл до ширины слота плёнки — кадр 1080p в память не нужен
+        let targetWidth: CGFloat = 320
+        let scale = targetWidth / max(1.0, ciImage.extent.width)
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let cgImage = Self.sharedCIContext.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
+    /// Точный seek с ожиданием фактического завершения (для последовательного сканирования кадров).
+    func seekForCapture(to seconds: Double) async {
+        guard let player else { return }
+        let time = CMTime(seconds: max(0.0, seconds), preferredTimescale: 600)
+        let tol = CMTime(seconds: 0.05, preferredTimescale: 600)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { _ in
+                continuation.resume()
+            }
+        }
+    }
+
     /// Точный seek в режиме момента (границы выделения, зацикливание превью).
     func seekClip(to seconds: Double) {
         guard let player else { return }
@@ -2331,6 +2364,15 @@ class PlayerViewModel: ObservableObject {
         playerItem.add(legible)
         self.legibleDelegate = delegate
         self.legibleOutput = legible
+
+        // Выход кадров декодера: источник честных кадров плёнки триммера «Моментов»
+        // (захват идёт из того же конвейера, что рендерит видео, — работает на любом стриме)
+        let pixelBufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+        ]
+        let vOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: pixelBufferAttributes)
+        playerItem.add(vOutput)
+        self.videoOutput = vOutput
 
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
