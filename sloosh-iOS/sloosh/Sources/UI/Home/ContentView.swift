@@ -93,6 +93,13 @@ struct ContentView: View {
                 .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)
                 .tint(Color.slooshAccent)
+                .onChange(of: selectedTab) { _, newTab in
+                    if newTab == .clips {
+                        Task {
+                            await ClipsRepository.shared.fetchFeed()
+                        }
+                    }
+                }
                 
                 if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 && selectedTab != .clips {
                     // Telegram DeviceMetrics thresholds:

@@ -29,6 +29,7 @@ struct ProfileView: View {
     @State private var showSignOutAlert = false
     @State private var showEditProfileSheet = false
     @State private var showAdminDashboard = false
+    @State private var showMyProfile = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
@@ -200,6 +201,18 @@ struct ProfileView: View {
             .sheet(isPresented: $showAdminDashboard) {
                 AdminDashboardView()
             }
+            .navigationDestination(isPresented: $showMyProfile) {
+                if let user = authRepo.currentUser {
+                    let displayName = (user.displayName?.isEmpty == false ? user.displayName! : nil) ?? user.displayTitle
+                    let slooshUser = SlooshUser(
+                        id: user.id,
+                        displayName: displayName,
+                        tag: user.tag,
+                        avatarUrl: user.photoURL
+                    )
+                    UserProfileDetailView(user: slooshUser, chatContext: false)
+                }
+            }
             .alert(
                 "Выйти из аккаунта?",
                 isPresented: $showSignOutAlert
@@ -256,6 +269,12 @@ struct ProfileView: View {
                     } label: {
                         Label("Панель управления", systemImage: "shield.fill")
                     }
+                }
+
+                Button {
+                    showMyProfile = true
+                } label: {
+                    Label("Мой профиль", systemImage: "person.crop.circle")
                 }
 
                 Button {
