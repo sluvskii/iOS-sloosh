@@ -69,17 +69,19 @@ final class ClipTrimSession: ObservableObject {
         self.vm = vm
         let minSel = PlayerViewModel.clipMinDuration
         let rawDuration = vm.currentDuration
-        let safeDuration = (rawDuration.isFinite && !rawDuration.isNaN && rawDuration > 1.0) ? rawDuration : 0
-        self.duration = safeDuration > 0 ? safeDuration : max(vm.clipEndTime + 60.0, 300.0)
+        let resolvedDuration = (rawDuration.isFinite && !rawDuration.isNaN && rawDuration > 1.0)
+            ? rawDuration
+            : max(vm.clipEndTime + 60.0, 300.0)
         let rawStart = max(0.0, vm.clipStartTime)
-        let rawEnd = max(rawStart + minSel, min(duration, vm.clipEndTime))
+        let rawEnd = max(rawStart + minSel, min(resolvedDuration, vm.clipEndTime))
+        self.duration = resolvedDuration
         self.selectionStart = rawStart
-        self.selectionEnd = min(duration, rawEnd)
+        self.selectionEnd = min(resolvedDuration, rawEnd)
         // Нативное поведение по умолчанию: дорожка показывает весь фильм (как Photos),
         // кадры уточняются при пинче.
-        self.viewSpan = duration
+        self.viewSpan = resolvedDuration
         self.viewStart = 0
-        self.playheadTime = min(max(vm.currentTime, 0), duration)
+        self.playheadTime = min(max(vm.currentTime, 0), resolvedDuration)
     }
 
     // MARK: - Lifecycle
