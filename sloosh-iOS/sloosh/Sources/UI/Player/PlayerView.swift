@@ -404,15 +404,13 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - In-Player Clip Trimmer
     static let clipMinDuration: Double = 3.0
-    static let clipMaxDuration: Double = 60.0
+    static let clipMaxDuration: Double = 600.0
     @Published var isClipMode = false
     @Published var clipStartTime: Double = 0.0
     @Published var clipEndTime: Double = 0.0
     @Published var isClipPublishing: Bool = false
     @Published var clipCaption: String = ""
     @Published var clipPublishErrorMessage: String? = nil
-    /// Генератор кадров плёнки триммера моментов (та же конфигурация, что у скраб-превью).
-    private var trimmerImageGenerator: AVAssetImageGenerator?
     var pipController: AVPictureInPictureController?
 
     // MARK: - Meta
@@ -1413,7 +1411,7 @@ class PlayerViewModel: ObservableObject {
 
     func exitClipMode() {
         isClipMode = false
-        cancelTrimmerFrameGeneration()
+        isClipPreviewRequested = false
     }
 
     /// Фиксация выделения момента после жестов триммера (без seek — превью управляет триммер).
@@ -1426,6 +1424,36 @@ class PlayerViewModel: ObservableObject {
     /// Пауза на время взаимодействия с ручками (нативно: обрезка всегда на паузе).
     func pauseForTrim() {
         player?.pause()
+    }
+
+    // MARK: - Превью выбранного момента (детерминированное, в обход неоднозначного togglePlayPause)
+
+    /// Показывает, что пользователь хочет играть превью выделения (сбрасывается паузой).
+    var isClipPreviewRequested = false
+
+    /// Нативный просмотр момента: точный seek к началу выделения и запуск воспроизведения.
+    /// Вызывается тапом по центру — всегда начинает с начала выделения (как в Photos).
+    func playClipPreview() {
+        guard let player else { return }
+        isClipPreviewRequested = true
+        let target = max(0.0, clipStartTime)
+        let time = CMTime(seconds: target, preferredTimescale: 600)
+        let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
+            guard let self else { return }
+            // Пока шёл seek, пользователь мог передумать (тапнул паузу/вышел из режима)
+            guard self.isClipMode, self.isClipPreviewRequested else { return }
+            self.player?.play()
+            self.isPlaying = true
+            self.updateNowPlaying()
+        }
+    }
+
+    /// Останавливает превью выделения.
+    func pauseClipPreview() {
+        isClipPreviewRequested = false
+        player?.pause()
+        isPlaying = false
     }
 
     /// Точный seek в режиме момента (границы выделения, зацикливание превью).
@@ -1442,41 +1470,6 @@ class PlayerViewModel: ObservableObject {
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         let tol = CMTime(seconds: 0.35, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
-    }
-
-    /// Генерация кадров плёнки триммера «Моментов».
-    /// Конфигурация идентична проверенному скраб-превью плеера (тот же ассет, тот же размер, tolerance 5 c).
-    func generateTrimmerFrames(for times: [Double]) async -> [Double: UIImage] {
-        guard !times.isEmpty else { return [:] }
-        guard let asset = player?.currentItem?.asset else { return [:] }
-
-        if trimmerImageGenerator == nil || trimmerImageGenerator?.asset !== asset {
-            let gen = AVAssetImageGenerator(asset: asset)
-            gen.appliesPreferredTrackTransform = true
-            gen.maximumSize = CGSize(width: 320, height: 180)
-            gen.requestedTimeToleranceBefore = CMTime(seconds: 5, preferredTimescale: 600)
-            gen.requestedTimeToleranceAfter = CMTime(seconds: 5, preferredTimescale: 600)
-            trimmerImageGenerator = gen
-        }
-        guard let generator = trimmerImageGenerator else { return [:] }
-
-        let cmTimes = times.map { CMTime(seconds: $0, preferredTimescale: 600) }
-        var result: [Double: UIImage] = [:]
-        for await imageResult in generator.images(for: cmTimes) {
-            if Task.isCancelled { break }
-            if case .success(let success) = imageResult {
-                let key = (success.requestedTime.seconds / 0.5).rounded() * 0.5
-                if result[key] == nil {
-                    result[key] = UIImage(cgImage: success.image)
-                }
-            }
-        }
-        return result
-    }
-
-    func cancelTrimmerFrameGeneration() {
-        trimmerImageGenerator?.cancelAllCGImageGeneration()
-        trimmerImageGenerator = nil
     }
 
     func publishClip() async throws {
