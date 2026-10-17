@@ -298,38 +298,6 @@ class PlayerViewModel: ObservableObject {
     private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
     @Published var isLocalPlayback: Bool = false
 
-    // MARK: - Video Output for live frames (Clip trimmer & scrubbing)
-    private var videoOutput: AVPlayerItemVideoOutput?
-    @Published var liveClipFrames: [Double: UIImage] = [:]
-
-    func captureClipFrameIfNeeded(at seconds: Double) {
-        guard isClipMode, let videoOutput, let player, let item = player.currentItem else { return }
-        let itemTime = item.currentTime()
-        guard let pixelBuffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) else {
-            return
-        }
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = Self.sharedCIContext.createCGImage(ciImage, from: ciImage.extent) else { return }
-        let uiImage = UIImage(cgImage: cgImage)
-        let secKey = round(seconds)
-        if liveClipFrames[secKey] == nil {
-            liveClipFrames[secKey] = uiImage
-        }
-    }
-
-    func liveFrame(near time: Double) -> UIImage? {
-        guard !liveClipFrames.isEmpty else { return nil }
-        let sec = round(time)
-        if let exact = liveClipFrames[sec] {
-            return exact
-        }
-        if let closest = liveClipFrames.min(by: { abs($0.key - time) < abs($1.key - time) }),
-           abs(closest.key - time) <= 15.0 {
-            return closest.value
-        }
-        return nil
-    }
-
     func setupImageGenerator(asset: AVAsset) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
@@ -435,13 +403,18 @@ class PlayerViewModel: ObservableObject {
     @Published var isPiPActive = false
 
     // MARK: - In-Player Clip Trimmer
+    static let clipMinDuration: Double = 3.0
+    static let clipMaxDuration: Double = 60.0
     @Published var isClipMode = false
     @Published var clipStartTime: Double = 0.0
     @Published var clipEndTime: Double = 0.0
     @Published var isClipPublishing: Bool = false
-    @Published var showClipPublishOverlay: Bool = false
     @Published var clipCaption: String = ""
     @Published var clipPublishErrorMessage: String? = nil
+    /// Ассет текущего элемента для генерации кадровой плёнки триммера (AVAssetImageGenerator).
+    var trimmerAsset: AVAsset? {
+        player?.currentItem?.asset
+    }
     var pipController: AVPictureInPictureController?
 
     // MARK: - Meta
@@ -1427,90 +1400,49 @@ class PlayerViewModel: ObservableObject {
         let s = max(0.0, current - 10.0)
         let e = min(dur, s + 30.0)
         clipStartTime = s
-        clipEndTime = max(s + 3.0, e)
+        clipEndTime = max(s + Self.clipMinDuration, e)
         clipCaption = ""
         clipPublishErrorMessage = nil
-        showClipPublishOverlay = false
         isClipMode = true
         if imageGenerator == nil, let asset = player?.currentItem?.asset {
             setupImageGenerator(asset: asset)
         }
-        liveClipFrames.removeAll()
+        // Нативное поведение видеоредакторов: при входе в обрезку воспроизведение на паузе,
+        // кадр выделения показан статично. Превью момента — по тапу на центр (с зацикливанием).
         seekClip(to: clipStartTime)
-        if !isPlaying {
-            player?.play()
-            isPlaying = true
-        }
+        player?.pause()
     }
 
     func exitClipMode() {
-        showClipPublishOverlay = false
         isClipMode = false
     }
 
-    func setClipDurationPreset(_ seconds: Double) {
-        let dur = currentDuration > 0 ? currentDuration : (clipStartTime + seconds + 60)
-        clipEndTime = min(dur, clipStartTime + seconds)
-        seekClip(to: clipStartTime)
+    /// Фиксация выделения момента после жестов триммера (без seek — превью управляет триммер).
+    func commitClipSelection(start: Double, end: Double) {
+        let dur = currentDuration > 0 ? currentDuration : (end + 60.0)
+        clipStartTime = max(0.0, start)
+        clipEndTime = min(dur, max(start + Self.clipMinDuration, end))
     }
 
-    func nudgeClipStart(by delta: Double) {
-        let newStart = max(0.0, min(clipEndTime - 3.0, clipStartTime + delta))
-        clipStartTime = newStart
-        seekClip(to: newStart)
+    /// Пауза на время взаимодействия с ручками (нативно: обрезка всегда на паузе).
+    func pauseForTrim() {
+        player?.pause()
     }
 
-    func nudgeClipEnd(by delta: Double) {
-        let maxLimit = currentDuration > 0 ? currentDuration : (clipStartTime + 600)
-        let newEnd = min(maxLimit, max(clipStartTime + 3.0, clipEndTime + delta))
-        clipEndTime = newEnd
-        seekClip(to: max(clipStartTime, newEnd - 2.0))
-    }
-
-    func shiftClip(by delta: Double) {
-        let dur = clipEndTime - clipStartTime
-        let maxLimit = currentDuration > 0 ? currentDuration : (clipEndTime + 600)
-        var newStart = clipStartTime + delta
-        var newEnd = newStart + dur
-
-        if newStart < 0 {
-            newStart = 0
-            newEnd = newStart + dur
-        }
-        if newEnd > maxLimit {
-            newEnd = maxLimit
-            newStart = max(0, newEnd - dur)
-        }
-
-        clipStartTime = newStart
-        clipEndTime = newEnd
-        seekClip(to: newStart)
-    }
-
+    /// Точный seek в режиме момента (границы выделения, зацикливание превью).
     func seekClip(to seconds: Double) {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] finished in
-            if finished {
-                Task { @MainActor [weak self] in
-                    self?.captureClipFrameIfNeeded(at: seconds)
-                }
-            }
-        }
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
     }
 
+    /// Грубый быстрый seek для превью за ручкой триммера (в движении пальца).
     func seekClipFast(to seconds: Double) {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        let tol = CMTime(seconds: 0.75, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] finished in
-            if finished {
-                Task { @MainActor [weak self] in
-                    self?.captureClipFrameIfNeeded(at: seconds)
-                }
-            }
-        }
+        let tol = CMTime(seconds: 0.35, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
     }
 
     func publishClip() async throws {
@@ -2373,13 +2305,6 @@ class PlayerViewModel: ObservableObject {
         self.legibleDelegate = delegate
         self.legibleOutput = legible
 
-        let pixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
-        ]
-        let vOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: pixelBufferAttributes)
-        playerItem.add(vOutput)
-        self.videoOutput = vOutput
-
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
@@ -2651,12 +2576,13 @@ class PlayerViewModel: ObservableObject {
                 if self.isUserSeeking || self.isInitialSeekPending { return }
                 let t = player.currentTime().seconds
                 if t.isFinite && !t.isNaN && t >= 0 {
-                    if self.isClipMode && !self.isUserSeeking {
+                    if self.isClipMode && !self.isUserSeeking && player.rate > 0.01 {
+                        // Зацикливание превью момента — только во время реального воспроизведения,
+                        // чтобы не конфликтовать со scrub-превью триммера на паузе.
                         if t >= self.clipEndTime || t < self.clipStartTime - 0.5 {
                             self.seekClip(to: self.clipStartTime)
                             return
                         }
-                        self.captureClipFrameIfNeeded(at: t)
                     }
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
