@@ -1,17 +1,19 @@
 import SwiftUI
 import UIKit
-import AVFoundation
 
 // MARK: - Clip Trim Session (Единый источник правды режима «Создать момент»)
 //
 // Взаимодействие построено по канонам нативных редакторов Apple (Photos / iMovie):
-//  • Плёнка кадров — честные кадры фильма через AVAssetImageGenerator (как скраб-превью плеера).
-//  • Пинч по дорожке — непрерывный масштаб с якорем под пальцами (без режимов «Сцена/Фильм»).
+//  • По умолчанию открыто «окно сцены» ~2 минуты вокруг выделения (как в iMovie) —
+//    на таком зуме ручки двигаются заметно; пинчем можно отдалиться до всего фильма.
+//  • Плёнка кадров — реальные кадры фильма через AVAssetImageGenerator (проверенный путь
+//    скраб-превью плеера), поверх подложки из постера/бэкдропа — дорожка никогда не «чернеет».
 //  • Ручка выделения — обрезка; кадр за ручкой показывается в видео (грубый скраб в движении,
 //    точный на отпускании). Воспроизведение на время обрезки становится на паузу.
 //  • Перетаскивание тела выделения — перенос момента без прыжков видео.
 //  • Перетаскивание фона дорожки — панорама плёнки (не трогает выделение и видео).
-//  • Лимиты (3–60 с и края фильма) — упругая «резина» с пружинным возвратом, хаптика на границах.
+//  • Лимиты (3–60 с и края фильма): минимальная длина — жёсткий упор (как в Photos),
+//    остальные границы — упругая пиксельная «резина» с хаптикой и пружинным возвратом.
 //  • Выделение фиксируется в PlayerViewModel один раз — при отпускании пальца.
 
 @MainActor
@@ -24,7 +26,6 @@ final class ClipTrimSession: ObservableObject {
     @Published private(set) var viewStart: Double
     @Published private(set) var viewSpan: Double
     @Published private(set) var frames: [Double: UIImage] = [:]
-    @Published private(set) var playheadTime: Double = 0
     @Published private(set) var duration: Double
     @Published private(set) var isPinching = false
 
@@ -34,10 +35,8 @@ final class ClipTrimSession: ObservableObject {
     // MARK: - Dependencies
 
     private unowned let vm: PlayerViewModel
-    private var generator: AVAssetImageGenerator?
     private var filmstripTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
-    private var playheadTimer: Timer?
     private var trackWidth: CGFloat = 0
 
     // MARK: - Gesture State (арбитраж: побеждает жест, начавшийся первым)
@@ -60,8 +59,11 @@ final class ClipTrimSession: ObservableObject {
     private var lastPreviewSeek: CFAbsoluteTime = 0
     private var lastReloadSchedule: CFAbsoluteTime = 0
 
-    private static let frameBucket: Double = 0.5
     private static let maxCachedFrames = 700
+    /// Ширина слота кадра в точках (16:9 при высоте дорожки 64).
+    private static let slotPixelWidth: Double = 64.0 * 16.0 / 9.0
+    /// Ход «резины» на границах в экранных точках (нативный, пиксельный скролл-фидбек).
+    private static let rubberBandPoints: CGFloat = 44.0
 
     // MARK: - Init
 
@@ -77,53 +79,26 @@ final class ClipTrimSession: ObservableObject {
         self.duration = resolvedDuration
         self.selectionStart = rawStart
         self.selectionEnd = min(resolvedDuration, rawEnd)
-        // Нативное поведение по умолчанию: дорожка показывает весь фильм (как Photos),
-        // кадры уточняются при пинче.
-        self.viewSpan = resolvedDuration
-        self.viewStart = 0
-        self.playheadTime = min(max(vm.currentTime, 0), resolvedDuration)
+        // Нативный старт (как в iMovie): окно сцены ~2 минуты вокруг выделения,
+        // чтобы ручки двигались заметно. Пинчем отдаляется до всего фильма.
+        let initialSpan = min(120.0, resolvedDuration)
+        self.viewSpan = initialSpan
+        let selectionCenter = (rawStart + rawEnd) / 2.0
+        let maxWindowStart = max(0.0, resolvedDuration - initialSpan)
+        self.viewStart = max(0.0, min(maxWindowStart, selectionCenter - initialSpan / 2.0))
     }
 
     // MARK: - Lifecycle
 
     func activate() {
-        syncPlayhead()
-        startPlayheadTimer()
         scheduleFilmstripReload()
     }
 
     func deactivate() {
-        playheadTimer?.invalidate()
-        playheadTimer = nil
         filmstripTask?.cancel()
         filmstripTask = nil
         reloadTask?.cancel()
         reloadTask = nil
-        generator?.cancelAllCGImageGeneration()
-        generator = nil
-    }
-
-    private func startPlayheadTimer() {
-        playheadTimer?.invalidate()
-        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.syncPlayhead()
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        playheadTimer = timer
-    }
-
-    private func syncPlayhead() {
-        let t = vm.currentTime
-        if t.isFinite && !t.isNaN && t >= 0 {
-            playheadTime = min(t, duration)
-        }
-        // Длительность могла уточниться после входа в триммер — мягко расширяем модель.
-        let d = vm.currentDuration
-        if d.isFinite && !d.isNaN && d > duration {
-            externalDurationChanged(to: d)
-        }
     }
 
     /// Если реальная длительность фильма уточнилась позже — мягко расширяем модель.
@@ -132,7 +107,8 @@ final class ClipTrimSession: ObservableObject {
         duration = newDuration
         selectionEnd = min(duration, max(selectionStart + minSelection, selectionEnd))
         viewSpan = min(duration, viewSpan)
-        viewStart = min(viewStart, duration - viewSpan)
+        viewStart = min(viewStart, max(0.0, duration - viewSpan))
+        scheduleFilmstripReload()
     }
 
     // MARK: - Coordinate Mapping
@@ -148,7 +124,7 @@ final class ClipTrimSession: ObservableObject {
     }
 
     func bucketKey(for time: Double) -> Double {
-        (time / Self.frameBucket).rounded() * Self.frameBucket
+        (time / 0.5).rounded() * 0.5
     }
 
     // MARK: - Drag Gesture
@@ -180,8 +156,11 @@ final class ClipTrimSession: ObservableObject {
     }
 
     func dragChanged(toX x: CGFloat, width: CGFloat) {
-        guard !isPinching, dragTarget != .none else { return }
+        guard !isPinching, dragTarget != .none, width > 0 else { return }
         let deltaSec = time(atX: x, width: width) - time(atX: dragOriginTouchX, width: width)
+        // «Резина» задаётся в точках экрана и пересчитывается в секунды по текущему зуму —
+        // ход упора ощущается одинаково на любом масштабе (как системный скролл).
+        let overshoot = Double(Self.rubberBandPoints / width) * viewSpan
 
         switch dragTarget {
         case .trimStart:
@@ -189,8 +168,8 @@ final class ClipTrimSession: ObservableObject {
             // (end − мин.длина) — рамка никогда не выворачивается (как в Photos).
             let raw = dragOriginStart + deltaSec
             let lengthLimit = max(0.0, dragOriginEnd - maxSelection)
-            var value = rubberBandMin(raw, minimum: lengthLimit, maxOvershoot: 3.0)
-            value = rubberBandMin(value, minimum: 0.0, maxOvershoot: 3.0)
+            var value = rubberBandMin(raw, minimum: lengthLimit, maxOvershoot: overshoot)
+            value = rubberBandMin(value, minimum: 0.0, maxOvershoot: overshoot)
             value = min(value, dragOriginEnd - minSelection)
             tickLimit("start-60s", when: raw < lengthLimit)
             tickLimit("start-edge", when: raw < 0.0)
@@ -204,8 +183,8 @@ final class ClipTrimSession: ObservableObject {
             // (start + мин.длина).
             let raw = dragOriginEnd + deltaSec
             let lengthLimit = min(duration, dragOriginStart + maxSelection)
-            var value = rubberBandMax(raw, maximum: lengthLimit, maxOvershoot: 3.0)
-            value = rubberBandMax(value, maximum: duration, maxOvershoot: 3.0)
+            var value = rubberBandMax(raw, maximum: lengthLimit, maxOvershoot: overshoot)
+            value = rubberBandMax(value, maximum: duration, maxOvershoot: overshoot)
             value = max(value, dragOriginStart + minSelection)
             tickLimit("end-60s", when: raw > lengthLimit)
             tickLimit("end-edge", when: raw > duration)
@@ -220,7 +199,7 @@ final class ClipTrimSession: ObservableObject {
                 dragOriginStart + deltaSec,
                 lower: 0,
                 upper: duration - length,
-                maxOvershoot: 3.0
+                maxOvershoot: overshoot
             )
             selectionStart = value
             selectionEnd = value + length
@@ -233,7 +212,7 @@ final class ClipTrimSession: ObservableObject {
                 dragOriginViewStart - deltaSec,
                 lower: 0,
                 upper: maxStart,
-                maxOvershoot: viewSpan * 0.12
+                maxOvershoot: overshoot
             )
             viewStart = value
 
@@ -241,7 +220,7 @@ final class ClipTrimSession: ObservableObject {
             break
         }
 
-        scheduleFilmstripReload()
+        throttledFilmstripReload()
     }
 
     func dragEnded(width: CGFloat) {
@@ -306,7 +285,7 @@ final class ClipTrimSession: ObservableObject {
         let anchorTime = time(atX: anchorX, width: width)
         let anchorFraction = Double(max(0, min(1, anchorX / width)))
 
-        let minSpan = min(max(12.0, (selectionEnd - selectionStart) + 6.0), duration)
+        let minSpan = min(max(20.0, (selectionEnd - selectionStart) + 6.0), duration)
         let newSpan = min(duration, max(minSpan, pinchOriginSpan / magnification))
 
         viewSpan = newSpan
@@ -378,7 +357,7 @@ final class ClipTrimSession: ObservableObject {
         vm.seekClipFast(to: max(0.0, seconds))
     }
 
-    // MARK: - Filmstrip (AVAssetImageGenerator)
+    // MARK: - Filmstrip (AVAssetImageGenerator через PlayerViewModel)
 
     func trackLayoutChanged(width: CGFloat) {
         guard width > 0 else { return }
@@ -392,72 +371,52 @@ final class ClipTrimSession: ObservableObject {
 
     func scheduleFilmstripReload() {
         reloadTask?.cancel()
-        guard let asset = vm.trimmerAsset else { return }
         reloadTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 130_000_000)
+            try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
-            self?.reloadVisibleFilmstrip(asset: asset)
+            self?.reloadVisibleFilmstrip()
         }
     }
 
     private func throttledFilmstripReload() {
         let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastReloadSchedule >= 0.1 else { return }
+        guard now - lastReloadSchedule >= 0.15 else { return }
         lastReloadSchedule = now
         scheduleFilmstripReload()
     }
 
-    private func reloadVisibleFilmstrip(asset: AVAsset) {
+    private func reloadVisibleFilmstrip() {
         guard trackWidth > 0, viewSpan > 0 else { return }
 
-        let slotWidth: CGFloat = 64.0 * 16.0 / 9.0
-        let slotSpan = viewSpan * Double(slotWidth / trackWidth)
+        let slotSpan = viewSpan * (Self.slotPixelWidth / Double(trackWidth))
         guard slotSpan > 0 else { return }
 
         let firstIndex = max(0, Int(floor(viewStart / slotSpan)))
-        let lastIndex = min(Int(ceil(duration / slotSpan)), Int(ceil((viewStart + viewSpan) / slotSpan)))
+        let lastIndex = min(Int(ceil(duration / slotSpan)) - 1, Int(ceil((viewStart + viewSpan) / slotSpan)))
         guard firstIndex <= lastIndex else { return }
 
         if frames.count > Self.maxCachedFrames {
             frames.removeAll()
         }
 
-        var requested: [CMTime] = []
+        var missing: [Double] = []
         for index in firstIndex...lastIndex {
             let slotTime = (Double(index) + 0.5) * slotSpan
             guard slotTime >= 0, slotTime <= duration else { continue }
             let key = bucketKey(for: slotTime)
             if frames[key] == nil {
-                requested.append(CMTime(seconds: key, preferredTimescale: 600))
+                missing.append(key)
             }
         }
-        guard !requested.isEmpty else { return }
+        guard !missing.isEmpty else { return }
 
-        let gen = AVAssetImageGenerator(asset: asset)
-        gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 320, height: 180)
-        let tolerance = CMTime(
-            seconds: min(max(slotSpan * 0.5, 0.5), 6.0),
-            preferredTimescale: 600
-        )
-        gen.requestedTimeToleranceBefore = tolerance
-        gen.requestedTimeToleranceAfter = tolerance
-
-        generator?.cancelAllCGImageGeneration()
-        generator = gen
         filmstripTask?.cancel()
-
         filmstripTask = Task { [weak self] in
-            for await result in gen.images(for: requested) {
-                guard !Task.isCancelled else { break }
-                guard let self else { break }
-                if case .success(let success) = result {
-                    let image = UIImage(cgImage: success.image)
-                    let key = self.bucketKey(for: success.requestedTime.seconds)
-                    if self.frames[key] == nil {
-                        self.frames[key] = image
-                    }
-                }
+            guard let self else { return }
+            let generated = await vm.generateTrimmerFrames(for: missing)
+            guard !Task.isCancelled, !generated.isEmpty else { return }
+            for (key, image) in generated where self.frames[key] == nil {
+                self.frames[key] = image
             }
         }
     }
@@ -638,9 +597,9 @@ struct PlayerClipTrimmerView: View {
             let slotWidth = trackHeight * 16.0 / 9.0
 
             ZStack(alignment: .leading) {
-                // База (исключает чёрные прорехи до загрузки кадров)
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.black.opacity(0.85))
+                // БАЗОВАЯ ПОДЛОЖКА: постер/бэкдроп фильма — дорожка никогда не выглядит сломанной,
+                // пока реальные кадры генерируются
+                trackBaseLayer(width: width)
 
                 // Плёнка: сетка привязана ко ВРЕМЕНИ, поэтому панорама и зум движутся непрерывно
                 filmstripSlots(width: width, slotWidth: slotWidth)
@@ -651,9 +610,6 @@ struct PlayerClipTrimmerView: View {
                 // Рамка выделения с ручками
                 selectionFrame(width: width)
                     .offset(x: session.screenX(for: session.selectionStart, width: width))
-
-                // Плейхед (позиция превью)
-                playheadMarker(width: width)
             }
             .frame(width: width, height: trackHeight)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -667,6 +623,28 @@ struct PlayerClipTrimmerView: View {
             .onChange(of: proxy.size.width) { _, newWidth in
                 session.trackLayoutChanged(width: newWidth)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func trackBaseLayer(width: CGFloat) -> some View {
+        if let artworkStr = vm.backdropUrl ?? vm.posterUrl, let url = URL(string: artworkStr) {
+            AsyncCachedImage(
+                url: url,
+                placeholder: {
+                    Color.black.opacity(0.85)
+                },
+                content: { uiImage in
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: trackHeight)
+                        .clipped()
+                        .overlay(Color.black.opacity(0.35))
+                }
+            )
+        } else {
+            Color.black.opacity(0.85)
         }
     }
 
@@ -689,24 +667,21 @@ struct PlayerClipTrimmerView: View {
         .clipped()
     }
 
+    @ViewBuilder
     private func slotView(bucket: Double, slotWidth: CGFloat) -> some View {
-        ZStack(alignment: .trailing) {
-            if let image = session.frames[bucket] {
+        if let image = session.frames[bucket] {
+            ZStack(alignment: .trailing) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-            } else {
-                Rectangle()
-                    .fill(Color.white.opacity(0.05))
-                    .shimmer()
-            }
 
-            Rectangle()
-                .fill(Color.black.opacity(0.35))
-                .frame(width: 1)
+                Rectangle()
+                    .fill(Color.black.opacity(0.35))
+                    .frame(width: 1)
+            }
+            .frame(width: slotWidth, height: trackHeight)
+            .clipped()
         }
-        .frame(width: slotWidth, height: trackHeight)
-        .clipped()
     }
 
     private func dimmingOverlay(width: CGFloat) -> some View {
@@ -764,20 +739,6 @@ struct PlayerClipTrimmerView: View {
             }
         }
         .frame(width: 14)
-    }
-
-    private func playheadMarker(width: CGFloat) -> some View {
-        let px = session.screenX(for: session.playheadTime, width: width)
-        return Group {
-            if px >= 0 && px <= width {
-                Rectangle()
-                    .fill(Color.white.opacity(0.95))
-                    .frame(width: 2)
-                    .shadow(color: .black.opacity(0.6), radius: 2)
-                    .offset(x: px - 1)
-            }
-        }
-        .allowsHitTesting(false)
     }
 
     // MARK: - Gestures (драг + пинч с арбитражем)
@@ -866,8 +827,8 @@ struct PlayerClipTrimmerView: View {
 
     // MARK: - Formatters
 
-    private func formattedDuration(_ duration: Double) -> String {
-        let total = Int(round(max(1.0, duration)))
+    private func formattedDuration(_ interval: Double) -> String {
+        let total = Int(round(max(1.0, interval)))
         let minutes = total / 60
         let seconds = total % 60
         if minutes > 0 {
