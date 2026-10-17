@@ -185,8 +185,8 @@ public final class ClipsRepository: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "DELETE"
             request.timeoutInterval = 10.0
-            let (_, response) = try? await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+            if let (_, response) = try? await URLSession.shared.data(for: request),
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
                 AppDiagnostics.shared.log("[ClipsRepository] Removed shard node \(id)")
             }
         }
