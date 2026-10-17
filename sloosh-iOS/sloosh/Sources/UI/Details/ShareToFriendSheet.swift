@@ -274,17 +274,17 @@ struct ShareToFriendSheet: View {
                 HStack(spacing: 6) {
                     HStack(spacing: 3) {
                         Image(systemName: "sparkles.tv")
-                            .font(.system(size: 8, weight: .bold))
-                        Text("МОМЕНТ")
-                            .font(.system(size: 8.5, weight: .black))
+                            .font(.system(size: 8.5, weight: .semibold))
+                        Text("Момент")
+                            .font(.system(size: 9, weight: .semibold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .glassEffect(.regular, in: Capsule())
 
-                    Text(clip.formattedDuration)
-                        .font(.system(size: 11, weight: .bold))
+                    Text(clip.timecodeFormatted)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
 
@@ -293,13 +293,15 @@ struct ShareToFriendSheet: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                if !clip.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(clip.caption)
-                        .font(.system(size: 11, weight: .medium))
+                let cleanCaption = clip.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleanCaption.isEmpty {
+                    Text("«\(cleanCaption)»")
+                        .font(.system(size: 11.5, weight: .regular))
                         .foregroundStyle(.secondary)
+                        .italic()
                         .lineLimit(1)
-                } else if !clip.authorName.isEmpty {
-                    Text("от \(clip.authorName)")
+                } else if !clip.subtitleInfo.isEmpty {
+                    Text(clip.subtitleInfo)
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)

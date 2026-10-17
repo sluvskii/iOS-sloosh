@@ -17,6 +17,40 @@ public struct MediaMessageCardView: View {
         self.onPlayDirectly = onPlayDirectly
     }
 
+    private var effectiveDuration: Double? {
+        if let d = media.duration, d > 0 {
+            return d
+        }
+        if let end = media.endTime, let start = media.startTime, end > start {
+            return end - start
+        }
+        return nil
+    }
+
+    private func formatTimecode(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        } else {
+            return String(format: "%d:%02d", m, s)
+        }
+    }
+
+    private var clipSubtitle: String? {
+        if let s = media.season, let e = media.episode {
+            if let t = media.translationName, !t.isEmpty {
+                return "\(s) сезон, \(e) серия • \(t)"
+            }
+            return "\(s) сезон, \(e) серия"
+        } else if let year = media.year, !year.isEmpty {
+            return year
+        }
+        return nil
+    }
+
     private var playButton: some View {
         Button {
             let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -28,17 +62,17 @@ public struct MediaMessageCardView: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: media.isClip ? "sparkles.tv.fill" : "play.fill")
-                    .font(.system(size: 14, weight: .black))
-                Text(media.isClip ? "Смотреть момент" : "Смотреть")
-                    .font(.system(size: 15, weight: .heavy))
+                Image(systemName: "play.fill")
+                    .font(.system(size: 13, weight: .black))
+                Text("Смотреть")
+                    .font(.system(size: 14.5, weight: .heavy))
             }
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(height: 38)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.92))
+                    .fill(Color.white.opacity(0.94))
             )
             .glassEffect(in: Capsule())
         }
@@ -47,7 +81,7 @@ public struct MediaMessageCardView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Постер и заголовок карточки — клик по ним открывает плеер момента или детали фильма
+            // Постер и метаданные — клик открывает плеер момента или детали фильма
             Button {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
@@ -57,8 +91,8 @@ public struct MediaMessageCardView: View {
                     onOpenDetails?(media.mediaId)
                 }
             } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Постер или бэкдроп
+                VStack(alignment: .leading, spacing: 7) {
+                    // Превью: постер (фильмы, 2:3) или бэкдроп (моменты, 16:9)
                     ZStack(alignment: .topLeading) {
                         if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
                             AsyncCachedImage(urlString: posterUrl) {
@@ -87,33 +121,34 @@ public struct MediaMessageCardView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
 
-                        // Бейдж момента ИЛИ рейтинг фильма
+                        // Верхний бейдж: Момент ИЛИ рейтинг фильма
                         if media.isClip {
                             HStack(spacing: 4) {
                                 Image(systemName: "sparkles.tv")
-                                    .font(.system(size: 9, weight: .bold))
-                                Text("МОМЕНТ")
-                                    .font(.system(size: 9.5, weight: .black))
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                Text("Момент")
+                                    .font(.system(size: 10, weight: .semibold))
                             }
                             .foregroundColor(.white)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3.5)
                             .glassEffect(.regular, in: Capsule())
-                            .padding(8)
+                            .padding(7)
 
-                            if let dur = media.duration, dur > 0 {
+                            // Длительность в стандартном видео-таймкоде (напр. 10:00, 1:25, 0:45)
+                            if let dur = effectiveDuration, dur > 0 {
                                 VStack {
                                     Spacer()
                                     HStack {
                                         Spacer()
-                                        Text("\(Int(dur.rounded())) сек")
-                                            .font(.system(size: 10, weight: .bold))
+                                        Text(formatTimecode(dur))
+                                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
                                             .foregroundColor(.white)
-                                            .padding(.horizontal, 6)
+                                            .padding(.horizontal, 5.5)
                                             .padding(.vertical, 2.5)
-                                            .background(Color.black.opacity(0.7))
-                                            .clipShape(Capsule())
-                                            .padding(8)
+                                            .background(Color.black.opacity(0.72))
+                                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                            .padding(7)
                                     }
                                 }
                             }
@@ -129,26 +164,28 @@ public struct MediaMessageCardView: View {
                         }
                     }
 
-                    // Название и мета
-                    VStack(alignment: .leading, spacing: 3) {
+                    // Название и метаданные
+                    VStack(alignment: .leading, spacing: 2.5) {
                         Text(media.title)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14.5, weight: .bold))
                             .foregroundColor(.white)
-                            .lineLimit(2)
+                            .lineLimit(1)
 
                         if media.isClip {
-                            if let caption = media.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(caption)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.85))
-                                    .lineLimit(2)
+                            if let sub = clipSubtitle, !sub.isEmpty {
+                                Text(sub)
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .lineLimit(1)
                             }
 
-                            if let author = media.authorName, !author.isEmpty {
-                                Text("от \(author)")
-                                    .font(.system(size: 11, weight: .regular))
-                                    .foregroundColor(.white.opacity(0.55))
-                                    .lineLimit(1)
+                            if let caption = media.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !caption.isEmpty {
+                                Text("«\(caption)»")
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .italic()
+                                    .lineLimit(2)
+                                    .padding(.top, 1)
                             }
                         } else if let year = media.year, !year.isEmpty {
                             Text(year)
@@ -161,7 +198,7 @@ public struct MediaMessageCardView: View {
             }
             .buttonStyle(.plain)
 
-            // Кнопка "Смотреть" / "Смотреть момент"
+            // Кнопка "Смотреть"
             playButton
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)

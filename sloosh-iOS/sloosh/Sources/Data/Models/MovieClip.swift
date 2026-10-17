@@ -58,6 +58,18 @@ public struct MovieClip: Identifiable, Codable, Equatable, Hashable, Sendable {
         return nil
     }
 
+    public var timecodeFormatted: String {
+        let total = max(0, Int(duration.rounded()))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        } else {
+            return String(format: "%d:%02d", m, s)
+        }
+    }
+
     public var formattedDuration: String {
         let totalSec = Int(duration.rounded())
         if totalSec >= 60 {
