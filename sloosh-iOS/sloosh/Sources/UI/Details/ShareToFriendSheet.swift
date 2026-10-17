@@ -265,7 +265,7 @@ struct ShareToFriendSheet: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                 }
-                .frame(width: 72, height: 48)
+                .frame(width: 44, height: 62)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
             }

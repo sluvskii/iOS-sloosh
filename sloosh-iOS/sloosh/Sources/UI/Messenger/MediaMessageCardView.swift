@@ -92,17 +92,17 @@ public struct MediaMessageCardView: View {
                 }
             } label: {
                 VStack(alignment: .leading, spacing: 7) {
-                    // Превью: постер (фильмы, 2:3) или бэкдроп (моменты, 16:9)
+                    // Постер фильма / момента (соотношение сторон 2:3)
                     ZStack(alignment: .topLeading) {
                         if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
                             AsyncCachedImage(urlString: posterUrl) {
                                 Rectangle()
                                     .fill(Color.white.opacity(0.1))
-                                    .aspectRatio(media.isClip ? 16/9 : 2/3, contentMode: .fit)
+                                    .aspectRatio(2/3, contentMode: .fit)
                             } content: { image in
                                 Image(uiImage: image)
                                     .resizable()
-                                    .aspectRatio(media.isClip ? 16/9 : 2/3, contentMode: .fill)
+                                    .aspectRatio(2/3, contentMode: .fit)
                                     .onAppear {
                                         if let avg = image.averageColor {
                                             let blended = avg.blended(with: .black, fraction: 0.65)
@@ -117,7 +117,7 @@ public struct MediaMessageCardView: View {
                         } else {
                             Rectangle()
                                 .fill(Color.white.opacity(0.1))
-                                .aspectRatio(media.isClip ? 16/9 : 2/3, contentMode: .fit)
+                                .aspectRatio(2/3, contentMode: .fit)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
 
