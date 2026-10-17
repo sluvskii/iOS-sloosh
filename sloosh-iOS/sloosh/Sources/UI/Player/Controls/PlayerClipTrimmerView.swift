@@ -70,7 +70,6 @@ final class ClipTrimSession: ObservableObject {
     private var pinchOriginSpan: Double = 0
     private var tickedLimits: Set<String> = []
     private var lastPreviewSeek: CFAbsoluteTime = 0
-    private var lastReloadSchedule: CFAbsoluteTime = 0
 
     private static let maxCachedFrames = 220
     /// Ширина слота кадра в точках (16:9 при высоте дорожки 64).
@@ -247,8 +246,6 @@ final class ClipTrimSession: ObservableObject {
         case .none:
             break
         }
-
-        throttledFilmstripReload()
     }
 
     func dragEnded(width: CGFloat) {
@@ -278,6 +275,16 @@ final class ClipTrimSession: ObservableObject {
 
         UISelectionFeedbackGenerator().selectionChanged()
         scheduleFilmstripReload()
+
+        // Захватываем точный кадр, на который встала ручка, без повторных перемоток плеера
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            guard let self, !self.vm.isPlaying else { return }
+            if let frame = self.vm.captureCurrentFrame() {
+                let key = self.bucketKey(for: self.vm.currentTime)
+                self.frames[key] = frame
+            }
+        }
     }
 
     /// Отмена одиночного драга при старте пинча (арбитраж жестов).
@@ -323,8 +330,6 @@ final class ClipTrimSession: ObservableObject {
 
         viewSpan = newSpan
         viewStart = max(0.0, min(duration - newSpan, anchorTime - (anchorFraction * newSpan)))
-
-        throttledFilmstripReload()
     }
 
     func pinchEnded() {
@@ -418,16 +423,9 @@ final class ClipTrimSession: ObservableObject {
         }
     }
 
-    private func throttledFilmstripReload() {
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - lastReloadSchedule >= 0.15 else { return }
-        lastReloadSchedule = now
-        scheduleFilmstripReload()
-    }
-
     private func reloadVisibleFilmstrip() {
         guard trackWidth > 0, viewSpan > 0 else { return }
-        // Во время превью плеер не трогаем — дозахватим после паузы (see View onChange isPlaying)
+        // Во время превью плеер не трогаем
         guard !vm.isPlaying else { return }
 
         let slotSpan = viewSpan * (Self.slotPixelWidth / Double(trackWidth))
@@ -455,35 +453,23 @@ final class ClipTrimSession: ObservableObject {
         // Новый проход сканирования отменяет предыдущий
         cancelCapture()
         let generation = captureGeneration
-        let restoreTime = min(max(vm.currentTime, 0), duration)
-        let slots = missing
 
-        captureTask = Task { [weak self] in
-            guard let self else { return }
-            for key in slots {
-                if Task.isCancelled || generation != self.captureGeneration { return }
-                if self.vm.isPlaying { return }
-
-                await self.vm.seekForCapture(to: key)
-                if Task.isCancelled || generation != self.captureGeneration { return }
-
-                // Декодер мог ещё не опубликовать кадр — короткие ретраи
-                var image = self.vm.captureCurrentFrame()
-                var attempts = 0
-                while image == nil, attempts < 3, !Task.isCancelled, generation == self.captureGeneration {
-                    try? await Task.sleep(nanoseconds: 70_000_000)
-                    image = self.vm.captureCurrentFrame()
-                    attempts += 1
-                }
-
-                if let image, generation == self.captureGeneration {
-                    self.frames[key] = image
+        // 1. Асинхронное фоновое извлечение кадров через AVAssetImageGenerator (без перемоток плеера)
+        vm.generateFilmstrip(times: missing) { [weak self] newFrames in
+            guard let self, generation == self.captureGeneration, !newFrames.isEmpty else { return }
+            for (time, img) in newFrames {
+                let key = self.bucketKey(for: time)
+                if self.frames[key] == nil {
+                    self.frames[key] = img
                 }
             }
+        }
 
-            // Возвращаем плейхед туда, где он был до сканирования
-            if !Task.isCancelled, generation == self.captureGeneration, !self.vm.isPlaying {
-                self.vm.seekClip(to: restoreTime)
+        // 2. Если декодер плеера прямо сейчас отображает кадр (плеер на паузе), сохраняем его
+        if let currentFrame = vm.captureCurrentFrame() {
+            let key = bucketKey(for: vm.currentTime)
+            if frames[key] == nil {
+                frames[key] = currentFrame
             }
         }
     }
@@ -701,11 +687,21 @@ struct PlayerClipTrimmerView: View {
         }
     }
 
-    /// Тёмная основа плёнки (без постера — только честные кадры фильма).
+    /// Тёмная основа плёнки с мягким затемнённым постером/бэкдропом фильма.
     private var trackBaseLayer: some View {
         ZStack {
             Rectangle()
-                .fill(Color.black.opacity(0.82))
+                .fill(Color.black.opacity(0.85))
+            if let artworkUrl = vm.backdropUrl ?? vm.posterUrl {
+                AsyncCachedImage(urlString: artworkUrl) {
+                    Color.clear
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .opacity(0.28)
+                }
+            }
             // Мягкая индикация генерации кадров — только пока не готово ни одного кадра
             if session.frames.isEmpty {
                 Rectangle()
