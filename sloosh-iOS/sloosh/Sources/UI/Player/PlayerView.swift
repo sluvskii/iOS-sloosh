@@ -413,6 +413,8 @@ class PlayerViewModel: ObservableObject {
     @Published var isClipPublishing: Bool = false
     @Published var clipCaption: String = ""
     @Published var clipPublishErrorMessage: String? = nil
+    @Published var latestCapturedFrame: UIImage? = nil
+    var onClipPlaybackTimeUpdated: ((Double) -> Void)? = nil
     var pipController: AVPictureInPictureController?
 
     // MARK: - Meta
@@ -1395,8 +1397,6 @@ class PlayerViewModel: ObservableObject {
 
     func enterClipMode() {
         attachVideoOutputIfNeeded()
-        player?.pause()
-        isPlaying = false
         let current = (currentTime.isFinite && !currentTime.isNaN && currentTime >= 0) ? currentTime : 0
         let dur = currentDuration > 0 ? currentDuration : (current + 600)
         let s = max(0.0, current - 10.0)
@@ -1406,17 +1406,23 @@ class PlayerViewModel: ObservableObject {
         clipCaption = ""
         clipPublishErrorMessage = nil
         isClipMode = true
+        isClipPreviewRequested = false
+        isPlaying = false
+        player?.pause()
         if imageGenerator == nil, let asset = player?.currentItem?.asset {
             setupImageGenerator(asset: asset)
         }
         // Нативное поведение видеоредакторов: при входе в обрезку воспроизведение на паузе,
         // кадр выделения показан статично. Превью момента — по тапу на центр (с зацикливанием).
-        seekClip(to: clipStartTime)
+        seekClip(to: clipStartTime) { [weak self] in
+            _ = self?.captureCurrentFrame()
+        }
     }
 
     func exitClipMode() {
         isClipMode = false
         isClipPreviewRequested = false
+        onClipPlaybackTimeUpdated = nil
         detachVideoOutput()
     }
 
@@ -1457,17 +1463,17 @@ class PlayerViewModel: ObservableObject {
     /// Показывает, что пользователь хочет играть превью выделения (сбрасывается паузой).
     var isClipPreviewRequested = false
 
-    /// Нативный просмотр момента: запуск воспроизведения выделения.
-    /// Если воспроизведение уже внутри диапазона — продолжаем; если снаружи или в конце — начинаем с начала.
+    /// Нативный просмотр момента: точный seek к началу выделения и запуск воспроизведения.
+    /// Вызывается тапом по центру — всегда начинает с начала выделения (как в Photos).
     func playClipPreview() {
         guard let player else { return }
         isClipPreviewRequested = true
-        let needsRestart = currentTime < clipStartTime - 0.2 || currentTime >= clipEndTime - 0.5
-        let target = needsRestart ? max(0.0, clipStartTime) : currentTime
+        let target = max(0.0, clipStartTime)
         let time = CMTime(seconds: target, preferredTimescale: 600)
         let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
         player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
             guard let self else { return }
+            // Пока шёл seek, пользователь мог передумать (тапнул паузу/вышел из режима)
             guard self.isClipMode, self.isClipPreviewRequested else { return }
             self.player?.play()
             self.isPlaying = true
@@ -1500,15 +1506,22 @@ class PlayerViewModel: ObservableObject {
         let scale = targetWidth / max(1.0, ciImage.extent.width)
         let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         guard let cgImage = Self.sharedCIContext.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cgImage)
+        let img = UIImage(cgImage: cgImage)
+        self.latestCapturedFrame = img
+        return img
     }
 
     /// Точный seek в режиме момента (границы выделения, зацикливание превью).
-    func seekClip(to seconds: Double) {
-        guard let player else { return }
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+    func seekClip(to seconds: Double, completion: (() -> Void)? = nil) {
+        guard let player else {
+            completion?()
+            return
+        }
+        let time = CMTime(seconds: max(0.0, seconds), preferredTimescale: 600)
         let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { _ in
+            completion?()
+        }
     }
 
     /// Грубый быстрый seek для превью за ручкой триммера (в движении пальца).
@@ -1530,8 +1543,6 @@ class PlayerViewModel: ObservableObject {
         let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Зритель"
         let authorAvatar = user?.photoURL
 
-        let s = max(0.0, clipStartTime)
-        let e = max(s + Self.clipMinDuration, clipEndTime)
         let resolvedTitle = !fallbackTitle.isEmpty ? fallbackTitle : (isMovie ? "Фильм" : "Сериал")
 
         let clip = MovieClip(
@@ -1544,8 +1555,8 @@ class PlayerViewModel: ObservableObject {
             season: currentSeason,
             episode: currentEpisode,
             translationName: currentTranslationName,
-            startTime: s,
-            endTime: e,
+            startTime: clipStartTime,
+            endTime: clipEndTime,
             caption: clipCaption.trimmingCharacters(in: .whitespacesAndNewlines),
             authorId: authorId,
             authorName: authorName,
@@ -1557,7 +1568,6 @@ class PlayerViewModel: ObservableObject {
         )
 
         try await ClipsRepository.shared.publishClip(clip)
-        clipCaption = ""
         exitClipMode()
     }
 
@@ -2664,12 +2674,11 @@ class PlayerViewModel: ObservableObject {
                         // Зацикливание превью момента — только во время реального воспроизведения,
                         // чтобы не конфликтовать со scrub-превью триммера на паузе.
                         if t >= self.clipEndTime || t < self.clipStartTime - 0.5 {
+                            self.currentTime = self.clipStartTime
                             self.seekClip(to: self.clipStartTime)
-                            if player.rate < 0.01 && self.isClipPreviewRequested {
-                                player.play()
-                            }
                             return
                         }
+                        self.onClipPlaybackTimeUpdated?(t)
                     }
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
