@@ -912,12 +912,18 @@ class HomeViewModel: ObservableObject {
                 if let top = try? await repo.getTopMovies(page: 1, force: false), !top.isEmpty {
                     return top.filter { !isTalkShowOrReality($0) }
                 }
-                return try? await repo.getTrending(page: 1, force: false)?.filter { !isTalkShowOrReality($0) }
+                if let trending = try? await repo.getTrending(page: 1, force: false) {
+                    return trending.filter { !isTalkShowOrReality($0) }
+                }
+                return nil
             } else {
                 if let trending = try? await repo.getTrending(page: 1, force: false), !trending.isEmpty {
                     return trending.filter { !isTalkShowOrReality($0) }
                 }
-                return try? await repo.getPopularMovies(page: 1, force: false)?.filter { !isTalkShowOrReality($0) }
+                if let popular = try? await repo.getPopularMovies(page: 1, force: false) {
+                    return popular.filter { !isTalkShowOrReality($0) }
+                }
+                return nil
             }
         case .movies:
             if selectedFilter == .topRated {
@@ -926,7 +932,10 @@ class HomeViewModel: ObservableObject {
                 return try? await repo.getPopularMovies(page: 1, force: false)
             }
         case .tvShows:
-            return try? await repo.getTopTv(page: 1, force: false)?.filter { !isTalkShowOrReality($0) }
+            if let tv = try? await repo.getTopTv(page: 1, force: false) {
+                return tv.filter { !isTalkShowOrReality($0) }
+            }
+            return nil
         case .cartoons:
             return try? await repo.getCartoons(page: 1, force: false)
         case .anime:
