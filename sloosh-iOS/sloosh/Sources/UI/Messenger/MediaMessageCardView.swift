@@ -28,9 +28,9 @@ public struct MediaMessageCardView: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "play.fill")
+                Image(systemName: media.isClip ? "sparkles.tv.fill" : "play.fill")
                     .font(.system(size: 14, weight: .black))
-                Text("Смотреть")
+                Text(media.isClip ? "Смотреть момент" : "Смотреть")
                     .font(.system(size: 15, weight: .heavy))
             }
             .foregroundColor(.black)
@@ -47,24 +47,28 @@ public struct MediaMessageCardView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Постер и заголовок карточки — клик по ним открывает экран деталей (DetailsView)
+            // Постер и заголовок карточки — клик по ним открывает плеер момента или детали фильма
             Button {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
-                onOpenDetails?(media.mediaId)
+                if media.isClip {
+                    onPlayDirectly?(media)
+                } else {
+                    onOpenDetails?(media.mediaId)
+                }
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Постер с полным соотношением сторон 2:3 и плашкой рейтинга из HomeView
+                    // Постер или бэкдроп
                     ZStack(alignment: .topLeading) {
                         if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
                             AsyncCachedImage(urlString: posterUrl) {
                                 Rectangle()
                                     .fill(Color.white.opacity(0.1))
-                                    .aspectRatio(2/3, contentMode: .fit)
+                                    .aspectRatio(media.isClip ? 16/9 : 2/3, contentMode: .fit)
                             } content: { image in
                                 Image(uiImage: image)
                                     .resizable()
-                                    .aspectRatio(2/3, contentMode: .fit)
+                                    .aspectRatio(media.isClip ? 16/9 : 2/3, contentMode: .fill)
                                     .onAppear {
                                         if let avg = image.averageColor {
                                             let blended = avg.blended(with: .black, fraction: 0.65)
@@ -79,12 +83,41 @@ public struct MediaMessageCardView: View {
                         } else {
                             Rectangle()
                                 .fill(Color.white.opacity(0.1))
-                                .aspectRatio(2/3, contentMode: .fit)
+                                .aspectRatio(media.isClip ? 16/9 : 2/3, contentMode: .fit)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
 
-                        // Плашка рейтинга с Главного экрана (HomeView)
-                        if let rating = media.rating, rating > 0 {
+                        // Бейдж момента ИЛИ рейтинг фильма
+                        if media.isClip {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles.tv")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text("МОМЕНТ")
+                                    .font(.system(size: 9.5, weight: .black))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3.5)
+                            .glassEffect(.regular, in: Capsule())
+                            .padding(8)
+
+                            if let dur = media.duration, dur > 0 {
+                                VStack {
+                                    Spacer()
+                                    HStack {
+                                        Spacer()
+                                        Text("\(Int(dur.rounded())) сек")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2.5)
+                                            .background(Color.black.opacity(0.7))
+                                            .clipShape(Capsule())
+                                            .padding(8)
+                                    }
+                                }
+                            }
+                        } else if let rating = media.rating, rating > 0 {
                             Text(String(format: "%.1f", rating))
                                 .font(.system(size: 12, weight: .heavy))
                                 .foregroundColor(.white)
@@ -96,14 +129,28 @@ public struct MediaMessageCardView: View {
                         }
                     }
 
-                    // Название и год
-                    VStack(alignment: .leading, spacing: 2) {
+                    // Название и мета
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(media.title)
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(2)
 
-                        if let year = media.year, !year.isEmpty {
+                        if media.isClip {
+                            if let caption = media.caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(caption)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .lineLimit(2)
+                            }
+
+                            if let author = media.authorName, !author.isEmpty {
+                                Text("от \(author)")
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.55))
+                                    .lineLimit(1)
+                            }
+                        } else if let year = media.year, !year.isEmpty {
                             Text(year)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.7))
@@ -114,7 +161,7 @@ public struct MediaMessageCardView: View {
             }
             .buttonStyle(.plain)
 
-            // Белая кнопка "Смотреть" (открывает панель озвучек / запуск плеера напрямую)
+            // Кнопка "Смотреть" / "Смотреть момент"
             playButton
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)

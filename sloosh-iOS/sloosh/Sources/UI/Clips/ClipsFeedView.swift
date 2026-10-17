@@ -665,6 +665,7 @@ public struct ClipsFeedView: View {
     @State private var showDeleteConfirmation: Bool = false
     @State private var isDeletingClip: Bool = false
     @State private var showCommentsForClip: MovieClip?
+    @State private var sharingClip: MovieClip?
     @State private var fullPlayerConfig: PlayerConfig?
     @State private var showBigHeart: Bool = false
     @State private var bigHeartPosition: CGPoint = .zero
@@ -763,6 +764,9 @@ public struct ClipsFeedView: View {
             .presentationDetents([.fraction(0.65)], selection: $commentsSheetDetent)
             .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         }
+        .sheet(item: $sharingClip) { clip in
+            ShareToFriendSheet(clip: clip)
+        }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
             ensurePlaybackStarted()
@@ -797,11 +801,18 @@ public struct ClipsFeedView: View {
                 ensurePlaybackStarted()
             }
         }
+        .onChange(of: sharingClip != nil) { _, isOpened in
+            if isOpened {
+                playback.pause(userInitiated: true)
+            } else {
+                ensurePlaybackStarted()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 playback.pause(userInitiated: false)
             } else {
-                if !showsMessenger && selectedDetailsMedia == nil && selectedAuthorUser == nil && fullPlayerConfig == nil && showCommentsForClip == nil {
+                if !showsMessenger && selectedDetailsMedia == nil && selectedAuthorUser == nil && fullPlayerConfig == nil && showCommentsForClip == nil && sharingClip == nil {
                     let targetId = settledClipId ?? currentClipId
                     if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
                         playback.resumeIfAppropriate(for: clip)
@@ -1064,7 +1075,14 @@ public struct ClipsFeedView: View {
 
             Divider()
 
-            // 4. Скачать фрагмент момента
+            // 4. Поделиться моментом
+            Button {
+                shareClip(clip)
+            } label: {
+                Label("Поделиться", systemImage: "paperplane")
+            }
+
+            // 5. Скачать фрагмент момента
             Button {
                 ClipDownloader.shared.download(clip: clip)
             } label: {
@@ -2313,12 +2331,7 @@ extension ClipsFeedView {
     }
 
     private func shareClip(_ clip: MovieClip) {
-        let shareText = "Смотри лучший момент из «\(clip.title)» в sloosh! 🔥\n\(clip.caption)"
-        let av = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(av, animated: true)
-        }
+        sharingClip = clip
     }
 
     // MARK: - Open Full Movie
