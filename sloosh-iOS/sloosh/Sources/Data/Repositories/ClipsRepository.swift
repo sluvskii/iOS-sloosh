@@ -70,16 +70,42 @@ public final class ClipsRepository: ObservableObject {
                 return
             }
 
-            // RTDB returns either a dictionary [String: MovieClip] or null
-            if let dict = try? JSONDecoder().decode([String: MovieClip].self, from: data) {
-                let fetched = rankClips(Array(dict.values))
-                self.clips = fetched
-                saveFeedToDisk(fetched)
+            // RTDB возвращает словарь [id: узел] или null.
+            // Декодируем каждый клип ПО ОТДЕЛЬНОСТИ: один битый/осколочный узел
+            // (например, «воскрешённый» лайком после удаления — узел из одного
+            // likesCount) больше не роняет декодирование всего фида.
+            var valid: [MovieClip] = []
+            var shardIds: [String] = []
+
+            if let raw = try? JSONSerialization.jsonObject(with: data),
+               let dict = raw as? [String: Any] {
+                for (key, value) in dict {
+                    guard let node = value as? [String: Any] else { continue }
+                    guard node["title"] != nil else {
+                        // Осколок без данных клипа — подлежит очистке из базы
+                        shardIds.append(key)
+                        continue
+                    }
+                    guard let nodeData = try? JSONSerialization.data(withJSONObject: node),
+                          let clip = try? JSONDecoder().decode(MovieClip.self, from: nodeData) else {
+                        continue // битый, но не осколок — не показываем и не трогаем
+                    }
+                    valid.append(clip)
+                }
             } else if let array = try? JSONDecoder().decode([MovieClip].self, from: data) {
-                let valid = rankClips(array)
-                self.clips = valid
-                saveFeedToDisk(valid)
+                valid = array
             }
+
+            // Мусорщик: убираем осколки из базы, чтобы они не попадали никому в фид
+            if !shardIds.isEmpty {
+                Task { [weak self] in
+                    await self?.deleteShardNodes(shardIds)
+                }
+            }
+
+            let fetched = rankClips(valid)
+            self.clips = fetched
+            saveFeedToDisk(fetched)
         } catch {
             print("[ClipsRepository] fetchFeed error: \(error.localizedDescription)")
         }
@@ -150,6 +176,36 @@ public final class ClipsRepository: ObservableObject {
         saveFeedToDisk(self.clips)
     }
 
+    // MARK: - Integrity (осколки и существование клипов)
+
+    /// Удаление осколочных узлов (воскрешённых счётчиками лайков/просмотров после удаления клипа).
+    private func deleteShardNodes(_ ids: [String]) async {
+        for id in ids {
+            guard let url = await makeURL(path: "media_stats/clips/\(id)") else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.timeoutInterval = 10.0
+            let (_, response) = try? await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                AppDiagnostics.shared.log("[ClipsRepository] Removed shard node \(id)")
+            }
+        }
+    }
+
+    /// Проверка, что полноценный клип ещё существует в базе (по наличию title).
+    private func clipExists(_ clipId: String) async -> Bool {
+        guard let url = await makeURL(path: "media_stats/clips/\(clipId)/title") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let text = String(data: data, encoding: .utf8) else {
+            return false
+        }
+        // RTDB отвечает "null" на отсутствующее значение
+        return text != "null"
+    }
+
     // MARK: - Likes
 
     private func loadLikedClipsFromDisk() {
@@ -199,7 +255,11 @@ public final class ClipsRepository: ObservableObject {
                 _ = try? await URLSession.shared.data(for: likeReq)
             }
 
-            if let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/likesCount") {
+            // Счётчик пишем только если клип ещё существует: запись по пути
+            // clips/{id}/likesCount иначе «воскресит» удалённый клип одним полем
+            // и сломает всем декодирование фида.
+            if await clipExists(clipId),
+               let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/likesCount") {
                 var countReq = URLRequest(url: countUrl)
                 countReq.httpMethod = "PUT"
                 countReq.httpBody = try? JSONEncoder().encode(currentCount)
@@ -258,8 +318,9 @@ public final class ClipsRepository: ObservableObject {
                 _ = try? await URLSession.shared.data(for: req)
             }
 
-            // 2. Update clips/\(clipId)/viewsCount
-            if let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/viewsCount") {
+            // 2. Update clips/\(clipId)/viewsCount (только если клип ещё существует)
+            if await clipExists(clipId),
+               let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/viewsCount") {
                 var countReq = URLRequest(url: countUrl)
                 countReq.httpMethod = "PUT"
                 countReq.httpBody = try? JSONEncoder().encode(currentViews)
@@ -358,6 +419,16 @@ public final class ClipsRepository: ObservableObject {
 
         clips.removeAll { $0.id == clipId }
         saveFeedToDisk(clips)
+
+        // Гигиена: чистим лайки/просмотры/комментарии удалённого клипа, чтобы
+        // последующие записи счётчиков не «воскресили» его осколком
+        for path in ["media_stats/clips_likes/\(clipId)", "media_stats/clips_views/\(clipId)", "media_stats/clips_comments/\(clipId)"] {
+            if let cleanupUrl = await makeURL(path: path) {
+                var cleanupReq = URLRequest(url: cleanupUrl)
+                cleanupReq.httpMethod = "DELETE"
+                _ = try? await URLSession.shared.data(for: cleanupReq)
+            }
+        }
     }
 
     // MARK: - Author Clips
