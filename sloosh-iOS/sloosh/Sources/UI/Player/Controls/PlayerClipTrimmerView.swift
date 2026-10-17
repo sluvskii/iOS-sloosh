@@ -6,8 +6,9 @@ import UIKit
 // Взаимодействие построено по канонам нативных редакторов Apple (Photos / iMovie):
 //  • По умолчанию открыто «окно сцены» ~2 минуты вокруг выделения (как в iMovie) —
 //    на таком зуме ручки двигаются заметно; пинчем можно отдалиться до всего фильма.
-//  • Плёнка кадров — честные кадры фильма через AVAssetImageGenerator (общий проверенный
-//    генератор скраб-превью плеера: generateFilmstrip на колбэках, работает на HLS).
+//  • Плёнка кадров — честные кадры фильма, отсканированные из живого декодера плеера
+//    (последовательные точные seek'и + AVPlayerItemVideoOutput; работает всегда, когда
+//    работает само видео).
 //  • Ручка выделения — обрезка; кадр за ручкой показывается в видео (грубый скраб в движении,
 //    точный на отпускании). Зона захвата ручки шире её видимой ширины, активная ручка
 //    подсвечивается белым. Воспроизведение на время обрезки ставится на паузу.
@@ -46,8 +47,10 @@ final class ClipTrimSession: ObservableObject {
     private unowned let vm: PlayerViewModel
     private var reloadTask: Task<Void, Never>?
     private var trackWidth: CGFloat = 0
-    /// Поколение запроса кадров: отклик устаревшего запроса не применяется.
-    private var filmstripGeneration = 0
+    /// Активный проход сканирования кадров и его поколение:
+    /// новый жест/панорама отменяет предыдущий проход (отклик не применяется).
+    private var captureTask: Task<Void, Never>?
+    private var captureGeneration = 0
 
     // MARK: - Gesture State (арбитраж: побеждает жест, начавшийся первым)
 
@@ -69,7 +72,7 @@ final class ClipTrimSession: ObservableObject {
     private var lastPreviewSeek: CFAbsoluteTime = 0
     private var lastReloadSchedule: CFAbsoluteTime = 0
 
-    private static let maxCachedFrames = 700
+    private static let maxCachedFrames = 220
     /// Ширина слота кадра в точках (16:9 при высоте дорожки 64).
     private static let slotPixelWidth: Double = 64.0 * 16.0 / 9.0
     /// Ход «резины» на границах в экранных точках (нативный, пиксельный скролл-фидбек).
@@ -109,8 +112,16 @@ final class ClipTrimSession: ObservableObject {
     func deactivate() {
         reloadTask?.cancel()
         reloadTask = nil
+        cancelCapture()
         // Превью могло играть — останавливаем вместе с режимом обрезки.
         vm.pauseClipPreview()
+    }
+
+    /// Отмена активного прохода сканирования кадров.
+    func cancelCapture() {
+        captureGeneration += 1
+        captureTask?.cancel()
+        captureTask = nil
     }
 
     /// Если реальная длительность фильма уточнилась позже — мягко расширяем модель.
@@ -166,6 +177,7 @@ final class ClipTrimSession: ObservableObject {
         }
 
         // Нативно: любое взаимодействие с дорожкой ставит видео (и превью) на паузу.
+        cancelCapture()
         vm.pauseForTrim()
         vm.pauseClipPreview()
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -296,6 +308,7 @@ final class ClipTrimSession: ObservableObject {
         if dragTarget != .none {
             cancelDrag()
         }
+        cancelCapture()
         isPinching = true
         pinchOriginSpan = viewSpan
     }
@@ -377,7 +390,14 @@ final class ClipTrimSession: ObservableObject {
         vm.seekClipFast(to: max(0.0, seconds))
     }
 
-    // MARK: - Filmstrip (общий проверенный генератор кадров плеера)
+    // MARK: - Filmstrip (сканирование кадров из живого декодера плеера)
+    //
+    // Принцип: плеер ставится на паузу и последовательно перематывается по слотам
+    // видимого окна; после каждого точного seek'а кадр забирается из AVPlayerItemVideoOutput —
+    // того же конвейера, что рендерит видео на экран. Поэтому кадр получается всегда,
+    // когда воспроизведение вообще работает (AVAssetImageGenerator на проксированных
+    // HLS-стримах давал ноль кадров — от него полностью отказались).
+    // По завершении прохода плейхед возвращается на прежнее место.
 
     func trackLayoutChanged(width: CGFloat) {
         guard width > 0 else { return }
@@ -407,6 +427,8 @@ final class ClipTrimSession: ObservableObject {
 
     private func reloadVisibleFilmstrip() {
         guard trackWidth > 0, viewSpan > 0 else { return }
+        // Во время превью плеер не трогаем — дозахватим после паузы (see View onChange isPlaying)
+        guard !vm.isPlaying else { return }
 
         let slotSpan = viewSpan * (Self.slotPixelWidth / Double(trackWidth))
         guard slotSpan > 0 else { return }
@@ -430,21 +452,38 @@ final class ClipTrimSession: ObservableObject {
         }
         guard !missing.isEmpty else { return }
 
-        // Поколение запроса: отклик устаревшего запроса игнорируется.
-        filmstripGeneration += 1
-        let generation = filmstripGeneration
-        let requested = missing
+        // Новый проход сканирования отменяет предыдущий
+        cancelCapture()
+        let generation = captureGeneration
+        let restoreTime = min(max(vm.currentTime, 0), duration)
+        let slots = missing
 
-        // ВАЖНО: generateFilmstrip — общий проверенный путь скраб-превью (колбэки на
-        // generateCGImagesAsynchronously), корректно работает с HLS-ассетами плеера.
-        vm.generateFilmstrip(times: requested) { [weak self] generated in
+        captureTask = Task { [weak self] in
             guard let self else { return }
-            guard generation == self.filmstripGeneration, !generated.isEmpty else { return }
-            for (rawKey, image) in generated {
-                let key = self.bucketKey(for: rawKey)
-                if self.frames[key] == nil {
+            for key in slots {
+                if Task.isCancelled || generation != self.captureGeneration { return }
+                if self.vm.isPlaying { return }
+
+                await self.vm.seekForCapture(to: key)
+                if Task.isCancelled || generation != self.captureGeneration { return }
+
+                // Декодер мог ещё не опубликовать кадр — короткие ретраи
+                var image = self.vm.captureCurrentFrame()
+                var attempts = 0
+                while image == nil, attempts < 3, !Task.isCancelled, generation == self.captureGeneration {
+                    try? await Task.sleep(nanoseconds: 70_000_000)
+                    image = self.vm.captureCurrentFrame()
+                    attempts += 1
+                }
+
+                if let image, generation == self.captureGeneration {
                     self.frames[key] = image
                 }
+            }
+
+            // Возвращаем плейхед туда, где он был до сканирования
+            if !Task.isCancelled, generation == self.captureGeneration, !self.vm.isPlaying {
+                self.vm.seekClip(to: restoreTime)
             }
         }
     }
@@ -503,6 +542,12 @@ struct PlayerClipTrimmerView: View {
         .onDisappear { session.deactivate() }
         .onChange(of: vm.currentDuration) { _, newDuration in
             session.externalDurationChanged(to: newDuration)
+        }
+        .onChange(of: vm.isPlaying) { _, playing in
+            // После паузы превью добираем кадры, пропущенные во время проигрывания
+            if !playing {
+                session.scheduleFilmstripReload()
+            }
         }
         .sheet(isPresented: $isShowingPublishSheet) {
             PublishMomentSheet(vm: vm)
