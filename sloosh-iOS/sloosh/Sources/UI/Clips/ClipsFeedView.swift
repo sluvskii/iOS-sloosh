@@ -747,10 +747,11 @@ public struct ClipsFeedView: View {
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .task {
-            if customClips == nil && clipsRepo.clips.isEmpty {
-                await clipsRepo.fetchFeed()
-            }
             ensurePlaybackStarted()
+            if customClips == nil {
+                await clipsRepo.fetchFeed()
+                ensurePlaybackStarted()
+            }
         }
         .sheet(item: $showCommentsForClip) { clip in
             ClipCommentsSheetView(clip: clip) { user in

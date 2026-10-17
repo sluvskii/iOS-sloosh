@@ -64,9 +64,12 @@ public final class ClipsRepository: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             request.timeoutInterval = 10.0
+            request.cachePolicy = .reloadIgnoringLocalCacheData
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                AppDiagnostics.shared.log("[ClipsRepository] fetchFeed non-2xx status: \(status)")
                 return
             }
 
@@ -107,7 +110,7 @@ public final class ClipsRepository: ObservableObject {
             self.clips = fetched
             saveFeedToDisk(fetched)
         } catch {
-            print("[ClipsRepository] fetchFeed error: \(error.localizedDescription)")
+            AppDiagnostics.shared.log("[ClipsRepository] fetchFeed error: \(error.localizedDescription)")
         }
     }
 
@@ -121,7 +124,13 @@ public final class ClipsRepository: ObservableObject {
         return list.sorted { c1, c2 in
             let score1 = recommendationScore(for: c1, favoriteIds: favoriteIds, progressIds: progressIds, nowMs: nowMs)
             let score2 = recommendationScore(for: c2, favoriteIds: favoriteIds, progressIds: progressIds, nowMs: nowMs)
-            return score1 > score2
+            if abs(score1 - score2) > 0.001 {
+                return score1 > score2
+            }
+            if c1.createdAtMs != c2.createdAtMs {
+                return c1.createdAtMs > c2.createdAtMs
+            }
+            return c1.id > c2.id
         }
     }
 
@@ -433,9 +442,9 @@ public final class ClipsRepository: ObservableObject {
 
     // MARK: - Author Clips
 
-    public func fetchClips(forAuthorId authorId: String) async -> [MovieClip] {
-        if clips.isEmpty {
-            await fetchFeed()
+    public func fetchClips(forAuthorId authorId: String, forceRefresh: Bool = true) async -> [MovieClip] {
+        if forceRefresh || clips.isEmpty {
+            await fetchFeed(forceRefresh: forceRefresh)
         }
         return clips.filter { $0.authorId == authorId }.sorted { $0.createdAtMs > $1.createdAtMs }
     }

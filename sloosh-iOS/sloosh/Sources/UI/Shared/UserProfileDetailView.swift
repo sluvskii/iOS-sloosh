@@ -92,6 +92,18 @@ public struct UserProfileDetailView: View {
                 scrollOffsetY = newOffset
             }
             .scrollDismissesKeyboard(.interactively)
+            .refreshable {
+                async let userTask = repo.fetchUser(userId: user.id)
+                async let presenceTask = UserPresenceService.shared.fetchUserPresence(userId: user.id)
+                async let clipsTask = clipsRepo.fetchClips(forAuthorId: user.id, forceRefresh: true)
+
+                let (freshUser, freshPresence, freshClips) = await (userTask, presenceTask, clipsTask)
+                if let freshUser {
+                    self.user = freshUser
+                }
+                self.livePresence = freshPresence
+                self.authorClips = freshClips
+            }
         }
         .ignoresSafeArea(edges: .top)
         .hideNavigationBarWithRestore()
@@ -111,8 +123,13 @@ public struct UserProfileDetailView: View {
             let presence = await UserPresenceService.shared.fetchUserPresence(userId: user.id)
             self.livePresence = presence
 
-            // 3. Fetch author's published clips
-            let clips = await clipsRepo.fetchClips(forAuthorId: user.id)
+            // 3. Fetch author's published clips (show cached immediately, then refresh from network)
+            let cached = clipsRepo.clips.filter { $0.authorId == user.id }.sorted { $0.createdAtMs > $1.createdAtMs }
+            if !cached.isEmpty {
+                self.authorClips = cached
+                self.isLoadingClips = false
+            }
+            let clips = await clipsRepo.fetchClips(forAuthorId: user.id, forceRefresh: true)
             await MainActor.run {
                 self.authorClips = clips
                 self.isLoadingClips = false
@@ -142,7 +159,7 @@ public struct UserProfileDetailView: View {
         .fullScreenCover(item: $activeMomentClip, onDismiss: {
             activeMomentClip = nil
             Task {
-                let fresh = await clipsRepo.fetchClips(forAuthorId: user.id)
+                let fresh = await clipsRepo.fetchClips(forAuthorId: user.id, forceRefresh: true)
                 await MainActor.run {
                     self.authorClips = fresh
                 }
