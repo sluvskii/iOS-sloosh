@@ -29,7 +29,7 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .coldFilm: return "ColdFilm"
         case .lostFilm: return "LostFilm"
         case .kubikVKube: return "Кубик в кубе"
-        case .daronMoneyStudio: return "Daron Money Studio"
+        case .daronMoneyStudio: return "Dragon Money Studio"
         }
     }
 
