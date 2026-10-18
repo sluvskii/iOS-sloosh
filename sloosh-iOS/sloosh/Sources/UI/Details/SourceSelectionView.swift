@@ -10,6 +10,7 @@ struct TranslationChipItem: Identifiable, Hashable {
     let id: String
     let name: String
     let displayName: String
+    let studio: DubbingStudio?
 }
 
 struct PendingPlaybackCommit {
@@ -672,7 +673,8 @@ struct SingleSourceContentView: View {
                 TranslationChipItem(
                     id: name,
                     name: name,
-                    displayName: displayTranslationName(name, at: idx, in: sortedNames)
+                    displayName: displayTranslationName(name, at: idx, in: sortedNames),
+                    studio: DubbingStudio.detect(from: name)
                 )
             }
             seasonsList = result.seasons.map { $0.season }.sorted()
@@ -701,7 +703,8 @@ struct SingleSourceContentView: View {
                 TranslationChipItem(
                     id: name,
                     name: name,
-                    displayName: displayTranslationName(name, at: idx, in: sortedNames)
+                    displayName: displayTranslationName(name, at: idx, in: sortedNames),
+                    studio: DubbingStudio.detect(from: name)
                 )
             }
         }
@@ -1027,7 +1030,8 @@ struct SingleSourceContentView: View {
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
                             isAvailable: isTranslationAvailable(item.name),
-                            badge: translationBadge(for: item.name)
+                            badge: translationBadge(for: item.name),
+                            studio: item.studio
                         ) {
                             selectTranslation(item.name)
                         }

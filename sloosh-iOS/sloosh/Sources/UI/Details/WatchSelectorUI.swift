@@ -5,6 +5,7 @@ struct WatchSelectorChip: View, Equatable {
     let isSelected: Bool
     let isAvailable: Bool
     var badge: String? = nil
+    var studio: DubbingStudio? = nil
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -14,7 +15,8 @@ struct WatchSelectorChip: View, Equatable {
         lhs.title == rhs.title &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isAvailable == rhs.isAvailable &&
-        lhs.badge == rhs.badge
+        lhs.badge == rhs.badge &&
+        lhs.studio == rhs.studio
     }
 
     var body: some View {
@@ -22,17 +24,24 @@ struct WatchSelectorChip: View, Equatable {
             Self.feedback.selectionChanged()
             action()
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 5.5) {
+                if let studio, studio.hasAsset {
+                    Image(studio.assetName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 17, height: 17)
+                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+                }
                 if let badge, !badge.isEmpty {
                     Text(badge)
                         .font(.system(size: 11, weight: .bold))
                 }
-                Text(title)
+                Text(studio?.hasAsset == true ? studio!.cleanChipTitle(from: title) : title)
                     .font(.system(size: 13.5, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, studio?.hasAsset == true ? 10 : 12)
             .padding(.vertical, 6)
             .frame(height: 32)
                 .foregroundStyle(
