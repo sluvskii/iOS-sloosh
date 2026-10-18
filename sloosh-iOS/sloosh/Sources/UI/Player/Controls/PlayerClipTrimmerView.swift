@@ -615,7 +615,7 @@ struct PlayerClipTrimmerView: View {
 
             // Длительность момента — главный параметр редактора
             Text(formattedDuration(session.selectionEnd - session.selectionStart))
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 15, weight: .bold))
                 .monospacedDigit()
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)

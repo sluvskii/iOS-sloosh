@@ -58,6 +58,7 @@ This workspace contains the flagship native iOS client for **sloosh**:
 
 - **Liquid Glass Everywhere**: The app is a premium edge-to-edge application. All floating elements, navigation capsules, cards, and modal sheets must use `.glassEffect()`.
 - **CRITICAL FORBIDDEN API**: The use of `.ultraThinMaterial` is **STRICTLY FORBIDDEN** throughout the entire codebase.
+- **CRITICAL FORBIDDEN TYPOGRAPHY**: The use of rounded fonts (`design: .rounded`) is **STRICTLY FORBIDDEN** throughout the entire codebase. Always use standard default San Francisco typography (`design: .default` or omit the `design:` parameter) for a flagship native iOS / Apple TV look.
 - **Native iOS Patterns**:
   - Top floating components (category tabs, sticky bars) use `.safeAreaBar(edge: .top)` or `.safeAreaInset(edge: .top)`.
   - Let the system handle Liquid Glass blur and morphing automatically during scroll. Do not add redundant opaque backgrounds or dark overlays.

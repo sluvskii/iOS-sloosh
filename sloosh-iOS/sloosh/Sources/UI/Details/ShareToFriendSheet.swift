@@ -284,7 +284,7 @@ struct ShareToFriendSheet: View {
                     .glassEffect(.regular, in: Capsule())
 
                     Text(clip.timecodeFormatted)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.secondary)
                 }
 

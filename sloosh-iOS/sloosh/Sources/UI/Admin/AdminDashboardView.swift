@@ -277,7 +277,7 @@ public struct AdminDashboardView: View {
                     .tracking(0.6)
 
                 Text("\(repo.stats.totalUsers)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
 
                 Text("\(repo.stats.onlineUsers) в сети" + (repo.stats.guestUsersCount > 0 ? " • \(repo.stats.guestUsersCount) г." : ""))
@@ -306,7 +306,7 @@ public struct AdminDashboardView: View {
                 }
 
                 Text("\(repo.stats.watchingNowCount)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
 
                 Text(repo.stats.watchingNowCount > 0 ? "активных сессий" : "нет просмотров")
@@ -358,7 +358,7 @@ public struct AdminDashboardView: View {
                             .frame(width: 4, height: 4)
                         Text("\(repo.stats.watchingNowCount)")
                     }
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.primary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -966,7 +966,7 @@ public struct AdminDashboardView: View {
                 .foregroundColor(.secondary)
                 .tracking(0.5)
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
         }

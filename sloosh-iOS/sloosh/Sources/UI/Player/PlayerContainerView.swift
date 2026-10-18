@@ -225,11 +225,11 @@ struct PlayerContainerView: View {
                     .foregroundStyle(.orange)
                 
                 Text("Ошибка воспроизведения")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 
                 Text(error)
-                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(.white.opacity(0.75))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -378,7 +378,7 @@ private struct MultiSeekFeedbackView: View {
                                     .font(.system(size: 32, weight: .medium))
                                 
                                 Text("\(sec) сек")
-                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .font(.system(size: 16, weight: .bold))
                                     .contentTransition(.numericText(value: Double(sec)))
                                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sec)
                             }

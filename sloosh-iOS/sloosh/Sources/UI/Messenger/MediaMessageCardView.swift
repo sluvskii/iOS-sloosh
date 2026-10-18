@@ -142,7 +142,7 @@ public struct MediaMessageCardView: View {
                                     HStack {
                                         Spacer()
                                         Text(formatTimecode(dur))
-                                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                                            .font(.system(size: 10.5, weight: .bold))
                                             .foregroundColor(.white)
                                             .padding(.horizontal, 5.5)
                                             .padding(.vertical, 2.5)
