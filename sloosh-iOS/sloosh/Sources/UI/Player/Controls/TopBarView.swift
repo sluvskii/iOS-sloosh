@@ -13,37 +13,34 @@ struct TopBarView: View {
     var onInteraction: (() -> Void)? = nil
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Логотип проекта или название фильма строго по центру + кнопка сезона/серии прямо под ним
-            centerHeaderView
-                .padding(.horizontal, 148)
+        VStack(spacing: 4) {
+            ZStack {
+                // Логотип проекта или название фильма строго по центру на оси кнопок (высота 44)
+                centerLogoView
+                    .frame(height: 44)
+                    .padding(.horizontal, 148)
+                    .allowsHitTesting(false)
 
-            // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент + блокировка
-            HStack(alignment: .center, spacing: 8) {
-                closeButton
-                dualActionsGroup
-                Spacer()
-                clipButton
-                lockButton
+                // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент + блокировка (высота 44)
+                HStack(alignment: .center, spacing: 8) {
+                    closeButton
+                    dualActionsGroup
+                    Spacer()
+                    clipButton
+                    lockButton
+                }
+                .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 8)
-        }
-    }
+            .frame(height: 44)
 
-    // MARK: - Центральный блок: Логотип + Кнопка сезона/серии
-
-    private var centerHeaderView: some View {
-        VStack(spacing: 3) {
-            centerLogoView
-                .frame(height: 36)
-                .allowsHitTesting(false)
-
+            // Кнопка выбора сезона и серии (только для сериалов) — аккуратно под строкой кнопок, не смещая логотип
             if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
                 seasonEpisodeButton(season: season, episode: episode)
             }
         }
-        .frame(maxWidth: 280)
     }
+
+    // MARK: - Центральный логотип
 
     private var centerLogoView: some View {
         Group {
@@ -69,12 +66,11 @@ struct TopBarView: View {
     private var fallbackTextView: some View {
         Text(vm.fallbackTitle)
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.85))
-            .blendMode(.plusLighter)
+            .foregroundStyle(.white.opacity(0.92))
             .lineLimit(1)
     }
 
-    // MARK: - Компактная кнопка выбора сезона и серии прямо под логотипом
+    // MARK: - Компактная кнопка выбора сезона и серии прямо под строкой кнопок
 
     @ViewBuilder
     private func seasonEpisodeButton(season: Int, episode: Int) -> some View {
@@ -122,6 +118,7 @@ struct TopBarView: View {
             } label: {
                 seasonEpisodeButtonContent(season: season, episode: episode, isInteractive: true)
             }
+            .buttonStyle(.glassPress)
             .menuOrder(.priority)
             .accessibilityLabel("Выбор серии: \(season) сезон, \(episode) серия")
         } else {
@@ -147,10 +144,8 @@ struct TopBarView: View {
                     .foregroundStyle(.white.opacity(0.45))
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, isInteractive ? 7 : 8)
-        .frame(height: 23)
-        .clipShape(Capsule())
+        .padding(.horizontal, 9)
+        .frame(height: 24)
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 
@@ -186,8 +181,7 @@ struct TopBarView: View {
                 Button { vm.togglePiP() } label: {
                     Image(systemName: vm.isPiPActive ? "pip.exit" : "pip.enter")
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .blendMode(.plusLighter)
+                        .foregroundStyle(.white.opacity(0.85))
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -198,12 +192,10 @@ struct TopBarView: View {
             // AirPlay (системная кнопка Apple)
             AirPlayButton()
                 .frame(width: 44, height: 44)
-                .colorMultiply(.white.opacity(0.75))
-                .blendMode(.plusLighter)
+                .colorMultiply(.white.opacity(0.85))
         }
         .padding(.horizontal, 2)
         .frame(height: 44)
-        .clipShape(Capsule())
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 
@@ -236,7 +228,7 @@ struct TopBarView: View {
                 vm.isInterfaceLocked = true
             }
         } label: {
-            Image(systemName: "lock")
+            Image(systemName: "lock.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)

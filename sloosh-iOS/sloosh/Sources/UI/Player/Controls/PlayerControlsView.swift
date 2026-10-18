@@ -199,6 +199,7 @@ struct PlayerTitleInfoView: View, Equatable {
             } label: {
                 voiceoverCapsuleContent(info: info, isInteractive: true)
             }
+            .buttonStyle(.glassPress)
             .menuOrder(.priority)
             .accessibilityLabel("Выбор озвучки: \(info.title)")
         } else {
@@ -253,7 +254,6 @@ struct PlayerTitleInfoView: View, Equatable {
         .padding(.leading, (info.studio?.hasAsset == true || info.flag.hasAsset) ? 10 : 13)
         .padding(.trailing, isInteractive ? 11 : 13)
         .frame(height: 44)
-        .clipShape(Capsule())
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 
