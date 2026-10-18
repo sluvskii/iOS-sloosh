@@ -11,6 +11,7 @@ struct TranslationChipItem: Identifiable, Hashable {
     let name: String
     let displayName: String
     let studio: DubbingStudio?
+    let flag: LanguageFlag?
 }
 
 struct PendingPlaybackCommit {
@@ -670,11 +671,13 @@ struct SingleSourceContentView: View {
 
             let sortedNames = Array(allNames).sorted()
             transItems = sortedNames.enumerated().map { idx, name in
-                TranslationChipItem(
+                let displayName = displayTranslationName(name, at: idx, in: sortedNames)
+                return TranslationChipItem(
                     id: name,
                     name: name,
-                    displayName: displayTranslationName(name, at: idx, in: sortedNames),
-                    studio: DubbingStudio.detect(from: name)
+                    displayName: displayName,
+                    studio: DubbingStudio.detect(from: name),
+                    flag: LanguageFlag.detect(from: name + " " + displayName)
                 )
             }
             seasonsList = result.seasons.map { $0.season }.sorted()
@@ -700,11 +703,13 @@ struct SingleSourceContentView: View {
             let sortedNames = movie.translations.map { $0.name }.sorted()
             movieNames = Set(sortedNames)
             transItems = sortedNames.enumerated().map { idx, name in
-                TranslationChipItem(
+                let displayName = displayTranslationName(name, at: idx, in: sortedNames)
+                return TranslationChipItem(
                     id: name,
                     name: name,
-                    displayName: displayTranslationName(name, at: idx, in: sortedNames),
-                    studio: DubbingStudio.detect(from: name)
+                    displayName: displayName,
+                    studio: DubbingStudio.detect(from: name),
+                    flag: LanguageFlag.detect(from: name + " " + displayName)
                 )
             }
         }
@@ -1031,7 +1036,8 @@ struct SingleSourceContentView: View {
                             isSelected: selectedTranslationName == item.name,
                             isAvailable: isTranslationAvailable(item.name),
                             badge: translationBadge(for: item.name),
-                            studio: item.studio
+                            studio: item.studio,
+                            flag: item.flag
                         ) {
                             selectTranslation(item.name)
                         }
