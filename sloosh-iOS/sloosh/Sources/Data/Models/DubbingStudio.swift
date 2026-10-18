@@ -14,6 +14,8 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
     case lostFilm = "lostfilm"
     case kubikVKube = "kubik"
     case daronMoneyStudio = "dms"
+    case jaskier = "jaskier"
+    case newStudio = "newstudio"
 
     var id: String { rawValue }
 
@@ -30,6 +32,8 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .lostFilm: return "LostFilm"
         case .kubikVKube: return "Кубик в кубе"
         case .daronMoneyStudio: return "Dragon Money Studio"
+        case .jaskier: return "Jaskier"
+        case .newStudio: return "NewStudio"
         }
     }
 
@@ -46,6 +50,8 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .lostFilm: return "Studio-LostFilm"
         case .kubikVKube: return "Studio-Kubik"
         case .daronMoneyStudio: return "Studio-DMS"
+        case .jaskier: return "Studio-Jaskier"
+        case .newStudio: return "Studio-NewStudio"
         }
     }
 
@@ -66,17 +72,21 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .tvShows:
             return ["tvshows", "tv shows", "tv-shows", "твшоус", "тв шоу", "твшоу"]
         case .alexFilm:
-            return ["alexfilm", "alex film", "alex-film", "алексфильм", "алекс фильм"]
+            return ["alexfilm", "alex film", "alex-film", "алексфильм", "алекс фильм", "alex"]
         case .ruDub:
             return ["rudub", "ru dub", "ru-dub", "рудаб", "ру даб"]
         case .coldFilm:
-            return ["coldfilm", "cold film", "cold-film", "колдфильм", "колд фильм"]
+            return ["coldfilm", "cold film", "cold-film", "колдфильм", "колд фильм", "cold"]
         case .lostFilm:
-            return ["lostfilm", "lost film", "lost-film", "лостфильм", "лост фильм"]
+            return ["lostfilm", "lost film", "lost-film", "лостфильм", "лост фильм", "lost"]
         case .kubikVKube:
             return ["кубик в кубе", "кубик в кубе (18+)", "кубики", "kubik v kube", "kubik-v-kube", "kubik"]
         case .daronMoneyStudio:
             return ["daron money studio", "daron money", "dragon money studio", "dragon money", "daron", "dragon", "dms", "дарон мани", "драгон мани", "дарон", "драгон"]
+        case .jaskier:
+            return ["jaskier", "яскъ", "яск", "яскьер", "яскиер", "жаскьер"]
+        case .newStudio:
+            return ["newstudio", "new studio", "new-studio", "ньюстудио", "нью студио", "нью-студио", "newstudio tv"]
         }
     }
 
