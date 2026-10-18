@@ -8,6 +8,8 @@ struct PlayerContainerView: View {
     let onDismiss: () -> Void
 
     @State private var showControls = true
+    @State private var showLockOverlay = false
+    @State private var lockHideTask: Task<Void, Never>?
     @State private var pipController: AVPictureInPictureController?
     @State private var hideTask: Task<Void, Never>?
     @State private var isInteracting = false
@@ -41,14 +43,11 @@ struct PlayerContainerView: View {
                 errorView(error)
                     .zIndex(10)
             } else {
-                // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
-                gestureLayer
-
-                // 5.1. Субтитры (чистый оверлей под контролами, не перехватывает клики)
+                // 5. Субтитры (чистый оверлей под контролами, не перехватывает клики)
                 if let subtitleText = vm.currentSubtitleText, !subtitleText.isEmpty {
                     SubtitleOverlayView(
                         text: subtitleText,
-                        showControls: showControls,
+                        showControls: vm.isInterfaceLocked ? false : showControls,
                         isZoomedToFill: isZoomedToFill
                     )
                     .ignoresSafeArea()
@@ -56,36 +55,45 @@ struct PlayerContainerView: View {
                     .zIndex(2)
                 }
 
-                // 6. Multi-tap Seek feedback
-                MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
-                    .allowsHitTesting(false)
-                    .zIndex(5)
-
-                // 7. Контролы или Режим создания момента
-                if vm.isClipMode {
-                    PlayerClipTrimmerView(vm: vm)
-                        .zIndex(7)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                if vm.isInterfaceLocked {
+                    // MARK: - Режим блокировки экрана
+                    lockedOverlayView
+                        .zIndex(8)
                 } else {
-                    let isSeeking = multiSeekSeconds != nil || isInteracting
-                    PlayerControlsView(
-                        vm: vm,
-                        onDismiss: onDismiss,
-                        onBackgroundTap: {
-                            withAnimation(hideAnimation) {
-                                showControls = false
+                    // 6. Жесты (двойной тап = перемотка, одинарный = контролы)
+                    gestureLayer
+
+                    // 7. Multi-tap Seek feedback
+                    MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
+                        .allowsHitTesting(false)
+                        .zIndex(5)
+
+                    // 8. Контролы или Режим создания момента
+                    if vm.isClipMode {
+                        PlayerClipTrimmerView(vm: vm)
+                            .zIndex(7)
+                            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    } else {
+                        let isSeeking = multiSeekSeconds != nil || isInteracting
+                        PlayerControlsView(
+                            vm: vm,
+                            onDismiss: onDismiss,
+                            onBackgroundTap: {
+                                withAnimation(hideAnimation) {
+                                    showControls = false
+                                }
+                                hideTask?.cancel()
+                            },
+                            isInteracting: $isInteracting,
+                            showControls: showControls,
+                            isSeeking: isSeeking,
+                            onInteraction: {
+                                resetHideTimer()
                             }
-                            hideTask?.cancel()
-                        },
-                        isInteracting: $isInteracting,
-                        showControls: showControls,
-                        isSeeking: isSeeking,
-                        onInteraction: {
-                            resetHideTimer()
-                        }
-                    )
-                    .allowsHitTesting(showControls)
-                    .zIndex(6)
+                        )
+                        .allowsHitTesting(showControls)
+                        .zIndex(6)
+                    }
                 }
             }
         }
@@ -93,10 +101,16 @@ struct PlayerContainerView: View {
         .preferredColorScheme(.dark)
         .tint(.white)
         .onAppear { scheduleAutoHide() }
-        .onDisappear { hideTask?.cancel(); tapTask?.cancel() }
+        .onDisappear {
+            hideTask?.cancel()
+            tapTask?.cancel()
+            lockHideTask?.cancel()
+        }
         .onChange(of: vm.isPlaying) { _, playing in
             if playing {
-                scheduleAutoHide()
+                if !vm.isInterfaceLocked {
+                    scheduleAutoHide()
+                }
             } else {
                 hideTask?.cancel()
             }
@@ -104,13 +118,27 @@ struct PlayerContainerView: View {
         .onChange(of: isInteracting) { _, interacting in
             if interacting {
                 hideTask?.cancel()
-            } else if showControls {
+            } else if showControls && !vm.isInterfaceLocked {
                 scheduleAutoHide()
+            }
+        }
+        .onChange(of: vm.isInterfaceLocked) { _, locked in
+            if locked {
+                hideTask?.cancel()
+                tapTask?.cancel()
+                showControls = false
+                showLockOverlay = false
+                multiSeekSeconds = nil
+                activeTapSide = nil
+            } else {
+                lockHideTask?.cancel()
+                showLockOverlay = false
             }
         }
         .gesture(
             MagnificationGesture()
                 .onEnded { val in
+                    guard !vm.isInterfaceLocked else { return }
                     if !isZoomedToFill && val > 1.25 {
                         withAnimation(showAnimation) { isZoomedToFill = true }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -325,6 +353,90 @@ struct PlayerContainerView: View {
             }
         }
         return false
+    }
+
+    // MARK: - Locked overlay view
+
+    private var lockedOverlayView: some View {
+        ZStack {
+            // Перехватываем все нажатия на экран
+            Color.clear
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    toggleLockOverlay()
+                }
+
+            // Кнопка разблокировки сверху справа
+            if showLockOverlay {
+                VStack {
+                    HStack {
+                        Spacer()
+                        unlockButton
+                    }
+                    .padding(.top, 24)
+                    .padding(.horizontal, 8)
+
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.22), value: showLockOverlay)
+    }
+
+    private var unlockButton: some View {
+        Button {
+            unlockInterface()
+        } label: {
+            HStack(spacing: 6.5) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text("Разблокировать")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .clipShape(Capsule())
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.glassPress)
+        .accessibilityLabel("Разблокировать экран")
+    }
+
+    private func unlockInterface() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        lockHideTask?.cancel()
+        withAnimation(showAnimation) {
+            vm.isInterfaceLocked = false
+            showLockOverlay = false
+            showControls = true
+        }
+        scheduleAutoHide()
+    }
+
+    private func toggleLockOverlay() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            showLockOverlay.toggle()
+        }
+        if showLockOverlay {
+            scheduleLockAutoHide()
+        } else {
+            lockHideTask?.cancel()
+        }
+    }
+
+    private func scheduleLockAutoHide() {
+        lockHideTask?.cancel()
+        lockHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.22)) {
+                showLockOverlay = false
+            }
+        }
     }
 
 }
