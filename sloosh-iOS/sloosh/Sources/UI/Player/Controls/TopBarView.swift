@@ -136,7 +136,7 @@ struct TopBarView: View {
                 .foregroundStyle(.white.opacity(0.85))
 
             Text("\(season) сезон, \(episode) серия")
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
 

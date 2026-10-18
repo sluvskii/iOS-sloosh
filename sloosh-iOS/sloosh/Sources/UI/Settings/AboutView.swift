@@ -35,7 +35,7 @@ struct AboutView: View {
                             .frame(height: 64)
                     } else {
                         Text("sloosh")
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .font(.system(size: 32, weight: .bold))
                             .foregroundColor(.primary)
                     }
                     

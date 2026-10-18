@@ -27,10 +27,10 @@ struct BottomRowView: View, Equatable {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Скорость воспроизведения
+            // Скорость воспроизведения (иконка спидометра + 1.0x)
             speedMenu
 
-            // Качество видео (текстовая плашка вместо шестеренки: Авто, 1080, 720, ...)
+            // Качество видео (иконка шестеренки + 1080p, 720p, Авто)
             if availableQualities.count > 1 {
                 qualityMenu
             }
@@ -47,7 +47,7 @@ struct BottomRowView: View, Equatable {
         .tint(.white)
     }
 
-    // MARK: - Скорость
+    // MARK: - Скорость (спидометр + 1.0x)
 
     private var speedMenu: some View {
         Menu {
@@ -63,18 +63,23 @@ struct BottomRowView: View, Equatable {
                 }
             }
         } label: {
-            Text(speedLabel)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.85))
-                .blendMode(.plusLighter)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            HStack(spacing: 4.5) {
+                Image(systemName: "gauge.with.needle")
+                    .font(.system(size: 13, weight: .medium))
+                Text(speedLabel)
+                    .font(.system(size: 12.5, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .blendMode(.plusLighter)
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+            .contentShape(Rectangle())
         }
         .menuOrder(.priority)
         .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
     }
 
-    // MARK: - Качество (отображает текущее качество: Авто, 1080, 720, 480, 360)
+    // MARK: - Качество (шестеренка + 1080p, 720p, Авто)
 
     private var qualityMenu: some View {
         Menu {
@@ -90,12 +95,17 @@ struct BottomRowView: View, Equatable {
                 }
             }
         } label: {
-            Text(qualityLabel)
-                .font(.system(size: qualityLabel.count > 3 ? 12 : 13.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.85))
-                .blendMode(.plusLighter)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            HStack(spacing: 4.5) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13, weight: .medium))
+                Text(qualityLabel)
+                    .font(.system(size: 12.5, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.85))
+            .blendMode(.plusLighter)
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+            .contentShape(Rectangle())
         }
         .menuOrder(.priority)
         .accessibilityLabel("Качество видео: \(qualityLabel)")
@@ -145,7 +155,7 @@ struct BottomRowView: View, Equatable {
             }
         } label: {
             Image(systemName: currentSubtitleUrl != nil ? "captions.bubble.fill" : "captions.bubble")
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
                 .blendMode(.plusLighter)
                 .frame(width: 44, height: 44)
@@ -195,21 +205,23 @@ struct BottomRowView: View, Equatable {
             return "Авто"
         }
         if lower.contains("1080") {
-            return "1080"
+            return "1080p"
         }
         if lower.contains("720") {
-            return "720"
+            return "720p"
         }
         if lower.contains("480") {
-            return "480"
+            return "480p"
         }
         if lower.contains("360") {
-            return "360"
+            return "360p"
         }
         if lower.contains("4k") || lower.contains("2160") {
             return "4K"
         }
-        let cleaned = key.replacingOccurrences(of: "p", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? key : cleaned
+        if key.hasSuffix("p") || key.hasSuffix("P") {
+            return key
+        }
+        return "\(key)p"
     }
 }

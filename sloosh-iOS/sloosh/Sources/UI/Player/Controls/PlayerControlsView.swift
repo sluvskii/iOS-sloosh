@@ -71,7 +71,7 @@ struct PlayerControlsView: View {
                                             Image(systemName: "forward.end.fill")
                                                 .font(.system(size: 13, weight: .semibold))
                                             Text("Пропустить заставку")
-                                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                                .font(.system(size: 14, weight: .semibold))
                                         }
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 18)
@@ -96,7 +96,7 @@ struct PlayerControlsView: View {
                                             Image(systemName: "forward.end.fill")
                                                 .font(.system(size: 13, weight: .semibold))
                                             Text("Пропустить титры")
-                                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                                .font(.system(size: 14, weight: .semibold))
                                         }
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 18)
@@ -239,7 +239,7 @@ struct PlayerTitleInfoView: View, Equatable {
 
             // Название озвучки
             Text(info.title)
-                .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                .font(.system(size: 13.5, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
 
