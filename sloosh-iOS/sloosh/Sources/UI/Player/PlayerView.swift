@@ -408,6 +408,7 @@ class PlayerViewModel: ObservableObject {
     static let clipMinDuration: Double = 3.0
     static let clipMaxDuration: Double = 600.0
     @Published var isClipMode = false
+    @Published var isInterfaceLocked = false
     @Published var clipStartTime: Double = 0.0
     @Published var clipEndTime: Double = 0.0
     @Published var isClipPublishing: Bool = false
@@ -1251,6 +1252,7 @@ class PlayerViewModel: ObservableObject {
         rateObserver?.invalidate()
         rateObserver = nil
 
+        isInterfaceLocked = false
         UIApplication.shared.isIdleTimerDisabled = false
     }
 

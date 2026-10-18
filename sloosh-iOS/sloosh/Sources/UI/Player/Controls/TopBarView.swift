@@ -4,7 +4,7 @@ import AVKit
 import MediaPlayer
 import TipKit
 
-// MARK: - Верхняя панель: [X | PiP | AirPlay]    [Логотип / Сезон]      [Ножницы]
+// MARK: - Верхняя панель: [X | PiP | AirPlay]    [Логотип / Сезон]      [Ножницы] [Замок]
 
 struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
@@ -18,12 +18,13 @@ struct TopBarView: View {
             centerHeaderView
                 .padding(.horizontal, 148)
 
-            // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент
+            // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент + блокировка
             HStack(alignment: .center, spacing: 8) {
                 closeButton
                 dualActionsGroup
                 Spacer()
                 clipButton
+                lockButton
             }
             .padding(.horizontal, 8)
         }
@@ -32,9 +33,9 @@ struct TopBarView: View {
     // MARK: - Центральный блок: Логотип + Кнопка сезона/серии
 
     private var centerHeaderView: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 3) {
             centerLogoView
-                .frame(height: 34)
+                .frame(height: 36)
                 .allowsHitTesting(false)
 
             if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
@@ -53,7 +54,7 @@ struct TopBarView: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxHeight: 32)
+                        .frame(maxHeight: 36)
                         .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
                 } fallback: {
                     fallbackTextView
@@ -130,25 +131,25 @@ struct TopBarView: View {
     }
 
     private func seasonEpisodeButtonContent(season: Int, episode: Int, isInteractive: Bool) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4.5) {
             Image(systemName: "rectangle.stack")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
 
             Text("\(season) сезон, \(episode) серия")
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
 
             if isInteractive {
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 7.5, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.45))
             }
         }
-        .padding(.leading, 9)
-        .padding(.trailing, isInteractive ? 8 : 9)
-        .frame(height: 26)
+        .padding(.leading, 8)
+        .padding(.trailing, isInteractive ? 7 : 8)
+        .frame(height: 23)
         .clipShape(Capsule())
         .glassEffect(.regular.interactive(), in: .capsule)
     }
@@ -224,6 +225,26 @@ struct TopBarView: View {
         .buttonStyle(.glassPress)
         .glassEffect(.regular.interactive(), in: .circle)
         .accessibilityLabel("Создать момент")
+    }
+
+    // MARK: - Блокировка интерфейса
+
+    private var lockButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.easeInOut(duration: 0.22)) {
+                vm.isInterfaceLocked = true
+            }
+        } label: {
+            Image(systemName: "lock")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel("Заблокировать экран")
     }
 }
 
