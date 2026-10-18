@@ -112,8 +112,11 @@ struct BottomRowView: View, Equatable {
                 ForEach(Array(availableVoiceovers.enumerated()), id: \.offset) { idx, name in
                     let studio = DubbingStudio.detect(from: name)
                     let title = displayTranslationName(name, at: idx, in: availableVoiceovers)
+                    let flag = LanguageFlag.detect(from: name + " " + title)
                     if let studio, studio.hasAsset {
-                        Label(studio.cleanChipTitle(from: title), image: studio.assetName).tag(idx)
+                        Label(LanguageFlag.stripLeadingEmoji(from: title), image: studio.assetName).tag(idx)
+                    } else if flag.hasAsset {
+                        Label(LanguageFlag.stripLeadingEmoji(from: title), image: flag.assetName).tag(idx)
                     } else {
                         Text(title).tag(idx)
                     }

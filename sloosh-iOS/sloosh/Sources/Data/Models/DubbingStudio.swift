@@ -101,15 +101,8 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         return nil
     }
 
-    /// Форматирует название для отображения в плашке рядом с логотипом (убирая дублирующийся флаг РФ)
+    /// Очищает эмодзи в начале названия, сохраняя само название целиком без обрезки
     func cleanChipTitle(from displayName: String) -> String {
-        var title = displayName
-        // Убираем флаг России "🇷🇺 ", так как брендовый логотип уже идентифицирует российскую студию
-        if title.hasPrefix("🇷🇺 ") {
-            title = String(title.dropFirst(4)).trimmingCharacters(in: .whitespaces)
-        } else if title.hasPrefix("🇷🇺") {
-            title = String(title.dropFirst(2)).trimmingCharacters(in: .whitespaces)
-        }
-        return title
+        LanguageFlag.stripLeadingEmoji(from: displayName)
     }
 }

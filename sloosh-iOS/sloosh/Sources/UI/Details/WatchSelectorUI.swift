@@ -6,6 +6,7 @@ struct WatchSelectorChip: View, Equatable {
     let isAvailable: Bool
     var badge: String? = nil
     var studio: DubbingStudio? = nil
+    var flag: LanguageFlag? = nil
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -16,7 +17,25 @@ struct WatchSelectorChip: View, Equatable {
         lhs.isSelected == rhs.isSelected &&
         lhs.isAvailable == rhs.isAvailable &&
         lhs.badge == rhs.badge &&
-        lhs.studio == rhs.studio
+        lhs.studio == rhs.studio &&
+        lhs.flag == rhs.flag
+    }
+
+    private var activeIconAssetName: String? {
+        if let studio, studio.hasAsset {
+            return studio.assetName
+        }
+        if let flag, flag.hasAsset {
+            return flag.assetName
+        }
+        return nil
+    }
+
+    private var displayTitle: String {
+        if activeIconAssetName != nil {
+            return LanguageFlag.stripLeadingEmoji(from: title)
+        }
+        return title
     }
 
     var body: some View {
@@ -25,23 +44,24 @@ struct WatchSelectorChip: View, Equatable {
             action()
         } label: {
             HStack(spacing: 5.5) {
-                if let studio, studio.hasAsset {
-                    Image(studio.assetName)
+                if let iconName = activeIconAssetName {
+                    Image(iconName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 20, height: 20)
                         .clipShape(Circle())
                 }
                 if let badge, !badge.isEmpty {
                     Text(badge)
                         .font(.system(size: 11, weight: .bold))
                 }
-                Text(studio?.hasAsset == true ? studio!.cleanChipTitle(from: title) : title)
+                Text(displayTitle)
                     .font(.system(size: 13.5, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .padding(.horizontal, studio?.hasAsset == true ? 10 : 12)
+            .padding(.leading, activeIconAssetName != nil ? 6 : 12)
+            .padding(.trailing, 11)
             .padding(.vertical, 6)
             .frame(height: 32)
                 .foregroundStyle(
