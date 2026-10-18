@@ -4,21 +4,19 @@ import AVKit
 import MediaPlayer
 import TipKit
 
-// MARK: - Верхняя панель: [X | PiP | AirPlay]          [━━● ─] 🔊
+// MARK: - Верхняя панель: [X | PiP | AirPlay]    [Логотип / Сезон]      [Ножницы]
 
 struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
     @Binding var isInteracting: Bool
-    
-    // Tips
+    var onInteraction: (() -> Void)? = nil
 
     var body: some View {
-        ZStack {
-            // Логотип проекта или название фильма строго по центру
-            centerLogoView
+        ZStack(alignment: .top) {
+            // Логотип проекта или название фильма строго по центру + кнопка сезона/серии прямо под ним
+            centerHeaderView
                 .padding(.horizontal, 148)
-                .allowsHitTesting(false)
 
             // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент
             HStack(alignment: .center, spacing: 8) {
@@ -31,7 +29,20 @@ struct TopBarView: View {
         }
     }
 
-    // MARK: - Логотип / Название по центру
+    // MARK: - Центральный блок: Логотип + Кнопка сезона/серии
+
+    private var centerHeaderView: some View {
+        VStack(spacing: 5) {
+            centerLogoView
+                .frame(height: 34)
+                .allowsHitTesting(false)
+
+            if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
+                seasonEpisodeButton(season: season, episode: episode)
+            }
+        }
+        .frame(maxWidth: 280)
+    }
 
     private var centerLogoView: some View {
         Group {
@@ -42,7 +53,7 @@ struct TopBarView: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxHeight: 36)
+                        .frame(maxHeight: 32)
                         .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
                 } fallback: {
                     fallbackTextView
@@ -57,9 +68,94 @@ struct TopBarView: View {
     private var fallbackTextView: some View {
         Text(vm.fallbackTitle)
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.75))
+            .foregroundStyle(.white.opacity(0.85))
             .blendMode(.plusLighter)
             .lineLimit(1)
+    }
+
+    // MARK: - Компактная кнопка выбора сезона и серии прямо под логотипом
+
+    @ViewBuilder
+    private func seasonEpisodeButton(season: Int, episode: Int) -> some View {
+        if hasEpisodeSelection, let series = vm.seriesResult {
+            Menu {
+                if series.seasons.count > 1 {
+                    ForEach(series.seasons.sorted(by: { $0.season < $1.season }), id: \.season) { s in
+                        Menu {
+                            Picker("Серии", selection: Binding(
+                                get: { (vm.currentSeason == s.season) ? (vm.currentEpisode ?? -1) : -1 },
+                                set: { ep in
+                                    if ep >= 0 {
+                                        vm.selectEpisode(season: s.season, episode: ep)
+                                    }
+                                    onInteraction?()
+                                }
+                            )) {
+                                ForEach(s.episodes.sorted(by: { $0.episode < $1.episode }), id: \.episode) { ep in
+                                    Text("Серия \(ep.episode)").tag(ep.episode)
+                                }
+                            }
+                        } label: {
+                            if vm.currentSeason == s.season {
+                                Label("Сезон \(s.season)", systemImage: "checkmark")
+                            } else {
+                                Text("Сезон \(s.season)")
+                            }
+                        }
+                    }
+                } else if let singleSeason = series.seasons.first {
+                    Picker("Серии", selection: Binding(
+                        get: { vm.currentEpisode ?? -1 },
+                        set: { ep in
+                            if ep >= 0 {
+                                vm.selectEpisode(season: singleSeason.season, episode: ep)
+                            }
+                            onInteraction?()
+                        }
+                    )) {
+                        ForEach(singleSeason.episodes.sorted(by: { $0.episode < $1.episode }), id: \.episode) { ep in
+                            Text("Серия \(ep.episode)").tag(ep.episode)
+                        }
+                    }
+                }
+            } label: {
+                seasonEpisodeButtonContent(season: season, episode: episode, isInteractive: true)
+            }
+            .menuOrder(.priority)
+            .accessibilityLabel("Выбор серии: \(season) сезон, \(episode) серия")
+        } else {
+            seasonEpisodeButtonContent(season: season, episode: episode, isInteractive: false)
+                .accessibilityLabel("\(season) сезон, \(episode) серия")
+        }
+    }
+
+    private func seasonEpisodeButtonContent(season: Int, episode: Int, isInteractive: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "rectangle.stack")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+
+            Text("\(season) сезон, \(episode) серия")
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+
+            if isInteractive {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+        }
+        .padding(.leading, 9)
+        .padding(.trailing, isInteractive ? 8 : 9)
+        .frame(height: 26)
+        .clipShape(Capsule())
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    private var hasEpisodeSelection: Bool {
+        guard let series = vm.seriesResult else { return false }
+        return !series.seasons.isEmpty
     }
 
     // MARK: - Отдельная кнопка «Закрыть» (нативная круглая иконка как в окне шеринга)

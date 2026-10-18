@@ -35,7 +35,7 @@ struct PlayerControlsView: View {
             ZStack {
                 // ── Верхний и нижний блоки ───────────────────────
                 VStack {
-                    TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
+                    TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, onInteraction: onInteraction)
                         .padding(.top, 24) // Увеличенный отступ
                         .offset(y: showControls ? 0 : -8)
                         .opacity(isSeeking ? 0 : 1)
@@ -50,10 +50,6 @@ struct PlayerControlsView: View {
                                 vm: vm,
                                 currentTranslationName: vm.currentTranslationName,
                                 availableVoiceovers: vm.availableVoiceovers,
-                                isMovie: vm.isMovie,
-                                currentSeason: vm.currentSeason,
-                                currentEpisode: vm.currentEpisode,
-                                seriesResult: vm.seriesResult,
                                 onInteraction: onInteraction
                             )
                             .equatable()
@@ -115,17 +111,11 @@ struct PlayerControlsView: View {
                                 BottomRowView(
                                     vm: vm,
                                     playbackRate: vm.playbackRate,
-                                    availableVoiceovers: vm.availableVoiceovers,
-                                    currentTranslationName: vm.currentTranslationName,
                                     availableQualities: vm.availableQualities,
                                     currentQualityKey: vm.currentQualityKey,
                                     availableSubtitles: vm.availableSubtitles,
                                     currentSubtitleUrl: vm.currentSubtitle?.url,
                                     subtitleFontSize: subtitleSettings.fontSize,
-                                    isMovie: vm.isMovie,
-                                    seriesResult: vm.seriesResult,
-                                    currentSeason: vm.currentSeason,
-                                    currentEpisode: vm.currentEpisode,
                                     onInteraction: onInteraction
                                 )
                                 .equatable()
@@ -158,39 +148,23 @@ struct PlayerControlsView: View {
     }
 }
 
-// MARK: - Инфо о текущем видео снизу слева (Озвучка в стеклянной капсуле с логотипом, Сезон/Серия справа)
+// MARK: - Инфо о текущем видео снизу слева (Капсула озвучки с логотипом студии/флагом)
 // Оптимизировано: изолировано через Equatable от ежесекундного тика времени воспроизведения
 
 struct PlayerTitleInfoView: View, Equatable {
     let vm: PlayerViewModel
     let currentTranslationName: String?
     let availableVoiceovers: [String]
-    let isMovie: Bool
-    let currentSeason: Int?
-    let currentEpisode: Int?
-    let seriesResult: AllohaApiResult?
     var onInteraction: (() -> Void)? = nil
 
     static func == (lhs: PlayerTitleInfoView, rhs: PlayerTitleInfoView) -> Bool {
         lhs.currentTranslationName == rhs.currentTranslationName &&
-        lhs.availableVoiceovers == rhs.availableVoiceovers &&
-        lhs.isMovie == rhs.isMovie &&
-        lhs.currentSeason == rhs.currentSeason &&
-        lhs.currentEpisode == rhs.currentEpisode &&
-        lhs.seriesResult?.seasons.count == rhs.seriesResult?.seasons.count
+        lhs.availableVoiceovers == rhs.availableVoiceovers
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            // 1. Капсула текущей озвучки с логотипом студии или круглым флагом
-            if let info = activeVoiceoverInfo {
-                voiceoverCapsule(info: info)
-            }
-
-            // 2. Отдельная капсула справа для сезона и серии (для сериалов)
-            if !isMovie, let season = currentSeason, let episode = currentEpisode {
-                seasonEpisodeCapsule(season: season, episode: episode)
-            }
+        if let info = activeVoiceoverInfo {
+            voiceoverCapsule(info: info)
         }
     }
 
@@ -283,86 +257,6 @@ struct PlayerTitleInfoView: View, Equatable {
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 
-    // MARK: - Капсула сезона и серии
-
-    @ViewBuilder
-    private func seasonEpisodeCapsule(season: Int, episode: Int) -> some View {
-        if hasEpisodeSelection, let series = seriesResult {
-            Menu {
-                if series.seasons.count > 1 {
-                    ForEach(series.seasons.sorted(by: { $0.season < $1.season }), id: \.season) { s in
-                        Menu {
-                            Picker("Серии", selection: Binding(
-                                get: { (currentSeason == s.season) ? (currentEpisode ?? -1) : -1 },
-                                set: { ep in
-                                    if ep >= 0 {
-                                        vm.selectEpisode(season: s.season, episode: ep)
-                                    }
-                                    onInteraction?()
-                                }
-                            )) {
-                                ForEach(s.episodes.sorted(by: { $0.episode < $1.episode }), id: \.episode) { ep in
-                                    Text("Серия \(ep.episode)").tag(ep.episode)
-                                }
-                            }
-                        } label: {
-                            if currentSeason == s.season {
-                                Label("Сезон \(s.season)", systemImage: "checkmark")
-                            } else {
-                                Text("Сезон \(s.season)")
-                            }
-                        }
-                    }
-                } else if let singleSeason = series.seasons.first {
-                    Picker("Серии", selection: Binding(
-                        get: { currentEpisode ?? -1 },
-                        set: { ep in
-                            if ep >= 0 {
-                                vm.selectEpisode(season: singleSeason.season, episode: ep)
-                            }
-                            onInteraction?()
-                        }
-                    )) {
-                        ForEach(singleSeason.episodes.sorted(by: { $0.episode < $1.episode }), id: \.episode) { ep in
-                            Text("Серия \(ep.episode)").tag(ep.episode)
-                        }
-                    }
-                }
-            } label: {
-                seasonEpisodeCapsuleContent(season: season, episode: episode, isInteractive: true)
-            }
-            .menuOrder(.priority)
-            .accessibilityLabel("Выбор серии: \(season) сезон, \(episode) серия")
-        } else {
-            seasonEpisodeCapsuleContent(season: season, episode: episode, isInteractive: false)
-                .accessibilityLabel("\(season) сезон, \(episode) серия")
-        }
-    }
-
-    private func seasonEpisodeCapsuleContent(season: Int, episode: Int, isInteractive: Bool) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: "rectangle.stack")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-
-            Text("\(season) сезон, \(episode) серия")
-                .font(.system(size: 13.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(1)
-
-            if isInteractive {
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-        }
-        .padding(.leading, 13)
-        .padding(.trailing, isInteractive ? 11 : 13)
-        .frame(height: 44)
-        .clipShape(Capsule())
-        .glassEffect(.regular.interactive(), in: .capsule)
-    }
-
     // MARK: - Хелперы и Модели
 
     private struct VoiceoverDisplayInfo {
@@ -381,11 +275,6 @@ struct PlayerTitleInfoView: View, Equatable {
         let flag = LanguageFlag.detect(from: raw + " " + formatted)
         let title = LanguageFlag.stripLeadingEmoji(from: formatted)
         return VoiceoverDisplayInfo(title: title, studio: studio, flag: flag)
-    }
-
-    private var hasEpisodeSelection: Bool {
-        guard let series = seriesResult else { return false }
-        return !series.seasons.isEmpty
     }
 
     private var activeVoiceoverIndex: Int? {
