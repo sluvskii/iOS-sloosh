@@ -76,7 +76,7 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .kubikVKube:
             return ["кубик в кубе", "кубик в кубе (18+)", "кубики", "kubik v kube", "kubik-v-kube", "kubik"]
         case .daronMoneyStudio:
-            return ["daron money studio", "daron money", "daron", "dms", "дарон мани", "дарон"]
+            return ["daron money studio", "daron money", "dragon money studio", "dragon money", "daron", "dragon", "dms", "дарон мани", "драгон мани", "дарон", "драгон"]
         }
     }
 
