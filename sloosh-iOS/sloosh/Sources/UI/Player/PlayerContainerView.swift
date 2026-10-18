@@ -127,7 +127,8 @@ struct PlayerContainerView: View {
                 hideTask?.cancel()
                 tapTask?.cancel()
                 showControls = false
-                showLockOverlay = false
+                showLockOverlay = true
+                scheduleLockAutoHide()
                 multiSeekSeconds = nil
                 activeTapSide = nil
             } else {
@@ -359,20 +360,25 @@ struct PlayerContainerView: View {
 
     private var lockedOverlayView: some View {
         ZStack {
-            // Мягкое затемнение сверху (как у основных контролов плеера)
+            // 1. Полноэкранный перехватчик касаний — ВСЕГДА активен, перехватывает все тапы по экрану
+            Color.black.opacity(0.001)
+                .contentShape(Rectangle())
+                .ignoresSafeArea()
+                .onTapGesture {
+                    toggleLockOverlay()
+                }
+
+            // 2. Мягкое затемнение сверху (чисто визуальное, не блокирует тапы)
             LinearGradient(
                 colors: [.black.opacity(0.55), .clear, .clear],
                 startPoint: .top,
                 endPoint: .center
             )
-            .contentShape(Rectangle())
             .ignoresSafeArea()
-            .onTapGesture {
-                toggleLockOverlay()
-            }
+            .allowsHitTesting(false)
             .opacity(showLockOverlay ? 1 : 0)
 
-            // Кнопка разблокировки — точно на месте кнопки блокировки в TopBarView
+            // 3. Кнопка разблокировки — точно на месте кнопки блокировки в TopBarView
             VStack {
                 HStack(alignment: .center, spacing: 8) {
                     Spacer()
@@ -386,6 +392,7 @@ struct PlayerContainerView: View {
             }
             .opacity(showLockOverlay ? 1 : 0)
             .blur(radius: showLockOverlay ? 0 : 16)
+            .allowsHitTesting(showLockOverlay)
         }
         .animation(.easeInOut(duration: 0.24), value: showLockOverlay)
     }
@@ -394,7 +401,7 @@ struct PlayerContainerView: View {
         Button {
             unlockInterface()
         } label: {
-            Image(systemName: "lock.open.fill")
+            Image(systemName: "lock.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
