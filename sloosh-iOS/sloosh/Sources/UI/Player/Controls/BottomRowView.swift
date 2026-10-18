@@ -110,7 +110,13 @@ struct BottomRowView: View, Equatable {
                 }
             )) {
                 ForEach(Array(availableVoiceovers.enumerated()), id: \.offset) { idx, name in
-                    Text(displayTranslationName(name, at: idx, in: availableVoiceovers)).tag(idx)
+                    let studio = DubbingStudio.detect(from: name)
+                    let title = displayTranslationName(name, at: idx, in: availableVoiceovers)
+                    if let studio, studio.hasAsset {
+                        Label(studio.cleanChipTitle(from: title), image: studio.assetName).tag(idx)
+                    } else {
+                        Text(title).tag(idx)
+                    }
                 }
             }
         } label: {
