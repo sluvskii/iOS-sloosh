@@ -29,8 +29,8 @@ struct WatchSelectorChip: View, Equatable {
                     Image(studio.assetName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 17, height: 17)
-                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
+                        .frame(width: 18, height: 18)
+                        .clipShape(Circle())
                 }
                 if let badge, !badge.isEmpty {
                     Text(badge)
