@@ -359,50 +359,49 @@ struct PlayerContainerView: View {
 
     private var lockedOverlayView: some View {
         ZStack {
-            // Перехватываем все нажатия на экран
-            Color.clear
-                .contentShape(Rectangle())
-                .ignoresSafeArea()
-                .onTapGesture {
-                    toggleLockOverlay()
-                }
-
-            // Кнопка разблокировки сверху справа
-            if showLockOverlay {
-                VStack {
-                    HStack {
-                        Spacer()
-                        unlockButton
-                    }
-                    .padding(.top, 24)
-                    .padding(.horizontal, 8)
-
-                    Spacer()
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            // Мягкое затемнение сверху (как у основных контролов плеера)
+            LinearGradient(
+                colors: [.black.opacity(0.55), .clear, .clear],
+                startPoint: .top,
+                endPoint: .center
+            )
+            .contentShape(Rectangle())
+            .ignoresSafeArea()
+            .onTapGesture {
+                toggleLockOverlay()
             }
+            .opacity(showLockOverlay ? 1 : 0)
+
+            // Кнопка разблокировки — точно на месте кнопки блокировки в TopBarView
+            VStack {
+                HStack(alignment: .center, spacing: 8) {
+                    Spacer()
+                    unlockButton
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 24)
+                .offset(y: showLockOverlay ? 0 : -8)
+
+                Spacer()
+            }
+            .opacity(showLockOverlay ? 1 : 0)
+            .blur(radius: showLockOverlay ? 0 : 16)
         }
-        .animation(.easeInOut(duration: 0.22), value: showLockOverlay)
+        .animation(.easeInOut(duration: 0.24), value: showLockOverlay)
     }
 
     private var unlockButton: some View {
         Button {
             unlockInterface()
         } label: {
-            HStack(spacing: 6.5) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 15, weight: .semibold))
-
-                Text("Разблокировать")
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .clipShape(Capsule())
-            .glassEffect(.regular.interactive(), in: .capsule)
+            Image(systemName: "lock.open.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
         .accessibilityLabel("Разблокировать экран")
     }
 
@@ -418,7 +417,7 @@ struct PlayerContainerView: View {
     }
 
     private func toggleLockOverlay() {
-        withAnimation(.easeInOut(duration: 0.22)) {
+        withAnimation(.easeInOut(duration: 0.24)) {
             showLockOverlay.toggle()
         }
         if showLockOverlay {

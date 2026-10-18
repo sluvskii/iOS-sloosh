@@ -42,7 +42,6 @@ struct BottomRowView: View, Equatable {
         }
         .padding(.horizontal, 2)
         .frame(height: 44)
-        .clipShape(Capsule())
         .glassEffect(.regular.interactive(), in: .capsule)
         .tint(.white)
     }
@@ -69,12 +68,12 @@ struct BottomRowView: View, Equatable {
                 Text(speedLabel)
                     .font(.system(size: 12.5, weight: .semibold))
             }
-            .foregroundStyle(.white.opacity(0.85))
-            .blendMode(.plusLighter)
+            .foregroundStyle(.white.opacity(0.92))
             .padding(.horizontal, 10)
             .frame(height: 44)
             .contentShape(Rectangle())
         }
+        .buttonStyle(.glassPress)
         .menuOrder(.priority)
         .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
     }
@@ -101,12 +100,12 @@ struct BottomRowView: View, Equatable {
                 Text(qualityLabel)
                     .font(.system(size: 12.5, weight: .semibold))
             }
-            .foregroundStyle(.white.opacity(0.85))
-            .blendMode(.plusLighter)
+            .foregroundStyle(.white.opacity(0.92))
             .padding(.horizontal, 10)
             .frame(height: 44)
             .contentShape(Rectangle())
         }
+        .buttonStyle(.glassPress)
         .menuOrder(.priority)
         .accessibilityLabel("Качество видео: \(qualityLabel)")
     }
@@ -156,11 +155,11 @@ struct BottomRowView: View, Equatable {
         } label: {
             Image(systemName: currentSubtitleUrl != nil ? "captions.bubble.fill" : "captions.bubble")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
-                .blendMode(.plusLighter)
+                .foregroundStyle(currentSubtitleUrl != nil ? .white : .white.opacity(0.85))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
+        .buttonStyle(.glassPress)
         .menuOrder(.priority)
         .accessibilityLabel(currentSubtitleUrl != nil ? "Субтитры (включены)" : "Субтитры")
     }
