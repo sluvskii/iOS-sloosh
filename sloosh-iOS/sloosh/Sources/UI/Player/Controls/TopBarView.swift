@@ -228,7 +228,7 @@ struct TopBarView: View {
                 vm.isInterfaceLocked = true
             }
         } label: {
-            Image(systemName: "lock.fill")
+            Image(systemName: "lock.open.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
