@@ -16,6 +16,7 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
     case daronMoneyStudio = "dms"
     case jaskier = "jaskier"
     case newStudio = "newstudio"
+    case leProduction = "leproduction"
 
     var id: String { rawValue }
 
@@ -34,6 +35,7 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .daronMoneyStudio: return "Dragon Money Studio"
         case .jaskier: return "Jaskier"
         case .newStudio: return "NewStudio"
+        case .leProduction: return "LE-Production"
         }
     }
 
@@ -52,6 +54,7 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         case .daronMoneyStudio: return "Studio-DMS"
         case .jaskier: return "Studio-Jaskier"
         case .newStudio: return "Studio-NewStudio"
+        case .leProduction: return "Studio-LE"
         }
     }
 
@@ -87,6 +90,8 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
             return ["jaskier", "яскъ", "яск", "яскьер", "яскиер", "жаскьер"]
         case .newStudio:
             return ["newstudio", "new studio", "new-studio", "ньюстудио", "нью студио", "нью-студио", "newstudio tv"]
+        case .leProduction:
+            return ["le-production", "le - production", "le production", "leproduction", "l.e. production", "l.e.production", "ле-продакшн", "ле продакшн", "лепродакшн", "ле продакшен", "ле-продакшен", "le-prod", "le prod"]
         }
     }
 
