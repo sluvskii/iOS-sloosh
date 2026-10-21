@@ -203,9 +203,12 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
 
         // Диффузионный проход-ореол: дочерний blur-вью, выходящий за границы
-        // базового прохода (контейнер не клипит — свечение «прорастает» наружу)
+        // базового прохода. ВАЖНО: сабвью UIVisualEffectView добавляются только
+        // в contentView — прямое addSubview в effect view роняет приложение.
         haloEffectView.isUserInteractionEnabled = false
-        addSubview(haloEffectView)
+        haloEffectView.clipsToBounds = false
+        contentView.addSubview(haloEffectView)
+        contentView.clipsToBounds = false
 
         self.resetEffect()
     }
@@ -273,7 +276,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
 
         if haloEffectView.superview == nil {
-            addSubview(haloEffectView)
+            contentView.addSubview(haloEffectView)
         }
         haloEffectView.effect = UIBlurEffect(style: style)
         Self.applyVariableBlur(
