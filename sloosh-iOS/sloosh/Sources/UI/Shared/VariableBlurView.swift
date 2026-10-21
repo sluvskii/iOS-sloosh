@@ -220,6 +220,45 @@ public final class VariableBlurUIView: UIVisualEffectView {
     public override func layoutSubviews() {
         super.layoutSubviews()
         haloEffectView.frame = haloFrame()
+        healLostFiltersIfNeeded()
+    }
+
+    public override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Навигационные переходы/перенос между окнами пересоздают backdrop-слой
+        // и срывают приватные фильтры — восстанавливаем
+        healLostFiltersIfNeeded()
+    }
+
+    /// Если UIKit пересоздал backdrop-слой (типично после pop-перехода с экрана,
+    /// где тот же класс используется) — фильтр variableBlur теряется, эффект
+    /// вырождается в тёмный прямоугольник с жёсткими краями. Переустанавливаем.
+    private func healLostFiltersIfNeeded() {
+        guard window != nil, bounds.width > 0, bounds.height > 0 else { return }
+
+        func filtersMissing(_ layer: CALayer?) -> Bool {
+            guard let filters = layer?.value(forKey: "filters") as? [Any] else { return true }
+            return filters.isEmpty
+        }
+
+        if filtersMissing(subviews.first?.layer) {
+            Self.applyVariableBlur(
+                to: self,
+                radius: maxBlurRadius,
+                direction: direction,
+                easing: .linear
+            )
+        }
+
+        if haloIntensity > 0, haloEffectView.superview != nil,
+           filtersMissing(haloEffectView.subviews.first?.layer) {
+            Self.applyVariableBlur(
+                to: haloEffectView,
+                radius: maxBlurRadius * haloRadiusBoost,
+                direction: direction,
+                easing: .easeOut
+            )
+        }
     }
 
     private func haloFrame() -> CGRect {
@@ -374,12 +413,14 @@ public final class VariableBlurUIView: UIVisualEffectView {
         case .linear:
             alphas = [(0.0, 1.0), (1.0, 0.0)]
         case .easeOut:
-            // pow(1 - t, 1.6): сильный у края, с длинным мягким хвостом
+            // Сконцентрирован у края (там, где живой контент) и полностью
+            // затухает раньше конца — без блёклого хвоста через весь бар
             alphas = [
                 (0.0, 1.0),
-                (0.2, 0.73),
-                (0.45, 0.40),
-                (0.7, 0.15),
+                (0.14, 0.92),
+                (0.32, 0.55),
+                (0.50, 0.22),
+                (0.68, 0.0),
                 (1.0, 0.0)
             ]
         }
