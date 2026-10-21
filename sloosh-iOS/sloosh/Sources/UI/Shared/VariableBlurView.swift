@@ -180,6 +180,9 @@ public final class VariableBlurUIView: UIVisualEffectView {
     }
 
     private let haloEffectView = UIVisualEffectView(effect: nil)
+    /// Периодическая проверка целостности приватных фильтров (их срывает
+    /// пересоздание backdrop-слоя после переходов/модалок/плеера).
+    private var healthTimer: Timer?
 
     public init(
         maxBlurRadius: CGFloat = 2,
@@ -210,6 +213,15 @@ public final class VariableBlurUIView: UIVisualEffectView {
         contentView.addSubview(haloEffectView)
         contentView.clipsToBounds = false
 
+        // После закрытия fullScreenCover (плеер/шиты) хуки layout/didMoveToWindow
+        // у нижнего экрана не гарантированы — чиним фильтры на активацию приложения
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+
         self.resetEffect()
     }
 
@@ -220,20 +232,65 @@ public final class VariableBlurUIView: UIVisualEffectView {
     public override func layoutSubviews() {
         super.layoutSubviews()
         haloEffectView.frame = haloFrame()
-        healLostFiltersIfNeeded()
+        healLostFiltersIfNeeded(force: false)
     }
 
     public override func didMoveToWindow() {
         super.didMoveToWindow()
-        // Навигационные переходы/перенос между окнами пересоздают backdrop-слой
-        // и срывают приватные фильтры — восстанавливаем
-        healLostFiltersIfNeeded()
+        if window != nil {
+            healLostFiltersIfNeeded(force: false)
+            scheduleDelayedHeals()
+            startHealthTimer()
+        } else {
+            stopHealthTimer()
+        }
     }
 
-    /// Если UIKit пересоздал backdrop-слой (типично после pop-перехода с экрана,
-    /// где тот же класс используется) — фильтр variableBlur теряется, эффект
-    /// вырождается в тёмный прямоугольник с жёсткими краями. Переустанавливаем.
-    private func healLostFiltersIfNeeded() {
+    @objc private func appDidBecomeActive() {
+        guard window != nil else { return }
+        // Активация после плеера/модалок — слой мог быть пересоздан, ставим заново
+        healLostFiltersIfNeeded(force: true)
+    }
+
+    deinit {
+        healthTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private Filter Self-Healing
+
+    private func startHealthTimer() {
+        guard healthTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.healLostFiltersIfNeeded(force: false)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        healthTimer = timer
+    }
+
+    private func stopHealthTimer() {
+        healthTimer?.invalidate()
+        healthTimer = nil
+    }
+
+    /// Закрытие плеера/шитов не всегда вызывает layout у нижнего экрана —
+    /// добиваем восстанавлением через короткие задержки.
+    private func scheduleDelayedHeals() {
+        for delay in [0.2, 0.6, 1.2] {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard let self, self.window != nil else { return }
+                self.healLostFiltersIfNeeded(force: true)
+            }
+        }
+    }
+
+    /// Если UIKit пересоздал backdrop-слой (переходы, закрытие fullScreenCover
+    /// плеера) — приватный фильтр variableBlur теряется, и эффект вырождается
+    /// в тёмный прямоугольник с жёсткими краями. Переустанавливаем.
+    private func healLostFiltersIfNeeded(force: Bool) {
         guard window != nil, bounds.width > 0, bounds.height > 0 else { return }
 
         func filtersMissing(_ layer: CALayer?) -> Bool {
@@ -241,7 +298,10 @@ public final class VariableBlurUIView: UIVisualEffectView {
             return filters.isEmpty
         }
 
-        if filtersMissing(subviews.first?.layer) {
+        if force || filtersMissing(subviews.first?.layer) {
+            // Полный сброс перед установкой: одинаковый объект фильтра на
+            // пересозданном слое мог не перезапустить рендер блюра
+            subviews.first?.layer.setValue(nil, forKey: "filters")
             Self.applyVariableBlur(
                 to: self,
                 radius: maxBlurRadius,
@@ -250,14 +310,16 @@ public final class VariableBlurUIView: UIVisualEffectView {
             )
         }
 
-        if haloIntensity > 0, haloEffectView.superview != nil,
-           filtersMissing(haloEffectView.subviews.first?.layer) {
-            Self.applyVariableBlur(
-                to: haloEffectView,
-                radius: maxBlurRadius * haloRadiusBoost,
-                direction: direction,
-                easing: .easeOut
-            )
+        if haloIntensity > 0, haloEffectView.superview != nil {
+            if force || filtersMissing(haloEffectView.subviews.first?.layer) {
+                haloEffectView.subviews.first?.layer.setValue(nil, forKey: "filters")
+                Self.applyVariableBlur(
+                    to: haloEffectView,
+                    radius: maxBlurRadius * haloRadiusBoost,
+                    direction: direction,
+                    easing: .easeOut
+                )
+            }
         }
     }
 
