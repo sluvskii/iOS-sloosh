@@ -27,7 +27,7 @@ struct TrailerPlayerSheetView: View {
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, 16)
-                    .padding(.top, 4)
+                    .padding(.top, 8)
 
                     // Trailer Title (No line limit, multiline)
                     Text(trailer.name)
@@ -107,7 +107,7 @@ struct TrailerPlayerSheetView: View {
                 .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.glassPress)
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 16)
             .padding(.bottom, 8)
         }
     }
