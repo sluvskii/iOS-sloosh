@@ -428,6 +428,7 @@ struct ProfileCategoryContentView: View {
             }
             .padding(.bottom, 16)
         }
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .refreshable {
             await CloudSyncService.shared.syncAllDataAsync(force: true)
             favoritesRepo.reloadFromDb()
