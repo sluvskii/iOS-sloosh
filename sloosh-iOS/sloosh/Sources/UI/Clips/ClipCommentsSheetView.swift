@@ -77,6 +77,7 @@ public struct ClipCommentsSheetView: View {
                     .padding(.bottom, 16)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
                 } action: { _, newOffset in

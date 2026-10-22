@@ -105,6 +105,7 @@ public struct UserProfileDetailView: View {
                 self.livePresence = freshPresence
                 self.authorClips = freshClips
             }
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
         }
         .ignoresSafeArea(edges: .top)
         .hideNavigationBarWithRestore()

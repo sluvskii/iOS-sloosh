@@ -132,6 +132,7 @@ struct AboutView: View {
                     .animation(.easeInOut(duration: 0.2), value: blurOpacity)
             )
         }
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { oldOffset, newOffset in
