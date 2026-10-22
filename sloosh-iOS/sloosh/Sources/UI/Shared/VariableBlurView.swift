@@ -17,9 +17,7 @@ public struct VariableBlurView: View {
     public var tintOpacity: Double = 1.0
     public var style: UIBlurEffect.Style = .systemMaterial
     /// Сила диффузионного ореола: прозрачность второго прохода (0 — выключить).
-    /// Маска ореола сконцентрирована у «начала» бара (жёсткой кромки блюра),
-    /// поэтому усиление прежде всего заметно именно там.
-    public var haloIntensity: Double = 0.7
+    public var haloIntensity: Double = 0.55
     /// Насколько далеко (в долях размера) ореол выходит за границу блюра.
     public var haloSpread: CGFloat = 0.6
     /// Во сколько раз радиус блюра ореола больше базового.
@@ -31,7 +29,7 @@ public struct VariableBlurView: View {
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         style: UIBlurEffect.Style = .systemMaterial,
-        haloIntensity: Double = 0.7,
+        haloIntensity: Double = 0.55,
         haloSpread: CGFloat = 0.6,
         haloRadiusBoost: CGFloat = 3.0
     ) {
@@ -44,10 +42,6 @@ public struct VariableBlurView: View {
         self.haloSpread = haloSpread
         self.haloRadiusBoost = haloRadiusBoost
     }
-
-    /// Глобальное ослабление тинта на всех экранах: блюр с ореолом сам даёт
-    /// достаточно «стекла», тинт лишь слегка подкрашивает.
-    private static let tintDamping: Double = 0.7
 
     public var body: some View {
         VariableBlurRepresentable(
@@ -63,9 +57,9 @@ public struct VariableBlurView: View {
                 colors: {
                     switch direction {
                     case .blurredTopClearBottom, .blurredLeadingClearTrailing:
-                        return [tintColor.opacity(tintOpacity * Self.tintDamping), tintColor.opacity(0.0)]
+                        return [tintColor.opacity(tintOpacity), tintColor.opacity(0.0)]
                     case .blurredBottomClearTop, .blurredTrailingClearLeading:
-                        return [tintColor.opacity(0.0), tintColor.opacity(tintOpacity * Self.tintDamping)]
+                        return [tintColor.opacity(0.0), tintColor.opacity(tintOpacity)]
                     }
                 }(),
                 startPoint: {
@@ -90,7 +84,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
     public var maxBlurRadius: CGFloat = 2
     public var direction: BlurDirection = .blurredTopClearBottom
     public var style: UIBlurEffect.Style = .systemMaterial
-    public var haloIntensity: Double = 0.7
+    public var haloIntensity: Double = 0.55
     public var haloSpread: CGFloat = 0.6
     public var haloRadiusBoost: CGFloat = 3.0
 
@@ -105,7 +99,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         maxBlurRadius: CGFloat = 2,
         direction: BlurDirection = .blurredTopClearBottom,
         style: UIBlurEffect.Style = .systemMaterial,
-        haloIntensity: Double = 0.7,
+        haloIntensity: Double = 0.55,
         haloSpread: CGFloat = 0.6,
         haloRadiusBoost: CGFloat = 3.0
     ) {
@@ -194,7 +188,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
         maxBlurRadius: CGFloat = 2,
         direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom,
         style: UIBlurEffect.Style = .systemMaterial,
-        haloIntensity: Double = 0.7,
+        haloIntensity: Double = 0.55,
         haloSpread: CGFloat = 0.6,
         haloRadiusBoost: CGFloat = 3.0
     ) {
