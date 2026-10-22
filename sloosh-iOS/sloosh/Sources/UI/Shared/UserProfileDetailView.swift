@@ -92,6 +92,7 @@ public struct UserProfileDetailView: View {
                 scrollOffsetY = newOffset
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
         }
         .ignoresSafeArea(edges: .top)
         .hideNavigationBarWithRestore()

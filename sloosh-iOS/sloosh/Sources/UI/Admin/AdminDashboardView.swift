@@ -260,6 +260,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -761,6 +762,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -938,6 +940,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -1500,6 +1503,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in

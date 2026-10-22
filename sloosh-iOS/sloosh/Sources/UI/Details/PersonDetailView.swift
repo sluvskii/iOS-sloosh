@@ -228,6 +228,7 @@ struct PersonDetailView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
         }
         .ignoresSafeArea(edges: .top)
         .hideNavigationBarWithRestore()
