@@ -62,6 +62,7 @@ struct MediaArtworkPickerSheet: View {
     @State private var isLoading: Bool = false
     @State private var isSaving: Bool = false
     @State private var hasLoadedFullImages: Bool = false
+    @State private var scrollOffset: CGFloat = 0
 
     init(
         mediaId: String,
@@ -155,25 +156,30 @@ struct MediaArtworkPickerSheet: View {
                             .padding(.horizontal, 16)
                     }
                 }
-                .padding(.top, 10)
+                .padding(.top, 4)
                 .padding(.bottom, 36)
             }
             .scrollContentBackground(.hidden)
             .refreshable {
                 await loadAvailableImagesIfNeeded(force: true)
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .tint(.white)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Оформление",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30,
                     trailing: {
                         Button {
@@ -183,13 +189,13 @@ struct MediaArtworkPickerSheet: View {
                                 ProgressView()
                                     .controlSize(.small)
                                     .tint(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             } else {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             }
                         }

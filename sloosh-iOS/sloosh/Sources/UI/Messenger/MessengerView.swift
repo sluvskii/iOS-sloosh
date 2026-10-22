@@ -776,6 +776,7 @@ private struct NewChatSheet: View {
     @State private var query: String = ""
     @State private var isSearching: Bool = false
     @State private var searchTask: Task<Void, Never>? = nil
+    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
         NavigationStack {
@@ -857,6 +858,11 @@ private struct NewChatSheet: View {
                         }
                         .scrollContentBackground(.hidden)
                         .scrollDismissesKeyboard(.interactively)
+                        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                            geometry.contentOffset.y + geometry.contentInsets.top
+                        } action: { _, newOffset in
+                            scrollOffset = newOffset
+                        }
                     }
                 }
             }
@@ -864,13 +870,13 @@ private struct NewChatSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Новое сообщение",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30,
                     bottom: {
                         SlooshSearchField(text: $query, prompt: "Имя или @тег пользователя")
@@ -880,6 +886,7 @@ private struct NewChatSheet: View {
             }
             .onChange(of: query) { _, newQ in
                 searchTask?.cancel()
+                scrollOffset = 0
                 let trimmed = newQ.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty {
                     isSearching = false

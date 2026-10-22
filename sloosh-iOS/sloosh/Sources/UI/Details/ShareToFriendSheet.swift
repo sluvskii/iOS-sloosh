@@ -44,13 +44,13 @@ struct ShareToFriendSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.top, 4)
             .padding(.bottom, 16)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: clip != nil ? "Поделиться моментом" : "Отправить",
-                    scrollOffset: .constant(100),
+                    scrollOffset: .constant(0),
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
@@ -64,9 +64,9 @@ struct ShareToFriendSheet: View {
                             showSystemShareSheet = true
                         } label: {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
                         .accessibilityLabel("Поделиться")
@@ -88,7 +88,7 @@ struct ShareToFriendSheet: View {
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
-        .presentationDetents([.height(390)])
+        .presentationDetents([.height(380)])
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedUsers.isEmpty)
         .preferredColorScheme(.dark)
     }

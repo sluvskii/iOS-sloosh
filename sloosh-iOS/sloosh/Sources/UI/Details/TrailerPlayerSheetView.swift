@@ -6,6 +6,7 @@ import WebKit
 struct TrailerPlayerSheetView: View {
     let trailer: TrailerVideoDto
     @Environment(\.dismiss) private var dismiss
+    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
         NavigationStack {
@@ -26,7 +27,7 @@ struct TrailerPlayerSheetView: View {
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, 4)
 
                     // Trailer Title (No line limit, multiline)
                     Text(trailer.name)
@@ -37,25 +38,30 @@ struct TrailerPlayerSheetView: View {
                 }
                 .padding(.bottom, 16)
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Трейлер",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30,
                     trailing: {
                         if let webUrl = trailer.youtubeWebUrl {
                             ShareLink(item: webUrl) {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(.primary)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .accessibilityLabel("Поделиться")

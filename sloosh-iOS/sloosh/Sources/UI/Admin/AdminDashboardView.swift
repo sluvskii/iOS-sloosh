@@ -1543,6 +1543,7 @@ private struct AdminUserDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var repo = AdminRepository.shared
     @State private var isBannedState: Bool = false
+    @State private var scrollOffset: CGFloat = 0
 
     init(user: AdminUserItem) {
         self.user = user
@@ -1579,7 +1580,7 @@ private struct AdminUserDetailSheet: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    .padding(.top, 12)
+                    .padding(.top, 4)
 
                     // Details Card
                     VStack(spacing: 10) {
@@ -1628,17 +1629,22 @@ private struct AdminUserDetailSheet: View {
                 .padding(.bottom, 32)
             }
             .scrollContentBackground(.hidden)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Профиль пользователя",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30
                 )
             }

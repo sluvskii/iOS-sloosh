@@ -9,6 +9,7 @@ public struct MovieSelectorSheet: View {
     @State private var popularMovies: [MediaDto] = []
     @State private var isLoading: Bool = false
     @State private var searchTask: Task<Void, Never>? = nil
+    @State private var scrollOffset: CGFloat = 0
 
     public let onSelect: (MediaCardPayload) -> Void
 
@@ -47,18 +48,18 @@ public struct MovieSelectorSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 4)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Прикрепить фильм",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30
                 )
             }
@@ -85,6 +86,7 @@ public struct MovieSelectorSheet: View {
                 .foregroundColor(.primary)
                 .autocorrectionDisabled()
                 .onChange(of: query) { _, newQuery in
+                    scrollOffset = 0
                     performDebouncedSearch(query: newQuery)
                 }
 
@@ -171,6 +173,11 @@ public struct MovieSelectorSheet: View {
             .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
     }
 
     private func performDebouncedSearch(query: String) {

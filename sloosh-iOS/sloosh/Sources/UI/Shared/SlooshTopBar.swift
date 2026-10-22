@@ -16,6 +16,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     private let bottomPadding: CGFloat
     private let blurThreshold: CGFloat
     private let blurOverflow: CGFloat
+    private let showsBottom: Bool
     private let trailingContent: () -> Trailing
     private let bottomContent: () -> Bottom
 
@@ -31,6 +32,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
         bottomPadding: CGFloat = 0,
         blurThreshold: CGFloat = 30,
         blurOverflow: CGFloat = -60,
+        showsBottom: Bool = true,
         @ViewBuilder trailing: @escaping () -> Trailing,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) {
@@ -45,6 +47,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
         self.bottomPadding = bottomPadding
         self.blurThreshold = blurThreshold
         self.blurOverflow = blurOverflow
+        self.showsBottom = showsBottom
         self.trailingContent = trailing
         self.bottomContent = bottom
     }
@@ -55,7 +58,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             ZStack {
                 Text(title)
                     .font(.system(size: 18, weight: .semibold))
@@ -77,7 +80,10 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
             .padding(.horizontal, 16)
             .padding(.top, topPadding)
 
-            bottomContent()
+            if showsBottom {
+                bottomContent()
+                    .padding(.top, 8)
+            }
         }
         .padding(.bottom, bottomPadding)
         .background(
@@ -116,6 +122,7 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
             bottomPadding: bottomPadding,
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
+            showsBottom: false,
             trailing: { EmptyView() },
             bottom: { EmptyView() }
         )
@@ -149,6 +156,7 @@ extension SlooshTopBar where Bottom == EmptyView {
             bottomPadding: bottomPadding,
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
+            showsBottom: false,
             trailing: trailing,
             bottom: { EmptyView() }
         )
@@ -182,6 +190,7 @@ extension SlooshTopBar where Trailing == EmptyView {
             bottomPadding: bottomPadding,
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
+            showsBottom: true,
             trailing: { EmptyView() },
             bottom: bottom
         )
@@ -242,10 +251,10 @@ struct SlooshGlassTextButton: View {
             action()
         } label: {
             Text(title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(isEnabled ? tintColor : tintColor.opacity(0.35))
-                .padding(.horizontal, 16)
-                .frame(height: 38)
+                .padding(.horizontal, 14)
+                .frame(height: 44)
                 .glassEffect(.regular.interactive(), in: Capsule())
         }
         .buttonStyle(.glassPress)

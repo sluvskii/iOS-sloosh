@@ -2449,6 +2449,7 @@ struct EpisodeDetailsSheet: View {
     let onWatchedToggle: (Bool) -> Void
     
     @State private var isWatched: Bool = false
+    @State private var scrollOffset: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var downloadManager = DownloadManager.shared
     
@@ -2628,18 +2629,23 @@ struct EpisodeDetailsSheet: View {
                     .padding(20)
                 }
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "\(item.season) сезон, \(item.episode) серия",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
                     titleMaxWidth: 250,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30,
                     trailing: {
                         if item.isAvailable {
@@ -2651,9 +2657,9 @@ struct EpisodeDetailsSheet: View {
                                 onWatchedToggle(isWatched)
                             } label: {
                                 Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.system(size: 19, weight: .medium))
                                     .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .accessibilityLabel(isWatched ? "Отметить непросмотренной" : "Отметить просмотренной")
