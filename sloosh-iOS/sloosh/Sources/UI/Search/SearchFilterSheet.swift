@@ -78,8 +78,8 @@ struct SearchFilterSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, -6)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
                     .background(
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
