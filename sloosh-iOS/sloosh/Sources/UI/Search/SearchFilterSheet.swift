@@ -105,39 +105,26 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: 200)
 
             HStack {
-                Button {
+                TelegramGlassIconButton(
+                    systemName: "arrow.counterclockwise",
+                    tintColor: filters.isEmpty ? Color.secondary : Color.primary
+                ) {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.prepare()
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         filters = SearchFilters()
                     }
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(filters.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
                 }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
                 .disabled(filters.isEmpty)
                 .accessibilityLabel("Сбросить")
 
                 Spacer()
 
-                Button {
+                TelegramGlassIconButton(systemName: "xmark") {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
                 }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
                 .accessibilityLabel("Закрыть")
             }
         }
