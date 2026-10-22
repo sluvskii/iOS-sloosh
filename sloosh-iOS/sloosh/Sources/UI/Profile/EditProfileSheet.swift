@@ -16,6 +16,7 @@ public struct EditProfileSheet: View {
     @State private var isTagAvailable: Bool = true
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var scrollOffset: CGFloat = 0
 
     public init() {}
 
@@ -41,7 +42,7 @@ public struct EditProfileSheet: View {
                 VStack(spacing: 24) {
                     // Avatar Picker Section
                     avatarPickerSection
-                        .padding(.top, 16)
+                        .padding(.top, 8)
 
                     // Profile Details Form
                     formFieldsSection
@@ -62,17 +63,22 @@ public struct EditProfileSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Редактировать профиль",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30
                 )
             }

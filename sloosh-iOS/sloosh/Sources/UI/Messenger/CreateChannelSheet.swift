@@ -19,6 +19,7 @@ public struct CreateChannelSheet: View {
     @State private var isTagAvailable: Bool = false
     @State private var isCreating: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var scrollOffset: CGFloat = 0
 
     public init(onCreated: @escaping (ChannelModel) -> Void) {
         self.onCreated = onCreated
@@ -41,7 +42,7 @@ public struct CreateChannelSheet: View {
                 VStack(spacing: 24) {
                     // Avatar Section with Photo Picker
                     avatarPreviewSection
-                        .padding(.top, 16)
+                        .padding(.top, 8)
 
                     // Form Fields Section
                     formFieldsSection
@@ -62,17 +63,22 @@ public struct CreateChannelSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Новый канал",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30
                 )
             }

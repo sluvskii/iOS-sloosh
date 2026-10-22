@@ -21,6 +21,7 @@ public struct AuthView: View {
     @State private var showResetAlert: Bool = false
     @State private var resetEmail: String = ""
     @State private var shakeOffset: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
 
     @FocusState private var focusedField: Field?
 
@@ -204,17 +205,22 @@ public struct AuthView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
             }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: mode == .signIn ? "Вход" : "Регистрация",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .clear,
                     tintOpacity: 0,
-                    topPadding: 16,
-                    bottomPadding: 8,
+                    topPadding: 8,
+                    bottomPadding: 4,
                     blurOverflow: -30
                 )
             }

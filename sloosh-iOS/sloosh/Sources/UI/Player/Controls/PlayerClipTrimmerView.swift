@@ -980,6 +980,7 @@ private struct PublishMomentSheet: View {
     @ObservedObject var vm: PlayerViewModel
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isCaptionFocused: Bool
+    @State private var scrollOffset: CGFloat = 0
 
     private let maxCaptionLength = 280
 
@@ -1005,11 +1006,16 @@ private struct PublishMomentSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color.black.opacity(0.94))
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Новый момент",
-                    scrollOffset: .constant(100),
+                    scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },
                     tintColor: .black,
@@ -1025,15 +1031,15 @@ private struct PublishMomentSheet: View {
                             if vm.isClipPublishing {
                                 ProgressView()
                                     .tint(.black)
-                                    .frame(width: 92, height: 34)
+                                    .frame(width: 92, height: 44)
                                     .background(Color.white)
                                     .clipShape(Capsule())
                             } else {
                                 Text("Опубликовать")
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(.black)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 16)
+                                    .frame(height: 44)
                                     .background(Color.white)
                                     .clipShape(Capsule())
                             }
