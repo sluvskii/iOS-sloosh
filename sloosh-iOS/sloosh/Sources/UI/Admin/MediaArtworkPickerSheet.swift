@@ -156,7 +156,7 @@ struct MediaArtworkPickerSheet: View {
                             .padding(.horizontal, 16)
                     }
                 }
-                .padding(.top, 4)
+                .padding(.top, 8)
                 .padding(.bottom, 36)
             }
             .scrollContentBackground(.hidden)
@@ -188,13 +188,13 @@ struct MediaArtworkPickerSheet: View {
                             if isSaving {
                                 ProgressView()
                                     .controlSize(.small)
-                                    .tint(.white)
+                                    .tint(.primary)
                                     .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             } else {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                                     .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             }

@@ -2501,6 +2501,9 @@ struct EpisodeDetailsSheet: View {
                     .frame(maxWidth: .infinity)
                     .aspectRatio(16/9, contentMode: .fill)
                     .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
                     
                     // Content
                     VStack(alignment: .leading, spacing: 14) {
@@ -2626,7 +2629,9 @@ struct EpisodeDetailsSheet: View {
                             .padding(.top, 8)
                         }
                     }
-                    .padding(20)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
                 }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in

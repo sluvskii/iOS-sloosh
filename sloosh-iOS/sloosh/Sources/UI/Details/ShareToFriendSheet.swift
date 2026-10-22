@@ -44,7 +44,7 @@ struct ShareToFriendSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
+            .padding(.top, 8)
             .padding(.bottom, 16)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -60,14 +60,8 @@ struct ShareToFriendSheet: View {
                     bottomPadding: 4,
                     blurOverflow: -30,
                     trailing: {
-                        Button {
+                        TelegramGlassIconButton(systemName: "square.and.arrow.up") {
                             showSystemShareSheet = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
                         }
                         .accessibilityLabel("Поделиться")
                     }

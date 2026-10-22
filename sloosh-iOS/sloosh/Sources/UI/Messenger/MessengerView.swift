@@ -906,6 +906,9 @@ private struct NewChatSheet: View {
             }
         }
         .tint(Color.primary)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
     }
 }
 
