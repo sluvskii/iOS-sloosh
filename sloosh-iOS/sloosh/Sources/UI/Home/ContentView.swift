@@ -93,6 +93,13 @@ struct ContentView: View {
                 .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)
                 .tint(Color.slooshAccent)
+                .onChange(of: selectedTab) { _, newTab in
+                    if newTab == .clips {
+                        Task {
+                            await ClipsRepository.shared.fetchFeed()
+                        }
+                    }
+                }
                 
                 if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 && selectedTab != .clips {
                     // Telegram DeviceMetrics thresholds:
@@ -166,6 +173,11 @@ struct ContentView: View {
             .onChange(of: deepLinkManager.targetMovieId) { _, newValue in
                 if newValue != nil {
                     selectedTab = .home
+                }
+            }
+            .onChange(of: deepLinkManager.targetClipId) { _, newValue in
+                if newValue != nil {
+                    selectedTab = .clips
                 }
             }
         }

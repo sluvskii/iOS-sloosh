@@ -17,6 +17,40 @@ public struct MediaMessageCardView: View {
         self.onPlayDirectly = onPlayDirectly
     }
 
+    private var effectiveDuration: Double? {
+        if let d = media.duration, d > 0 {
+            return d
+        }
+        if let end = media.endTime, let start = media.startTime, end > start {
+            return end - start
+        }
+        return nil
+    }
+
+    private func formatTimecode(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        } else {
+            return String(format: "%d:%02d", m, s)
+        }
+    }
+
+    private var clipSubtitle: String? {
+        if let s = media.season, let e = media.episode {
+            if let t = media.translationName, !t.isEmpty {
+                return "\(s) сезон, \(e) серия • \(t)"
+            }
+            return "\(s) сезон, \(e) серия"
+        } else if let year = media.year, !year.isEmpty {
+            return year
+        }
+        return nil
+    }
+
     private var playButton: some View {
         Button {
             let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -29,16 +63,16 @@ public struct MediaMessageCardView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 14, weight: .black))
+                    .font(.system(size: 13, weight: .black))
                 Text("Смотреть")
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.system(size: 14.5, weight: .heavy))
             }
             .foregroundColor(.black)
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
+            .frame(height: 38)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.92))
+                    .fill(Color.white.opacity(0.94))
             )
             .glassEffect(in: Capsule())
         }
@@ -47,14 +81,18 @@ public struct MediaMessageCardView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Постер и заголовок карточки — клик по ним открывает экран деталей (DetailsView)
+            // Постер и метаданные — клик открывает плеер момента или детали фильма
             Button {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
-                onOpenDetails?(media.mediaId)
+                if media.isClip {
+                    onPlayDirectly?(media)
+                } else {
+                    onOpenDetails?(media.mediaId)
+                }
             } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Постер с полным соотношением сторон 2:3 и плашкой рейтинга из HomeView
+                VStack(alignment: .leading, spacing: 7) {
+                    // Постер фильма / момента (соотношение сторон 2:3)
                     ZStack(alignment: .topLeading) {
                         if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
                             AsyncCachedImage(urlString: posterUrl) {
@@ -83,8 +121,38 @@ public struct MediaMessageCardView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
 
-                        // Плашка рейтинга с Главного экрана (HomeView)
-                        if let rating = media.rating, rating > 0 {
+                        // Верхний бейдж: Момент ИЛИ рейтинг фильма
+                        if media.isClip {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles.tv")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                Text("Момент")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3.5)
+                            .glassEffect(.regular, in: Capsule())
+                            .padding(7)
+
+                            // Длительность в стандартном видео-таймкоде (напр. 10:00, 1:25, 0:45)
+                            if let dur = effectiveDuration, dur > 0 {
+                                VStack {
+                                    Spacer()
+                                    HStack {
+                                        Spacer()
+                                        Text(formatTimecode(dur))
+                                            .font(.system(size: 10.5, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 5.5)
+                                            .padding(.vertical, 2.5)
+                                            .background(Color.black.opacity(0.72))
+                                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                            .padding(7)
+                                    }
+                                }
+                            }
+                        } else if let rating = media.rating, rating > 0 {
                             Text(String(format: "%.1f", rating))
                                 .font(.system(size: 12, weight: .heavy))
                                 .foregroundColor(.white)
@@ -96,14 +164,30 @@ public struct MediaMessageCardView: View {
                         }
                     }
 
-                    // Название и год
-                    VStack(alignment: .leading, spacing: 2) {
+                    // Название и метаданные
+                    VStack(alignment: .leading, spacing: 2.5) {
                         Text(media.title)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14.5, weight: .bold))
                             .foregroundColor(.white)
-                            .lineLimit(2)
+                            .lineLimit(1)
 
-                        if let year = media.year, !year.isEmpty {
+                        if media.isClip {
+                            if let sub = clipSubtitle, !sub.isEmpty {
+                                Text(sub)
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .lineLimit(1)
+                            }
+
+                            if let caption = media.caption?.trimmingCharacters(in: .whitespacesAndNewlines), !caption.isEmpty {
+                                Text("«\(caption)»")
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.85))
+                                    .italic()
+                                    .lineLimit(2)
+                                    .padding(.top, 1)
+                            }
+                        } else if let year = media.year, !year.isEmpty {
                             Text(year)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.7))
@@ -114,7 +198,7 @@ public struct MediaMessageCardView: View {
             }
             .buttonStyle(.plain)
 
-            // Белая кнопка "Смотреть" (открывает панель озвучек / запуск плеера напрямую)
+            // Кнопка "Смотреть"
             playButton
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)

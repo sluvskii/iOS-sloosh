@@ -511,8 +511,9 @@ private struct PersonMetadataSection: View {
             if let death = details.deathday, !death.isEmpty {
                 metadataRow(label: "Дата смерти", value: death)
             }
-            if let count = details.filmography?.count, count > 0 {
-                metadataRow(label: "Карьера", value: "\(count) \(declinedProjects(count))")
+            let legitimateFilmography = details.filmography?.filter { !isTalkShowOrReality($0) } ?? []
+            if !legitimateFilmography.isEmpty {
+                metadataRow(label: "Карьера", value: "\(legitimateFilmography.count) \(declinedProjects(legitimateFilmography.count))")
             }
         }
         .padding(.horizontal, 18)
@@ -1386,10 +1387,11 @@ private struct PersonFilmographySection: View {
                 HStack(spacing: 8) {
                     ForEach(PersonDetailViewModel.FilmographyTab.allCases) { tab in
                         let count: Int = {
+                            let items = details.filmography?.filter { !isTalkShowOrReality($0) } ?? []
                             switch tab {
-                            case .all: return details.filmography?.count ?? 0
-                            case .movies: return details.filmography?.filter { $0.type == "movie" }.count ?? 0
-                            case .series: return details.filmography?.filter { $0.type == "tv" }.count ?? 0
+                            case .all: return items.count
+                            case .movies: return items.filter { $0.type == "movie" }.count
+                            case .series: return items.filter { $0.type == "tv" }.count
                             }
                         }()
 
@@ -1555,7 +1557,7 @@ final class PersonDetailViewModel: ObservableObject {
     }
 
     var filteredFilmography: [MediaDto] {
-        guard let list = details?.filmography else { return [] }
+        guard let list = details?.filmography?.filter({ !isTalkShowOrReality($0) }) else { return [] }
         switch selectedFilmographyTab {
         case .all:
             return list

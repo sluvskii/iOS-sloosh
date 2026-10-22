@@ -669,7 +669,7 @@ private struct ContinueWatchingCard: View {
 
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(item.progressText)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold))
                             .monospacedDigit()
                             .foregroundStyle(.white.opacity(0.92))
 

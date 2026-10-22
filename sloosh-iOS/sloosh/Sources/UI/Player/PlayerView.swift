@@ -408,11 +408,14 @@ class PlayerViewModel: ObservableObject {
     static let clipMinDuration: Double = 3.0
     static let clipMaxDuration: Double = 600.0
     @Published var isClipMode = false
+    @Published var isInterfaceLocked = false
     @Published var clipStartTime: Double = 0.0
     @Published var clipEndTime: Double = 0.0
     @Published var isClipPublishing: Bool = false
     @Published var clipCaption: String = ""
     @Published var clipPublishErrorMessage: String? = nil
+    @Published var latestCapturedFrame: UIImage? = nil
+    var onClipPlaybackTimeUpdated: ((Double) -> Void)? = nil
     var pipController: AVPictureInPictureController?
 
     // MARK: - Meta
@@ -1249,11 +1252,13 @@ class PlayerViewModel: ObservableObject {
         rateObserver?.invalidate()
         rateObserver = nil
 
+        isInterfaceLocked = false
         UIApplication.shared.isIdleTimerDisabled = false
     }
 
     /// Полная очистка ресурсов после завершения анимации закрытия плеера
     func cleanup() {
+        detachVideoOutput()
         prepareForDismiss()
         guard !isCleaningUp else { return }
         isCleaningUp = true
@@ -1393,6 +1398,7 @@ class PlayerViewModel: ObservableObject {
     // MARK: - In-Player Clip Trimmer Actions
 
     func enterClipMode() {
+        attachVideoOutputIfNeeded()
         let current = (currentTime.isFinite && !currentTime.isNaN && currentTime >= 0) ? currentTime : 0
         let dur = currentDuration > 0 ? currentDuration : (current + 600)
         let s = max(0.0, current - 10.0)
@@ -1402,18 +1408,24 @@ class PlayerViewModel: ObservableObject {
         clipCaption = ""
         clipPublishErrorMessage = nil
         isClipMode = true
+        isClipPreviewRequested = false
+        isPlaying = false
+        player?.pause()
         if imageGenerator == nil, let asset = player?.currentItem?.asset {
             setupImageGenerator(asset: asset)
         }
         // Нативное поведение видеоредакторов: при входе в обрезку воспроизведение на паузе,
         // кадр выделения показан статично. Превью момента — по тапу на центр (с зацикливанием).
-        seekClip(to: clipStartTime)
-        player?.pause()
+        seekClip(to: clipStartTime) { [weak self] in
+            _ = self?.captureCurrentFrame()
+        }
     }
 
     func exitClipMode() {
         isClipMode = false
         isClipPreviewRequested = false
+        onClipPlaybackTimeUpdated = nil
+        detachVideoOutput()
     }
 
     /// Фиксация выделения момента после жестов триммера (без seek — превью управляет триммер).
@@ -1426,6 +1438,26 @@ class PlayerViewModel: ObservableObject {
     /// Пауза на время взаимодействия с ручками (нативно: обрезка всегда на паузе).
     func pauseForTrim() {
         player?.pause()
+    }
+
+    // MARK: - Динамическое подключение VideoOutput (только на время создания момента)
+
+    func attachVideoOutputIfNeeded() {
+        guard videoOutput == nil, let item = player?.currentItem else { return }
+        let pixelBufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+        ]
+        let vOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: pixelBufferAttributes)
+        item.add(vOutput)
+        self.videoOutput = vOutput
+    }
+
+    func detachVideoOutput() {
+        guard let vOutput = videoOutput else { return }
+        if let item = player?.currentItem {
+            item.remove(vOutput)
+        }
+        self.videoOutput = nil
     }
 
     // MARK: - Превью выбранного момента (детерминированное, в обход неоднозначного togglePlayPause)
@@ -1459,11 +1491,13 @@ class PlayerViewModel: ObservableObject {
     }
 
     /// Захват текущего кадра из работающего декодера плеера (AVPlayerItemVideoOutput).
-    /// Это тот же конвейер, что рендерит картинку на экран, поэтому кадр получается
-    /// всегда, когда видео вообще воспроизводится (в отличие от AVAssetImageGenerator,
-    /// который на проксированных HLS-стримах может молча не выдать ни кадра).
+    /// Подключается только по требованию, забирает уже отрендеренный декодером кадр без доп. перемоток.
     func captureCurrentFrame() -> UIImage? {
-        guard let player, let item = player.currentItem, let videoOutput else { return nil }
+        guard let player, let item = player.currentItem else { return nil }
+        if videoOutput == nil {
+            attachVideoOutputIfNeeded()
+        }
+        guard let videoOutput else { return nil }
         let itemTime = item.currentTime()
         guard let pixelBuffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) else {
             return nil
@@ -1474,27 +1508,22 @@ class PlayerViewModel: ObservableObject {
         let scale = targetWidth / max(1.0, ciImage.extent.width)
         let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         guard let cgImage = Self.sharedCIContext.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cgImage)
-    }
-
-    /// Точный seek с ожиданием фактического завершения (для последовательного сканирования кадров).
-    func seekForCapture(to seconds: Double) async {
-        guard let player else { return }
-        let time = CMTime(seconds: max(0.0, seconds), preferredTimescale: 600)
-        let tol = CMTime(seconds: 0.05, preferredTimescale: 600)
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { _ in
-                continuation.resume()
-            }
-        }
+        let img = UIImage(cgImage: cgImage)
+        self.latestCapturedFrame = img
+        return img
     }
 
     /// Точный seek в режиме момента (границы выделения, зацикливание превью).
-    func seekClip(to seconds: Double) {
-        guard let player else { return }
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+    func seekClip(to seconds: Double, completion: (() -> Void)? = nil) {
+        guard let player else {
+            completion?()
+            return
+        }
+        let time = CMTime(seconds: max(0.0, seconds), preferredTimescale: 600)
         let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { _ in
+            completion?()
+        }
     }
 
     /// Грубый быстрый seek для превью за ручкой триммера (в движении пальца).
@@ -1516,10 +1545,12 @@ class PlayerViewModel: ObservableObject {
         let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Зритель"
         let authorAvatar = user?.photoURL
 
+        let resolvedTitle = !fallbackTitle.isEmpty ? fallbackTitle : (isMovie ? "Фильм" : "Сериал")
+
         let clip = MovieClip(
             mediaId: tmdbId ?? currentKpId ?? 0,
             mediaType: isMovie ? "movie" : "tv",
-            title: fallbackTitle,
+            title: resolvedTitle,
             posterPath: posterUrl,
             backdropPath: backdropUrl,
             logoPath: logoUrl,
@@ -2365,14 +2396,10 @@ class PlayerViewModel: ObservableObject {
         self.legibleDelegate = delegate
         self.legibleOutput = legible
 
-        // Выход кадров декодера: источник честных кадров плёнки триммера «Моментов»
-        // (захват идёт из того же конвейера, что рендерит видео, — работает на любом стриме)
-        let pixelBufferAttributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
-        ]
-        let vOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: pixelBufferAttributes)
-        playerItem.add(vOutput)
-        self.videoOutput = vOutput
+        // Выход кадров декодера: подключается динамически ТОЛЬКО в режиме обрезки момента
+        if self.isClipMode {
+            self.attachVideoOutputIfNeeded()
+        }
 
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -2649,9 +2676,11 @@ class PlayerViewModel: ObservableObject {
                         // Зацикливание превью момента — только во время реального воспроизведения,
                         // чтобы не конфликтовать со scrub-превью триммера на паузе.
                         if t >= self.clipEndTime || t < self.clipStartTime - 0.5 {
+                            self.currentTime = self.clipStartTime
                             self.seekClip(to: self.clipStartTime)
                             return
                         }
+                        self.onClipPlaybackTimeUpdated?(t)
                     }
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t

@@ -309,7 +309,7 @@ private struct DownloadRowView: View {
                         Spacer()
                         Text("\(Int(item.progress * 100))%")
                     }
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 } else if item.status == .pending {
                     Text("В очереди...")

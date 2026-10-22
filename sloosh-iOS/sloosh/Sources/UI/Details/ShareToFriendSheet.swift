@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct ShareToFriendSheet: View {
-    let movie: MediaDetailsDto
+    let movie: MediaDetailsDto?
+    let clip: MovieClip?
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var repo = MessengerRepository.shared
@@ -13,6 +14,12 @@ struct ShareToFriendSheet: View {
 
     init(movie: MediaDetailsDto) {
         self.movie = movie
+        self.clip = nil
+    }
+
+    init(clip: MovieClip) {
+        self.movie = nil
+        self.clip = clip
     }
 
     var body: some View {
@@ -24,19 +31,22 @@ struct ShareToFriendSheet: View {
                 // 2. Горизонтальная лента друзей
                 friendsSection
 
-                // 3. Нижняя секция: Карточка фильма ИЛИ ввод сообщения и кнопка "Отправить"
+                // 3. Нижняя секция: Карточка фильма / момента ИЛИ ввод сообщения и кнопка "Отправить"
                 if !selectedUsers.isEmpty {
                     sendMessageSection
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
-                } else {
-                    moviePreviewCard
+                } else if let clip {
+                    clipPreviewCard(clip)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else if let movie {
+                    moviePreviewCard(movie)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 16)
-            .navigationTitle("Отправить")
+            .navigationTitle(clip != nil ? "Поделиться моментом" : "Отправить")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // Кнопка Закрыть
@@ -67,7 +77,11 @@ struct ShareToFriendSheet: View {
                 await repo.fetchConversations()
             }
             .sheet(isPresented: $showSystemShareSheet) {
-                if let shareUrl = movieShareUrl {
+                if let clip {
+                    let shareUrl = DeepLinkManager.shared.createClipShareURL(for: clip.id)
+                    let text = DeepLinkManager.shared.createClipShareMessage(title: clip.title, clipId: clip.id, caption: clip.caption)
+                    ShareSheet(items: [text, shareUrl])
+                } else if let movie, let shareUrl = movieShareUrl {
                     ShareSheet(items: [shareUrl, movie.title ?? movie.originalTitle ?? "Фильм"])
                 }
             }
@@ -186,7 +200,7 @@ struct ShareToFriendSheet: View {
 
     // MARK: - Movie Preview Card
 
-    private var moviePreviewCard: some View {
+    private func moviePreviewCard(_ movie: MediaDetailsDto) -> some View {
         HStack(spacing: 12) {
             if let posterUrl = movie.displayPosterUrl, !posterUrl.isEmpty {
                 AsyncCachedImage(urlString: posterUrl) {
@@ -230,6 +244,67 @@ struct ShareToFriendSheet: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    // MARK: - Clip Preview Card
+
+    private func clipPreviewCard(_ clip: MovieClip) -> some View {
+        HStack(spacing: 12) {
+            if let thumbUrl = clip.displayThumbnailUrl, !thumbUrl.isEmpty {
+                AsyncCachedImage(urlString: thumbUrl) {
+                    Rectangle().fill(Color.white.opacity(0.08))
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                }
+                .frame(width: 44, height: 62)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "sparkles.tv")
+                            .font(.system(size: 8.5, weight: .semibold))
+                        Text("Момент")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .glassEffect(.regular, in: Capsule())
+
+                    Text(clip.timecodeFormatted)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(clip.title)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                let cleanCaption = clip.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !cleanCaption.isEmpty {
+                    Text("«\(cleanCaption)»")
+                        .font(.system(size: 11.5, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .italic()
+                        .lineLimit(1)
+                } else if !clip.subtitleInfo.isEmpty {
+                    Text(clip.subtitleInfo)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
 
@@ -305,8 +380,9 @@ struct ShareToFriendSheet: View {
     }
 
     private var movieShareUrl: URL? {
+        guard let movie else { return nil }
         let idStr = movie.id ?? String(movie.ids?.kp ?? 0)
-        return URL(string: "https://sloosh.app/movie/\(idStr)")
+        return DeepLinkManager.shared.createShareURL(for: idStr)
     }
 
     private func sendToSelectedFriends() {
@@ -317,14 +393,51 @@ struct ShareToFriendSheet: View {
 
         isSending = true
 
-        let mediaPayload = MediaCardPayload(
-            mediaId: movie.id ?? String(movie.ids?.kp ?? 0),
-            type: movie.type ?? "movie",
-            title: movie.title ?? movie.originalTitle ?? "Фильм",
-            posterUrl: movie.displayPosterUrl,
-            rating: movie.ratings?.kp,
-            year: movie.year?.description
-        )
+        let mediaPayload: MediaCardPayload
+        let toastTitle: String
+        let toastSubtitle: (Int) -> String
+
+        if let clip {
+            mediaPayload = MediaCardPayload(
+                mediaId: "\(clip.mediaId)",
+                type: "clip",
+                title: clip.title,
+                posterUrl: clip.displayThumbnailUrl,
+                rating: nil,
+                year: nil,
+                clipId: clip.id,
+                caption: clip.caption,
+                startTime: clip.startTime,
+                endTime: clip.endTime,
+                duration: clip.duration,
+                authorName: clip.authorName,
+                season: clip.season,
+                episode: clip.episode,
+                translationName: clip.translationName,
+                kpId: clip.kpId,
+                tmdbId: clip.tmdbId
+            )
+            toastTitle = "Момент отправлен! 🚀"
+            toastSubtitle = { count in
+                count == 1 ? "Момент отправлен \(selectedUsers.first?.displayTitle ?? "")" : "Момент отправлен друзьям (\(count))"
+            }
+        } else if let movie {
+            mediaPayload = MediaCardPayload(
+                mediaId: movie.id ?? String(movie.ids?.kp ?? 0),
+                type: movie.type ?? "movie",
+                title: movie.title ?? movie.originalTitle ?? "Фильм",
+                posterUrl: movie.displayPosterUrl,
+                rating: movie.ratings?.kp,
+                year: movie.year?.description
+            )
+            toastTitle = "Отправлено! 🚀"
+            toastSubtitle = { count in
+                count == 1 ? "Фильм отправлен \(selectedUsers.first?.displayTitle ?? "")" : "Фильм отправлен друзьям (\(count))"
+            }
+        } else {
+            isSending = false
+            return
+        }
 
         let textComment = customMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         let targets = selectedUsers
@@ -339,8 +452,8 @@ struct ShareToFriendSheet: View {
 
             isSending = false
             ToastManager.shared.show(
-                title: "Отправлено! 🚀",
-                subtitle: targets.count == 1 ? "Фильм отправлен \(targets.first?.displayTitle ?? "")" : "Фильм отправлен друзьям (\(targets.count))",
+                title: toastTitle,
+                subtitle: toastSubtitle(targets.count),
                 icon: "paperplane.fill"
             )
             dismiss()

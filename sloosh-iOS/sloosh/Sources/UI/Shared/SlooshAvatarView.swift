@@ -106,7 +106,7 @@ public struct SlooshAvatarView: View {
                 .fill((accentColor ?? Color.primary).opacity(0.12))
 
             Text(initialLetter)
-                .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                .font(.system(size: size * 0.42, weight: .bold))
                 .foregroundColor(accentColor ?? Color.primary)
         }
         .frame(width: size, height: size)

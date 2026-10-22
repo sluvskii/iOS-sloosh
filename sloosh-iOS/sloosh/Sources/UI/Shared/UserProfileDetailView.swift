@@ -16,6 +16,7 @@ public struct UserProfileDetailView: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var tagCopiedToast: Bool = false
     @State private var activeMomentClip: MovieClip? = nil
+    @State private var sharingClip: MovieClip? = nil
     @State private var showDirectChat: Bool = false
     @State private var scrollOffsetY: CGFloat = 0.0
 
@@ -92,6 +93,18 @@ public struct UserProfileDetailView: View {
                 scrollOffsetY = newOffset
             }
             .scrollDismissesKeyboard(.interactively)
+            .refreshable {
+                async let userTask = repo.fetchUser(userId: user.id)
+                async let presenceTask = UserPresenceService.shared.fetchUserPresence(userId: user.id)
+                async let clipsTask = clipsRepo.fetchClips(forAuthorId: user.id, forceRefresh: true)
+
+                let (freshUser, freshPresence, freshClips) = await (userTask, presenceTask, clipsTask)
+                if let freshUser {
+                    self.user = freshUser
+                }
+                self.livePresence = freshPresence
+                self.authorClips = freshClips
+            }
             .scrollEdgeEffectStyle(.soft, for: .bottom)
         }
         .ignoresSafeArea(edges: .top)
@@ -112,8 +125,13 @@ public struct UserProfileDetailView: View {
             let presence = await UserPresenceService.shared.fetchUserPresence(userId: user.id)
             self.livePresence = presence
 
-            // 3. Fetch author's published clips
-            let clips = await clipsRepo.fetchClips(forAuthorId: user.id)
+            // 3. Fetch author's published clips (show cached immediately, then refresh from network)
+            let cached = clipsRepo.clips.filter { $0.authorId == user.id }.sorted { $0.createdAtMs > $1.createdAtMs }
+            if !cached.isEmpty {
+                self.authorClips = cached
+                self.isLoadingClips = false
+            }
+            let clips = await clipsRepo.fetchClips(forAuthorId: user.id, forceRefresh: true)
             await MainActor.run {
                 self.authorClips = clips
                 self.isLoadingClips = false
@@ -143,7 +161,7 @@ public struct UserProfileDetailView: View {
         .fullScreenCover(item: $activeMomentClip, onDismiss: {
             activeMomentClip = nil
             Task {
-                let fresh = await clipsRepo.fetchClips(forAuthorId: user.id)
+                let fresh = await clipsRepo.fetchClips(forAuthorId: user.id, forceRefresh: true)
                 await MainActor.run {
                     self.authorClips = fresh
                 }
@@ -152,6 +170,9 @@ public struct UserProfileDetailView: View {
             ClipsFeedView(customClips: authorClips, initialClipId: clip.id, isModal: true)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
+        }
+        .sheet(item: $sharingClip) { clip in
+            ShareToFriendSheet(clip: clip)
         }
         .confirmationDialog(
             "Удалить чат с \(user.displayTitle)?",
@@ -408,6 +429,13 @@ public struct UserProfileDetailView: View {
                         AuthorMomentPosterCard(clip: clip, cardStyle: cardStyle) {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             self.activeMomentClip = clip
+                        }
+                        .contextMenu {
+                            Button {
+                                self.sharingClip = clip
+                            } label: {
+                                Label("Поделиться", systemImage: "paperplane")
+                            }
                         }
                     }
                 }
