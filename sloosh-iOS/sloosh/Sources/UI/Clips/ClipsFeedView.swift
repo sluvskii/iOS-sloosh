@@ -623,6 +623,26 @@ public enum ClipScalingMode: String, CaseIterable {
     case fill = "fill"   // "9:16" - zoomed to fill vertical viewport
 }
 
+// MARK: - Clips Bottom Layout Metrics
+//
+// Единый источник истины для нижней раскладки карточки момента: отступ под плавающий
+// таб-бар, высота полосы прогресса и симметричные зазоры вокруг неё.
+private enum ClipBottomLayout {
+    static let scrubberHeight: CGFloat = 16.0
+    static let symmetricalGap: CGFloat = 12.0
+    static let tabBarClearanceWithHomeIndicator: CGFloat = 84.0
+    static let tabBarClearanceCompact: CGFloat = 52.0
+
+    static func tabBarClearance(bottomSafeArea: CGFloat) -> CGFloat {
+        bottomSafeArea > 20 ? tabBarClearanceWithHomeIndicator : tabBarClearanceCompact
+    }
+
+    /// Отступ от нижнего края экрана до нижней границы полосы прогресса.
+    static func scrubberBottomInset(bottomSafeArea: CGFloat) -> CGFloat {
+        tabBarClearance(bottomSafeArea: bottomSafeArea) + symmetricalGap
+    }
+}
+
 // MARK: - Clips Feed View
 
 public struct ClipsFeedView: View {
@@ -716,6 +736,8 @@ public struct ClipsFeedView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
+
+                        feedViewProgressBar(bottomSafeArea: bottomSafeArea)
 
                         momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
                             .opacity(isInterfaceHidden ? 0.0 : 1.0)
@@ -1300,6 +1322,36 @@ public struct ClipsFeedView: View {
         }
     }
 
+    // MARK: - Fixed Progress Bar Overlay
+
+    /// Полоса прогресса текущего момента.
+    ///
+    /// Рисуется оверлеем ПОВЕРХ ленты, а не внутри карточки: нативный нижний scroll edge
+    /// effect (`.scrollEdgeEffectStyle(.soft, for: .bottom)`) размывает контент у края
+    /// скролла, и полоса прогресса выглядела «запотевшей». Как сиблинг ScrollView она
+    /// остаётся идеально резкой, а пустой слот в карточке сохраняет геометрию пагинга.
+    private func feedViewProgressBar(bottomSafeArea: CGFloat) -> some View {
+        ZStack(alignment: .bottom) {
+            if let clip = currentVisibleClip {
+                ClipProgressBarView(
+                    progressObserver: playback.progressObserver,
+                    clip: clip,
+                    playback: playback,
+                    isResolving: playback.isResolving,
+                    isVideoReady: playback.isVideoReady,
+                    isScrubbing: $isScrubbing
+                )
+                .padding(.horizontal, 16)
+                .frame(height: ClipBottomLayout.scrubberHeight)
+                .padding(.bottom, ClipBottomLayout.scrubberBottomInset(bottomSafeArea: bottomSafeArea))
+                .opacity((showCommentsForClip != nil || isInterfaceHidden) ? 0.0 : 1.0)
+                .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil || isInterfaceHidden)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .allowsHitTesting(showCommentsForClip == nil && !isInterfaceHidden)
+    }
+
     private func handleClipSettled() {
         guard let targetId = currentClipId,
               let clip = activeClips.first(where: { $0.id == targetId }) else { return }
@@ -1363,9 +1415,9 @@ public struct ClipsFeedView: View {
         let topClearance: CGFloat = topSafeArea
 
         // Floating Liquid Glass tab bar clearance ensuring progress bar never touches or overlaps navbar
-        let tabBarClearance: CGFloat = (bottomSafeArea > 20) ? 84.0 : 52.0
-        let scrubberHeight: CGFloat = 16.0
-        let symmetricalGap: CGFloat = 12.0
+        let tabBarClearance = ClipBottomLayout.tabBarClearance(bottomSafeArea: bottomSafeArea)
+        let scrubberHeight = ClipBottomLayout.scrubberHeight
+        let symmetricalGap = ClipBottomLayout.symmetricalGap
 
         // Strictly symmetrical gaps: symmetricalGap between player and scrubber, and symmetricalGap between scrubber and navbar
         let totalBottomClearance = tabBarClearance + (symmetricalGap * 2) + scrubberHeight
@@ -1384,24 +1436,13 @@ public struct ClipsFeedView: View {
             Color.clear
                 .frame(width: width, height: symmetricalGap)
 
-            // 4. Progress bar (полоса перемотки)
-            if isCurrent {
-                ClipProgressBarView(
-                    progressObserver: playback.progressObserver,
-                    clip: clip,
-                    playback: playback,
-                    isResolving: playback.isResolving,
-                    isVideoReady: playback.isVideoReady,
-                    isScrubbing: $isScrubbing
-                )
-                .padding(.horizontal, 16)
+            // 4. Progress bar slot. Сама полоса рисуется фиксированным оверлеем над
+            //    ScrollView (`feedViewProgressBar`): нативный `.soft` scroll edge effect
+            //    размывает всё, что лежит внутри скролла у нижнего края, из-за чего
+            //    прогресс выглядел «запотевшим». Слот оставлен пустым, чтобы высота
+            //    страницы и пагинг остались ровно такими же.
+            Color.clear
                 .frame(height: scrubberHeight)
-                .opacity((showCommentsForClip != nil || isInterfaceHidden) ? 0.0 : 1.0)
-                .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil || isInterfaceHidden)
-            } else {
-                Color.clear
-                    .frame(height: scrubberHeight)
-            }
 
             // 5. Symmetrical gap between progress bar and floating tab bar
             Color.clear
