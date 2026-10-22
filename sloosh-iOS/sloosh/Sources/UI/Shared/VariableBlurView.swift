@@ -277,8 +277,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
 
     /// Закрытие плеера/шитов не всегда вызывает layout у нижнего экрана —
     /// добиваем восстанавлением через короткие задержки.
-    private func scheduleDelayedHeals() {
-        for delay in [0.2, 0.6, 1.2] {
+    private func scheduleDelayedHeals(delays: [Double] = [0.2, 0.6, 1.2]) {
+        for delay in delays {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 guard let self, self.window != nil else { return }
@@ -350,6 +350,13 @@ public final class VariableBlurUIView: UIVisualEffectView {
         if #available(iOS 13.0, *) {
             if self.traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
                 self.resetEffect()
+                // Смена темы (light/dark) проходит с кроссфейдом: UIKit
+                // пересоздаёт/перерисовывает backdrop-слои уже ПОСЛЕ этого хука,
+                // и поставленные здесь фильтры срываются. Добиваем серией
+                // форс-переустановок сразу после завершения перехода — иначе
+                // бар до секунды вырождается в тёмный прямоугольник.
+                guard window != nil else { return }
+                scheduleDelayedHeals(delays: [0.1, 0.35, 0.8])
             }
         }
     }
