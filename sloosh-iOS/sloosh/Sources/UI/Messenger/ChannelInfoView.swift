@@ -179,20 +179,21 @@ public struct ChannelInfoView: View {
         }
         .listStyle(.insetGrouped)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .navigationTitle("Информация")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if isOwner {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showEditSheet = true
-                    } label: {
-                        Text("Изм.")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SlooshTopBar(
+                title: "Информация",
+                scrollOffset: .constant(100),
+                leadingAction: { dismiss() },
+                tintColor: Color(UIColor.systemGroupedBackground),
+                trailing: {
+                    if isOwner {
+                        SlooshGlassTextButton(title: "Изм.") {
+                            showEditSheet = true
+                        }
                     }
                 }
-            }
+            )
         }
         .sheet(isPresented: $showEditSheet) {
             EditChannelSheet(channel: currentChannel) { updated in
@@ -341,15 +342,19 @@ public struct EditChannelSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle("Настройки канала")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                    .foregroundColor(.secondary)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Настройки канала",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30
+                )
             }
         }
         .presentationDetents([.medium, .large])

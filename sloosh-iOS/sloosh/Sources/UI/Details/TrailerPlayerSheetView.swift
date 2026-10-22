@@ -37,32 +37,31 @@ struct TrailerPlayerSheetView: View {
                 }
                 .padding(.bottom, 16)
             }
-            .navigationTitle("Трейлер")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Кнопка закрытия как на других экранах (стандартный нативный размер)
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                }
-
-                // Кнопка «Поделиться» сверху в шапке (стандартный нативный размер)
-                ToolbarItem(placement: .primaryAction) {
-                    if let webUrl = trailer.youtubeWebUrl {
-                        ShareLink(item: webUrl) {
-                            Image(systemName: "square.and.arrow.up")
-                                .symbolRenderingMode(.monochrome)
-                                .foregroundStyle(.primary)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Трейлер",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30,
+                    trailing: {
+                        if let webUrl = trailer.youtubeWebUrl {
+                            ShareLink(item: webUrl) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .accessibilityLabel("Поделиться")
                         }
-                        .tint(.primary)
-                        .buttonStyle(.plain)
                     }
-                }
+                )
             }
             // Закрепленная снизу плавающая кнопка «Открыть в YouTube» (красная, Liquid Glass)
             .safeAreaInset(edge: .bottom) {

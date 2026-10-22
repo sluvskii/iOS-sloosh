@@ -62,15 +62,19 @@ public struct EditProfileSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle("Редактировать профиль")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                    .foregroundColor(.secondary)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Редактировать профиль",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30
+                )
             }
         }
         .presentationDetents([.medium, .large])

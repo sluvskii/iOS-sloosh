@@ -44,8 +44,10 @@ public struct ChatDetailView: View {
                     inputBar
                 }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { navBarContent }
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            headerBar
+        }
         .toolbarVisibility(.hidden, for: .tabBar)
         .navigationDestination(isPresented: $isShowingInfo) {
             ChatInfoView(peerUser: peerUser)
@@ -123,11 +125,10 @@ public struct ChatDetailView: View {
         .tint(Color.primary)
     }
 
-    // MARK: - Navigation Bar Content
+    // MARK: - Custom Header
 
-    @ToolbarContentBuilder
-    private var navBarContent: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
+    private var headerBar: some View {
+        ZStack {
             Button {
                 isShowingInfo = true
             } label: {
@@ -155,25 +156,39 @@ public struct ChatDetailView: View {
                             .transition(.opacity)
                     }
                 }
+                .frame(maxWidth: 200)
             }
             .buttonStyle(.plain)
-        }
 
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Button {
-                isShowingInfo = true
-            } label: {
-                let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
-                SlooshAvatarView(
-                    avatarSource: peerUser.avatarUrl,
-                    fallbackText: peerUser.displayTitle,
-                    size: 34,
-                    showOnline: true,
-                    isOnline: online
-                )
+            HStack {
+                TelegramGlassIconButton(systemName: "chevron.left") {
+                    dismiss()
+                }
+
+                Spacer()
+
+                Button {
+                    isShowingInfo = true
+                } label: {
+                    let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                    SlooshAvatarView(
+                        avatarSource: peerUser.avatarUrl,
+                        fallbackText: peerUser.displayTitle,
+                        size: 34,
+                        showOnline: true,
+                        isOnline: online
+                    )
+                }
+                .buttonStyle(PeakPressButtonStyle())
             }
-            .buttonStyle(PeakPressButtonStyle())
         }
+        .frame(height: 44)
+        .padding(.horizontal, 16)
+        .background(
+            VariableBlurView(tintColor: Color(UIColor.systemGroupedBackground), tintOpacity: 1.0)
+                .padding(.bottom, -60)
+                .ignoresSafeArea(edges: .top)
+        )
     }
 
     // MARK: - Message List (Minute-Grouping Enabled)

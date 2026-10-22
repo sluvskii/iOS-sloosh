@@ -46,32 +46,32 @@ struct ShareToFriendSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 16)
-            .navigationTitle(clip != nil ? "Поделиться моментом" : "Отправить")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Кнопка Закрыть
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: clip != nil ? "Поделиться моментом" : "Отправить",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    titleMaxWidth: 240,
+                    topPadding: 8,
+                    bottomPadding: 4,
+                    blurOverflow: -30,
+                    trailing: {
+                        Button {
+                            showSystemShareSheet = true
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .accessibilityLabel("Поделиться")
                     }
-                    .tint(.white)
-                }
-
-                // Кнопка Системный Шеринг
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showSystemShareSheet = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .tint(.white)
-                }
+                )
             }
             .task {
                 await repo.fetchConversations()
@@ -88,7 +88,7 @@ struct ShareToFriendSheet: View {
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
-        .presentationDetents([.height(340)])
+        .presentationDetents([.height(390)])
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedUsers.isEmpty)
         .preferredColorScheme(.dark)
     }

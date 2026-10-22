@@ -162,40 +162,41 @@ struct MediaArtworkPickerSheet: View {
             .refreshable {
                 await loadAvailableImagesIfNeeded(force: true)
             }
-            .navigationTitle("Оформление")
-            .navigationBarTitleDisplayMode(.inline)
             .tint(.white)
-            .toolbar {
-                // Native Close Button (Pure White, no green tint)
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.white)
-                    }
-                    .tint(.white)
-                    .accessibilityLabel("Закрыть")
-                }
-
-                // Native Save Button (Pure White, no green tint)
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        Task { await saveChanges() }
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.white)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Оформление",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30,
+                    trailing: {
+                        Button {
+                            Task { await saveChanges() }
+                        } label: {
+                            if isSaving {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
+                                    .frame(width: 36, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            } else {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 36, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
                         }
+                        .disabled(isSaving)
+                        .accessibilityLabel("Сохранить")
                     }
-                    .disabled(isSaving)
-                    .tint(.white)
-                    .accessibilityLabel("Сохранить")
-                }
+                )
             }
             .task {
                 setupInitialSelection()

@@ -1628,16 +1628,19 @@ private struct AdminUserDetailSheet: View {
                 .padding(.bottom, 32)
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle("Профиль пользователя")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Закрыть") {
-                        dismiss()
-                    }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Профиль пользователя",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30
+                )
             }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }

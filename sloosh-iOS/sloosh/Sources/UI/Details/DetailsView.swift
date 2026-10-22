@@ -2628,35 +2628,38 @@ struct EpisodeDetailsSheet: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("\(item.season) сезон, \(item.episode) серия")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                }
-                
-                if item.isAvailable {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            isWatched.toggle()
-                            onWatchedToggle(isWatched)
-                        } label: {
-                            Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
-                                .font(.system(size: 17, weight: .medium))
-                                .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "\(item.season) сезон, \(item.episode) серия",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    titleMaxWidth: 250,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30,
+                    trailing: {
+                        if item.isAvailable {
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                isWatched.toggle()
+                                onWatchedToggle(isWatched)
+                            } label: {
+                                Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
+                                    .frame(width: 36, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .accessibilityLabel(isWatched ? "Отметить непросмотренной" : "Отметить просмотренной")
                         }
                     }
-                }
+                )
             }
         }
         .onAppear {

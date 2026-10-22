@@ -1005,35 +1005,42 @@ private struct PublishMomentSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Color.black.opacity(0.94))
-            .navigationTitle("Новый момент")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                    .foregroundStyle(.white.opacity(0.8))
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        publish()
-                    } label: {
-                        if vm.isClipPublishing {
-                            ProgressView()
-                                .tint(.black)
-                        } else {
-                            Text("Опубликовать")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.black)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
-                                .background(Color.white)
-                                .clipShape(Capsule())
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Новый момент",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .black,
+                    tintOpacity: 0.94,
+                    titleMaxWidth: 200,
+                    topPadding: 8,
+                    bottomPadding: 4,
+                    blurOverflow: -30,
+                    trailing: {
+                        Button {
+                            publish()
+                        } label: {
+                            if vm.isClipPublishing {
+                                ProgressView()
+                                    .tint(.black)
+                                    .frame(width: 92, height: 34)
+                                    .background(Color.white)
+                                    .clipShape(Capsule())
+                            } else {
+                                Text("Опубликовать")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.black)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white)
+                                    .clipShape(Capsule())
+                            }
                         }
+                        .disabled(vm.isClipPublishing)
                     }
-                    .disabled(vm.isClipPublishing)
-                }
+                )
             }
         }
         .presentationDetents([.medium, .large])

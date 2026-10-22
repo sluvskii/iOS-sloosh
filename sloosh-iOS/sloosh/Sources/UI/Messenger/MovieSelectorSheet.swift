@@ -48,15 +48,19 @@ public struct MovieSelectorSheet: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
-            .navigationTitle("Прикрепить фильм")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                    .foregroundColor(.primary)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Прикрепить фильм",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30
+                )
             }
             .task {
                 if popularMovies.isEmpty {
