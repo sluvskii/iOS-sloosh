@@ -1264,6 +1264,9 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
+        // Нативный прогрессивный блюр у нижнего края — тот же `.soft` scroll edge
+        // effect, что на экране деталей: видео плавно «растворяется» под таб-баром.
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .onScrollPhaseChange { oldPhase, newPhase in
             scrollPhase = newPhase
             AppDiagnostics.shared.log("[ClipsFeedView] Scroll phase changed from \(oldPhase) to \(newPhase)")
