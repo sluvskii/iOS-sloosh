@@ -60,7 +60,7 @@ public struct EditProfileSheet: View {
                         .padding(.top, 8)
                         .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
             }
             .scrollContentBackground(.hidden)
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
