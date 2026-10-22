@@ -11,7 +11,7 @@ import QuartzCore
 ///
 /// Реализация скопирована из Telegram-iOS с обходом приватного API (CAFilter variableBlur).
 public struct VariableBlurView: View {
-    public var maxBlurRadius: CGFloat = 2
+    public var maxBlurRadius: CGFloat = 10
     public var direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom
     public var tintColor: Color = Color(UIColor.systemBackground)
     public var tintOpacity: Double = 1.0
@@ -23,17 +23,17 @@ public struct VariableBlurView: View {
     /// Насколько далеко (в долях размера) ореол выходит за границу блюра.
     public var haloSpread: CGFloat = 0.6
     /// Во сколько раз радиус блюра ореола больше базового.
-    public var haloRadiusBoost: CGFloat = 3.0
+    public var haloRadiusBoost: CGFloat = 1.6
 
     public init(
-        maxBlurRadius: CGFloat = 2,
+        maxBlurRadius: CGFloat = 10,
         direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom,
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         style: UIBlurEffect.Style = .systemMaterial,
         haloIntensity: Double = 0.7,
         haloSpread: CGFloat = 0.6,
-        haloRadiusBoost: CGFloat = 3.0
+        haloRadiusBoost: CGFloat = 1.6
     ) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
@@ -87,12 +87,12 @@ public struct VariableBlurView: View {
 }
 
 public struct VariableBlurRepresentable: UIViewRepresentable {
-    public var maxBlurRadius: CGFloat = 2
+    public var maxBlurRadius: CGFloat = 10
     public var direction: BlurDirection = .blurredTopClearBottom
     public var style: UIBlurEffect.Style = .systemMaterial
     public var haloIntensity: Double = 0.7
     public var haloSpread: CGFloat = 0.6
-    public var haloRadiusBoost: CGFloat = 3.0
+    public var haloRadiusBoost: CGFloat = 1.6
 
     public enum BlurDirection {
         case blurredTopClearBottom
@@ -102,12 +102,12 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
     }
 
     public init(
-        maxBlurRadius: CGFloat = 2,
+        maxBlurRadius: CGFloat = 10,
         direction: BlurDirection = .blurredTopClearBottom,
         style: UIBlurEffect.Style = .systemMaterial,
         haloIntensity: Double = 0.7,
         haloSpread: CGFloat = 0.6,
-        haloRadiusBoost: CGFloat = 3.0
+        haloRadiusBoost: CGFloat = 1.6
     ) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
@@ -191,12 +191,12 @@ public final class VariableBlurUIView: UIVisualEffectView {
     private var healthTimer: Timer?
 
     public init(
-        maxBlurRadius: CGFloat = 2,
+        maxBlurRadius: CGFloat = 10,
         direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom,
         style: UIBlurEffect.Style = .systemMaterial,
         haloIntensity: Double = 0.7,
         haloSpread: CGFloat = 0.6,
-        haloRadiusBoost: CGFloat = 3.0
+        haloRadiusBoost: CGFloat = 1.6
     ) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction

@@ -600,7 +600,7 @@ struct MoviePosterCard: View {
             ZStack(alignment: .bottomLeading) {
                 // Progressive blur with dark tint at the bottom of the poster
                 VariableBlurView(
-                    maxBlurRadius: 2,
+                    maxBlurRadius: 6,
                     direction: .blurredBottomClearTop,
                     tintColor: .black,
                     tintOpacity: 0.78,
