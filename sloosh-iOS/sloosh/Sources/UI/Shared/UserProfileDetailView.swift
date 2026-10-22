@@ -563,7 +563,7 @@ private struct AuthorMomentPosterCard: View {
 
             // Progressive blur and dark gradient at bottom of poster
             VariableBlurView(
-                maxBlurRadius: 6,
+                maxBlurRadius: 2,
                 direction: .blurredBottomClearTop,
                 tintColor: .black,
                 tintOpacity: 0.78,
