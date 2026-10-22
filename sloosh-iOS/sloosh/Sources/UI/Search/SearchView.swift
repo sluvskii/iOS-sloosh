@@ -8,7 +8,6 @@ struct SearchView: View {
     @State private var showFilters = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
-    @State private var scrollOffset: CGFloat = 0
 
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -20,7 +19,7 @@ struct SearchView: View {
         NavigationStack {
             Group {
                 if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.searchFilters.isEmpty {
-                    SearchDiscoveryView(viewModel: viewModel, scrollOffset: $scrollOffset)
+                    SearchDiscoveryView(viewModel: viewModel)
                 } else if viewModel.isLoading && viewModel.results.isEmpty {
                     ProgressView("Ищем...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -89,37 +88,27 @@ struct SearchView: View {
                     .refreshable {
                         await viewModel.performSearch(reset: true)
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { _, newOffset in
-                        scrollOffset = newOffset
-                    }
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
-                    title: "Поиск",
-                    scrollOffset: $scrollOffset,
-                    trailing: {
-                        TelegramGlassIconButton(
-                            systemName: viewModel.searchFilters.isEmpty
-                                ? "line.3.horizontal.decrease.circle"
-                                : "line.3.horizontal.decrease.circle.fill"
-                        ) {
-                            showFilters = true
-                        }
-                    },
-                    bottom: {
-                        SlooshSearchField(
-                            text: $viewModel.searchQuery,
-                            prompt: "Фильмы и сериалы..."
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 2)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Поиск")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showFilters = true
+                    } label: {
+                        Image(systemName: viewModel.searchFilters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                            .font(.system(size: 19))
+                            .foregroundColor(.primary)
                     }
-                )
+                }
             }
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.searchFilters, context: .search)
@@ -154,7 +143,6 @@ struct SearchView: View {
 
 struct SearchDiscoveryView: View {
     @ObservedObject var viewModel: SearchViewModel
-    @Binding var scrollOffset: CGFloat
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -256,12 +244,6 @@ struct SearchDiscoveryView: View {
                 }
             }
             .padding(.vertical, 16)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
         }
     }
 }
