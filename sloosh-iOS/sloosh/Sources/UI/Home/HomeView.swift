@@ -288,6 +288,7 @@ struct HomeCategoryContentView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
             .refreshable {
                 await viewModel.refresh(category: category)
             }

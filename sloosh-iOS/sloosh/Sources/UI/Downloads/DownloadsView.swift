@@ -109,6 +109,7 @@ struct DownloadsView: View {
                     }
                     .listStyle(.plain)
                     .scrollIndicators(.hidden)
+                    .scrollEdgeEffectStyle(.soft, for: .bottom)
                     .onScrollGeometryChange(for: CGFloat.self) { geometry in
                         geometry.contentOffset.y + geometry.contentInsets.top
                     } action: { oldOffset, newOffset in

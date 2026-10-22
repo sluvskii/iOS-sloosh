@@ -1717,6 +1717,7 @@ struct DetailsView: View {
             .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
         .scrollIndicators(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .background {
             effectiveBackgroundColor
                 .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
@@ -1901,6 +1902,7 @@ struct DetailsView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
             .background {
                 effectiveBackgroundColor
                     .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)

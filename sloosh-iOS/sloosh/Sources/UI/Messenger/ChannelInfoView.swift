@@ -178,6 +178,7 @@ public struct ChannelInfoView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .navigationTitle("Информация")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

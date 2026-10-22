@@ -39,6 +39,7 @@ struct QualitySelectionSheet: View {
             .contentMargins(.horizontal, 20, for: .scrollContent)
             .contentMargins(.top, 16, for: .scrollContent)
             .contentMargins(.bottom, 28, for: .scrollContent)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
             .safeAreaInset(edge: .bottom) {
                 bottomActionButton
             }
