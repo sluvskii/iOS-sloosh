@@ -911,14 +911,20 @@ class HomeViewModel: ObservableObject {
         case .all:
             if selectedFilter == .topRated {
                 if let top = try? await repo.getTopMovies(page: 1, force: false), !top.isEmpty {
-                    return top
+                    return top.filter { !isTalkShowOrReality($0) }
                 }
-                return try? await repo.getTrending(page: 1, force: false)
+                if let trending = try? await repo.getTrending(page: 1, force: false) {
+                    return trending.filter { !isTalkShowOrReality($0) }
+                }
+                return nil
             } else {
                 if let trending = try? await repo.getTrending(page: 1, force: false), !trending.isEmpty {
-                    return trending
+                    return trending.filter { !isTalkShowOrReality($0) }
                 }
-                return try? await repo.getPopularMovies(page: 1, force: false)
+                if let popular = try? await repo.getPopularMovies(page: 1, force: false) {
+                    return popular.filter { !isTalkShowOrReality($0) }
+                }
+                return nil
             }
         case .movies:
             if selectedFilter == .topRated {
@@ -927,7 +933,10 @@ class HomeViewModel: ObservableObject {
                 return try? await repo.getPopularMovies(page: 1, force: false)
             }
         case .tvShows:
-            return try? await repo.getTopTv(page: 1, force: false)
+            if let tv = try? await repo.getTopTv(page: 1, force: false) {
+                return tv.filter { !isTalkShowOrReality($0) }
+            }
+            return nil
         case .cartoons:
             return try? await repo.getCartoons(page: 1, force: false)
         case .anime:
@@ -949,6 +958,8 @@ class HomeViewModel: ObservableObject {
                 case .all:
                     if selectedFilter == .popular {
                         _ = try? await MoviesRepository.shared.getTrending(page: 1)
+                        _ = try? await MoviesRepository.shared.getPopularMovies(page: 1)
+                        _ = try? await MoviesRepository.shared.getPopularTv(page: 1)
                         _ = try? await MoviesRepository.shared.getCartoons(page: 1)
                         _ = try? await MoviesRepository.shared.getPopularAnime(page: 1)
                     } else {
@@ -985,17 +996,38 @@ class HomeViewModel: ObservableObject {
                 switch filter {
                 case .popular:
                     async let trendingTask = MoviesRepository.shared.getTrending(page: cursor.page, force: force)
+                    async let popularMoviesTask = MoviesRepository.shared.getPopularMovies(page: cursor.page, force: force)
+                    async let popularTvTask = MoviesRepository.shared.getPopularTv(page: cursor.page, force: force)
                     async let cartoonsTask = MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
                     async let animeTask = MoviesRepository.shared.getPopularAnime(page: cursor.page, force: force)
 
                     let trending = (try? await trendingTask) ?? []
+                    let popularMovies = (try? await popularMoviesTask) ?? []
+                    let popularTv = (try? await popularTvTask) ?? []
                     let cartoons = (try? await cartoonsTask) ?? []
                     let anime = (try? await animeTask) ?? []
 
-                    if trending.isEmpty && cartoons.isEmpty && anime.isEmpty {
+                    let trendingMovies = trending.filter { $0.isMovieType && !isCartoon($0) }
+                    let trendingTv = trending.filter { $0.isTvType && !isCartoon($0) && !isTalkShowOrReality($0) }
+                    let trendingCartoons = trending.filter { isCartoon($0) && !isAnime($0) }
+                    let trendingAnime = trending.filter { isAnime($0) }
+
+                    let combinedMovies = interleaveLists(primary: trendingMovies, secondary: popularMovies.filter { $0.isMovieType && !isCartoon($0) })
+                    let combinedTv = interleaveLists(primary: trendingTv, secondary: popularTv.filter { $0.isTvType && !isCartoon($0) && !isTalkShowOrReality($0) })
+                    let combinedCartoons = interleaveLists(primary: trendingCartoons, secondary: cartoons.filter { isCartoon($0) && !isAnime($0) })
+                    let combinedAnime = interleaveLists(primary: trendingAnime, secondary: anime.filter { isAnime($0) })
+
+                    let balanced = interleaveBalancedMedia(
+                        movies: combinedMovies,
+                        tv: combinedTv,
+                        cartoons: combinedCartoons,
+                        anime: combinedAnime
+                    )
+
+                    if balanced.isEmpty {
                         return try await MoviesRepository.shared.getPopularMovies(page: cursor.page, force: force)
                     } else {
-                        return interleaveMedia(primary: trending, secondary1: cartoons, secondary2: anime)
+                        return balanced
                     }
                 case .topRated:
                     async let moviesTask = MoviesRepository.shared.getTopMovies(page: cursor.page, force: force)
@@ -1008,11 +1040,17 @@ class HomeViewModel: ObservableObject {
                     let cartoons = (try? await cartoonsTask) ?? []
                     let anime = (try? await animeTask) ?? []
 
-                    let interleaved = interleaveFour(list1: movies, list2: tv, list3: cartoons, list4: anime)
-                    if interleaved.isEmpty {
+                    let filteredTv = tv.filter { $0.isTvType && !isCartoon($0) && !isTalkShowOrReality($0) }
+                    let balanced = interleaveBalancedMedia(
+                        movies: movies.filter { $0.isMovieType && !isCartoon($0) },
+                        tv: filteredTv,
+                        cartoons: cartoons.filter { isCartoon($0) && !isAnime($0) },
+                        anime: anime.filter { isAnime($0) }
+                    )
+                    if balanced.isEmpty {
                         return try await MoviesRepository.shared.getTopMovies(page: cursor.page, force: force)
                     } else {
-                        return interleaved
+                        return balanced
                     }
                 }
             case .movies:
@@ -1025,9 +1063,11 @@ class HomeViewModel: ObservableObject {
             case .tvShows:
                 switch filter {
                 case .popular:
-                    return try await MoviesRepository.shared.getPopularTv(page: cursor.page, force: force)
+                    let raw = try await MoviesRepository.shared.getPopularTv(page: cursor.page, force: force)
+                    return raw.filter { !isTalkShowOrReality($0) }
                 case .topRated:
-                    return try await MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
+                    let raw = try await MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
+                    return raw.filter { !isTalkShowOrReality($0) }
                 }
             case .cartoons:
                 return try await MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
@@ -1066,60 +1106,163 @@ class HomeViewModel: ObservableObject {
         }
     }
 
-    private func interleaveMedia(primary: [MediaDto], secondary1: [MediaDto], secondary2: [MediaDto]) -> [MediaDto] {
+    private func interleaveLists(primary: [MediaDto], secondary: [MediaDto]) -> [MediaDto] {
         var result: [MediaDto] = []
-        var seenIds = Set<String>()
-
-        func appendUnique(_ item: MediaDto) {
-            let id = item.id
-            if !id.isEmpty && !seenIds.contains(id) {
-                seenIds.insert(id)
-                result.append(item)
-            }
-        }
-
-        var pIdx = 0
-        var s1Idx = 0
-        var s2Idx = 0
-
-        while pIdx < primary.count || s1Idx < secondary1.count || s2Idx < secondary2.count {
-            for _ in 0..<4 {
-                if pIdx < primary.count {
-                    appendUnique(primary[pIdx])
-                    pIdx += 1
+        var seen = Set<String>()
+        var p = 0
+        var s = 0
+        while p < primary.count || s < secondary.count {
+            if p < primary.count {
+                let item = primary[p]
+                p += 1
+                if !item.id.isEmpty && !seen.contains(item.id) {
+                    seen.insert(item.id)
+                    result.append(item)
                 }
             }
-            if s1Idx < secondary1.count {
-                appendUnique(secondary1[s1Idx])
-                s1Idx += 1
-            }
-            if s2Idx < secondary2.count {
-                appendUnique(secondary2[s2Idx])
-                s2Idx += 1
+            if s < secondary.count {
+                let item = secondary[s]
+                s += 1
+                if !item.id.isEmpty && !seen.contains(item.id) {
+                    seen.insert(item.id)
+                    result.append(item)
+                }
             }
         }
         return result
     }
 
-    private func interleaveFour(list1: [MediaDto], list2: [MediaDto], list3: [MediaDto], list4: [MediaDto]) -> [MediaDto] {
+    private func interleaveBalancedMedia(
+        movies: [MediaDto],
+        tv: [MediaDto],
+        cartoons: [MediaDto],
+        anime: [MediaDto]
+    ) -> [MediaDto] {
         var result: [MediaDto] = []
         var seenIds = Set<String>()
+        var itemsSinceLastAnime = 10
 
-        func appendUnique(_ item: MediaDto) {
+        func canAppend(_ item: MediaDto) -> Bool {
             let id = item.id
-            if !id.isEmpty && !seenIds.contains(id) {
-                seenIds.insert(id)
-                result.append(item)
+            if id.isEmpty || seenIds.contains(id) { return false }
+            if isTalkShowOrReality(item) { return false }
+            if isAnime(item) {
+                // Строгий баланс: между аниме должно быть минимум 4 фильма или сериала,
+                // чтобы вкладка "Все" не переполнялась аниме.
+                if itemsSinceLastAnime < 4 {
+                    return false
+                }
+            }
+            return true
+        }
+
+        func appendItem(_ item: MediaDto) {
+            seenIds.insert(item.id)
+            result.append(item)
+            if isAnime(item) {
+                itemsSinceLastAnime = 0
+            } else {
+                itemsSinceLastAnime += 1
             }
         }
 
-        let maxSize = max(list1.count, list2.count, list3.count, list4.count)
-        for i in 0..<maxSize {
-            if i < list1.count { appendUnique(list1[i]) }
-            if i < list2.count { appendUnique(list2[i]) }
-            if i < list3.count { appendUnique(list3[i]) }
-            if i < list4.count { appendUnique(list4[i]) }
+        var mIdx = 0
+        var tIdx = 0
+        var cIdx = 0
+        var aIdx = 0
+
+        let maxTotal = movies.count + tv.count + cartoons.count + anime.count
+        var step = 0
+
+        while (mIdx < movies.count || tIdx < tv.count || cIdx < cartoons.count || aIdx < anime.count) && step < maxTotal {
+            step += 1
+
+            // 1. Фильм
+            while mIdx < movies.count {
+                let item = movies[mIdx]
+                mIdx += 1
+                if canAppend(item) {
+                    appendItem(item)
+                    break
+                }
+            }
+
+            // 2. Сериал
+            while tIdx < tv.count {
+                let item = tv[tIdx]
+                tIdx += 1
+                if canAppend(item) {
+                    appendItem(item)
+                    break
+                }
+            }
+
+            // 3. Фильм
+            while mIdx < movies.count {
+                let item = movies[mIdx]
+                mIdx += 1
+                if canAppend(item) {
+                    appendItem(item)
+                    break
+                }
+            }
+
+            // 4. Сериал
+            while tIdx < tv.count {
+                let item = tv[tIdx]
+                tIdx += 1
+                if canAppend(item) {
+                    appendItem(item)
+                    break
+                }
+            }
+
+            // 5. Поочерёдно мультфильм или аниме
+            if step % 2 == 1 {
+                var added = false
+                while cIdx < cartoons.count {
+                    let item = cartoons[cIdx]
+                    cIdx += 1
+                    if canAppend(item) {
+                        appendItem(item)
+                        added = true
+                        break
+                    }
+                }
+                if !added {
+                    while aIdx < anime.count {
+                        let item = anime[aIdx]
+                        aIdx += 1
+                        if canAppend(item) {
+                            appendItem(item)
+                            break
+                        }
+                    }
+                }
+            } else {
+                var added = false
+                while aIdx < anime.count {
+                    let item = anime[aIdx]
+                    aIdx += 1
+                    if canAppend(item) {
+                        appendItem(item)
+                        added = true
+                        break
+                    }
+                }
+                if !added {
+                    while cIdx < cartoons.count {
+                        let item = cartoons[cIdx]
+                        cIdx += 1
+                        if canAppend(item) {
+                            appendItem(item)
+                            break
+                        }
+                    }
+                }
+            }
         }
+
         return result
     }
 
@@ -1138,12 +1281,14 @@ class HomeViewModel: ObservableObject {
 
     private func filterItemsForSelectedCategory(_ items: [MediaDto], category: HomeCategory) -> [MediaDto] {
         switch category {
-        case .all, .anime:
+        case .all:
+            return items.filter { !isTalkShowOrReality($0) }
+        case .anime:
             return items
         case .movies:
             return items.filter { $0.isMovieType && !isCartoon($0) }
         case .tvShows:
-            return items.filter { $0.isTvType && !isCartoon($0) }
+            return items.filter { $0.isTvType && !isCartoon($0) && !isTalkShowOrReality($0) }
         case .cartoons:
             return items.filter { isCartoon($0) && !isAnime($0) }
         }

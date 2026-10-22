@@ -37,7 +37,7 @@ public enum MessageType: String, Codable, Sendable, Hashable {
 }
 
 public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hashable {
-    public var id: String { mediaId }
+    public var id: String { clipId ?? mediaId }
     public let mediaId: String
     public let type: String
     public let title: String
@@ -45,13 +45,37 @@ public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hash
     public let rating: Double?
     public let year: String?
 
+    // Clip-specific metadata
+    public let clipId: String?
+    public let caption: String?
+    public let startTime: Double?
+    public let endTime: Double?
+    public let duration: Double?
+    public let authorName: String?
+    public let season: Int?
+    public let episode: Int?
+    public let translationName: String?
+    public let kpId: Int?
+    public let tmdbId: Int?
+
     public init(
         mediaId: String,
         type: String,
         title: String,
         posterUrl: String? = nil,
         rating: Double? = nil,
-        year: String? = nil
+        year: String? = nil,
+        clipId: String? = nil,
+        caption: String? = nil,
+        startTime: Double? = nil,
+        endTime: Double? = nil,
+        duration: Double? = nil,
+        authorName: String? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        translationName: String? = nil,
+        kpId: Int? = nil,
+        tmdbId: Int? = nil
     ) {
         self.mediaId = mediaId
         self.type = type
@@ -59,6 +83,49 @@ public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hash
         self.posterUrl = posterUrl
         self.rating = rating
         self.year = year
+        self.clipId = clipId
+        self.caption = caption
+        self.startTime = startTime
+        self.endTime = endTime
+        self.duration = duration
+        self.authorName = authorName
+        self.season = season
+        self.episode = episode
+        self.translationName = translationName
+        self.kpId = kpId
+        self.tmdbId = tmdbId
+    }
+
+    public var isClip: Bool {
+        type == "clip" || clipId != nil
+    }
+
+    public func toMovieClip() -> MovieClip? {
+        guard isClip else { return nil }
+        let cId = clipId ?? mediaId
+        let sTime = startTime ?? 0.0
+        let eTime = endTime ?? (sTime + (duration ?? 15.0))
+        return MovieClip(
+            id: cId,
+            mediaId: Int(mediaId) ?? 0,
+            mediaType: season != nil || episode != nil ? "tv" : "movie",
+            title: title,
+            posterPath: posterUrl,
+            backdropPath: posterUrl,
+            season: season,
+            episode: episode,
+            translationName: translationName,
+            startTime: sTime,
+            endTime: eTime,
+            caption: caption ?? "",
+            authorId: "",
+            authorName: authorName ?? "Пользователь",
+            likesCount: 0,
+            commentsCount: 0,
+            viewsCount: 0,
+            kpId: kpId,
+            tmdbId: tmdbId
+        )
     }
 }
 

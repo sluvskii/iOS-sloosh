@@ -79,6 +79,97 @@ func isCartoonByTitle(_ title: String?) -> Bool {
     return words.contains("мультфильм") || words.contains("мультфильмы") || words.contains("аниме")
 }
 
+// MARK: - TV Talk Show & Reality Detection
+
+/// Определяет, является ли медиа развлекательным ТВ-шоу, ток-шоу, интервью, новостями или реалити-шоу.
+/// Используется для фильтрации каталога сериалов и фильмографии актёров,
+/// сохраняя при этом полную доступность таких шоу через глобальный поиск.
+func isTalkShowOrReality(_ item: MediaDto) -> Bool {
+    // 1. Проверка по TMDB Genre ID:
+    // 10767 = Talk (Ток-шоу), 10763 = News (Новости), 10764 = Reality (Реалити-шоу)
+    let genreIds = item.genres?.compactMap { $0.id?.lowercased() } ?? []
+    if genreIds.contains("10767") || genreIds.contains("10763") || genreIds.contains("10764") {
+        return true
+    }
+
+    // 2. Проверка по наименованиям жанров (RU / EN)
+    let genreNames = item.genres?.compactMap { $0.name?.lowercased() } ?? []
+    for name in genreNames {
+        if name.contains("ток-шоу") || name.contains("talk") ||
+           name.contains("реалити") || name.contains("reality") ||
+           name.contains("новости") || name.contains("news") ||
+           name.contains("телешоу") || name.contains("тв-шоу") ||
+           name.contains("тв шоу") || name.contains("интервью") ||
+           name.contains("interview") {
+            return true
+        }
+    }
+
+    // 3. Проверка по названию тайтла (известные разговорные / вечерние шоу / интервью / награды)
+    let title = (item.title ?? item.name ?? item.originalTitle ?? "").lowercased()
+    return isTalkShowOrRealityByTitle(title)
+}
+
+/// Проверка названия на принадлежность к разговорным шоу, интервью и реалити-форматам.
+func isTalkShowOrRealityByTitle(_ rawTitle: String?) -> Bool {
+    guard let title = rawTitle?.lowercased(), !title.isEmpty else { return false }
+
+    let talkPatterns = [
+        "the tonight show",
+        "jimmy kimmel live",
+        "the late late show",
+        "the late show with",
+        "late night with",
+        "the graham norton show",
+        "the daily show",
+        "the ellen degeneres show",
+        "the kelly clarkson show",
+        "the drew barrymore show",
+        "last week tonight",
+        "saturday night live",
+        "good morning america",
+        "entertainment tonight",
+        "inside the actors studio",
+        "hot ones",
+        "73 questions",
+        "actors on actors",
+        "вечерний ургант",
+        "шоу воли",
+        "вдудь",
+        "осторожно: собчак",
+        "алена, блин",
+        "алёна, блин",
+        "что было дальше",
+        "comedy club",
+        "камеди клаб",
+        "голубой огонёк",
+        "голубой огонек",
+        "песня года",
+        "пусть говорят",
+        "прямой эфир",
+        "мужское / женское",
+        "давай поженимся",
+        "битва экстрасенсов",
+        "пацанки",
+        "выжить в дубае",
+        "звёзды в африке",
+        "academy awards",
+        "golden globe awards",
+        "emmy awards",
+        "grammy awards",
+        "премия муз-тв",
+        "премия muz-tv"
+    ]
+
+    for pattern in talkPatterns {
+        if title.contains(pattern) {
+            return true
+        }
+    }
+
+    return false
+}
+
 // MARK: - Translation Name Sanitization
 
 /// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, динамически извлекает язык и флаг)

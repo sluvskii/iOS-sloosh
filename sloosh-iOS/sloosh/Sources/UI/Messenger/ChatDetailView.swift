@@ -11,6 +11,7 @@ public struct ChatDetailView: View {
 
     @State private var selectedMovieIdForDetails: String? = nil
     @State private var selectedMediaForDirectPlay: MediaCardPayload? = nil
+    @State private var selectedClipForPlayback: MovieClip? = nil
     @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var activePlayerConfig: PlayerConfig? = nil
     @State private var isShowingInfo: Bool = false
@@ -69,6 +70,14 @@ public struct ChatDetailView: View {
             activePlayerConfig = nil
         }) { config in
             PlayerView(config: config)
+                .preferredColorScheme(.dark)
+                .environment(\.colorScheme, .dark)
+        }
+        .fullScreenCover(item: $selectedClipForPlayback, onDismiss: {
+            selectedClipForPlayback = nil
+        }) { clip in
+            let fullClip = ClipsRepository.shared.clips.first(where: { $0.id == clip.id }) ?? clip
+            ClipsFeedView(customClips: [fullClip], initialClipId: fullClip.id, isModal: true)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
@@ -191,7 +200,11 @@ public struct ChatDetailView: View {
                                         selectedMovieIdForDetails = movieId
                                     },
                                     onPlayDirectly: { media in
-                                        selectedMediaForDirectPlay = media
+                                        if media.isClip, let clip = media.toMovieClip() {
+                                            selectedClipForPlayback = clip
+                                        } else {
+                                            selectedMediaForDirectPlay = media
+                                        }
                                     },
                                     onReply: { msg in
                                         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
