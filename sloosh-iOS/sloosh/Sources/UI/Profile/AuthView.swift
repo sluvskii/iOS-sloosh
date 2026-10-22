@@ -204,16 +204,19 @@ public struct AuthView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: mode == .signIn ? "Вход" : "Регистрация",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30
+                )
             }
             .onChange(of: email) { _, _ in authRepo.clearError() }
             .onChange(of: password) { _, _ in authRepo.clearError() }

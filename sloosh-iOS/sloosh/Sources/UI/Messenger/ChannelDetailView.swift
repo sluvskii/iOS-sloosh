@@ -150,38 +150,9 @@ public struct ChannelDetailView: View {
                     }
                 }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Button {
-                    isShowingInfo = true
-                } label: {
-                    VStack(spacing: 1) {
-                        Text(currentChannel.name)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                        Text(currentChannel.formattedSubscriberCount)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    isShowingInfo = true
-                } label: {
-                    SlooshAvatarView(
-                        avatarSource: currentChannel.avatarUrl,
-                        fallbackText: currentChannel.name,
-                        size: 34,
-                        isChannel: false
-                    )
-                }
-                .buttonStyle(PeakPressButtonStyle())
-            }
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            headerBar
         }
         .toolbarVisibility(.hidden, for: .tabBar)
         .navigationDestination(isPresented: $isShowingInfo) {
@@ -239,6 +210,55 @@ public struct ChannelDetailView: View {
             pollTask?.cancel()
         }
         .tint(Color.primary)
+    }
+
+    // MARK: - Custom Header
+
+    private var headerBar: some View {
+        ZStack {
+            Button {
+                isShowingInfo = true
+            } label: {
+                VStack(spacing: 1) {
+                    Text(currentChannel.name)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Text(currentChannel.formattedSubscriberCount)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: 200)
+            }
+            .buttonStyle(.plain)
+
+            HStack {
+                TelegramGlassIconButton(systemName: "chevron.left") {
+                    dismiss()
+                }
+
+                Spacer()
+
+                Button {
+                    isShowingInfo = true
+                } label: {
+                    SlooshAvatarView(
+                        avatarSource: currentChannel.avatarUrl,
+                        fallbackText: currentChannel.name,
+                        size: 34,
+                        isChannel: false
+                    )
+                }
+                .buttonStyle(PeakPressButtonStyle())
+            }
+        }
+        .frame(height: 44)
+        .padding(.horizontal, 16)
+        .background(
+            VariableBlurView(tintColor: Color(UIColor.systemGroupedBackground), tintOpacity: 1.0)
+                .padding(.bottom, -60)
+                .ignoresSafeArea(edges: .top)
+        )
     }
 
     // MARK: - Posts Feed

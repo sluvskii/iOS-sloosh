@@ -6,6 +6,7 @@ public struct MessengerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchQuery: String = ""
+    @State private var scrollOffset: CGFloat = 0
     @State private var selectedPeerUser: SlooshUser? = nil
     @State private var selectedChannel: ChannelModel? = nil
     @State private var showAuthSheet: Bool = false
@@ -67,9 +68,29 @@ public struct MessengerView: View {
                     feedList
                 }
             }
-            .navigationTitle("Чаты")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $searchQuery, prompt: "Поиск по имени или @тегу")
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Чаты",
+                    scrollOffset: $scrollOffset,
+                    leadingAction: { dismiss() },
+                    trailing: {
+                        if authRepo.isAuthenticated {
+                            TelegramGlassIconButton(systemName: "square.and.pencil") {
+                                showNewChatSheet = true
+                            }
+                        }
+                    },
+                    bottom: {
+                        SlooshSearchField(
+                            text: $searchQuery,
+                            prompt: "Поиск по имени или @тегу"
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 2)
+                    }
+                )
+            }
             .onChange(of: searchQuery) { _, newValue in
                 searchTask?.cancel()
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,7 +113,6 @@ public struct MessengerView: View {
                     }
                 }
             }
-            .toolbar { toolbarContent }
             .navigationDestination(item: $selectedPeerUser) { peer in
                 ChatDetailView(peerUser: peer)
             }
@@ -292,6 +312,12 @@ public struct MessengerView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
     }
 
     private var searchEmptyState: some View {
@@ -428,21 +454,6 @@ public struct MessengerView: View {
             .buttonStyle(.plain)
 
             Spacer()
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if authRepo.isAuthenticated {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showNewChatSheet = true
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.primary)
-                }
-            }
         }
     }
 
@@ -845,12 +856,28 @@ private struct NewChatSheet: View {
                             }
                         }
                         .scrollContentBackground(.hidden)
+                        .scrollDismissesKeyboard(.interactively)
                     }
                 }
             }
-            .navigationTitle("Новое сообщение")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Имя или @тег пользователя")
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Новое сообщение",
+                    scrollOffset: .constant(100),
+                    leadingIcon: "xmark",
+                    leadingAction: { dismiss() },
+                    tintColor: .clear,
+                    tintOpacity: 0,
+                    topPadding: 16,
+                    bottomPadding: 8,
+                    blurOverflow: -30,
+                    bottom: {
+                        SlooshSearchField(text: $query, prompt: "Имя или @тег пользователя")
+                            .padding(.horizontal, 16)
+                    }
+                )
+            }
             .onChange(of: query) { _, newQ in
                 searchTask?.cancel()
                 let trimmed = newQ.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -867,13 +894,6 @@ private struct NewChatSheet: View {
                     if Task.isCancelled { return }
                     await MainActor.run {
                         isSearching = false
-                    }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
                     }
                 }
             }

@@ -8,6 +8,7 @@ struct SearchView: View {
     @State private var showFilters = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
+    @State private var scrollOffset: CGFloat = 0
 
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -19,7 +20,7 @@ struct SearchView: View {
         NavigationStack {
             Group {
                 if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.searchFilters.isEmpty {
-                    SearchDiscoveryView(viewModel: viewModel)
+                    SearchDiscoveryView(viewModel: viewModel, scrollOffset: $scrollOffset)
                 } else if viewModel.isLoading && viewModel.results.isEmpty {
                     ProgressView("Ищем...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -88,20 +89,37 @@ struct SearchView: View {
                     .refreshable {
                         await viewModel.performSearch(reset: true)
                     }
-                }
-            }
-            .navigationTitle("Поиск")
-            .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showFilters = true
-                    } label: {
-                        Image(systemName: viewModel.searchFilters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                            .font(.system(size: 19))
-                            .foregroundColor(.primary)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { _, newOffset in
+                        scrollOffset = newOffset
                     }
                 }
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                SlooshTopBar(
+                    title: "Поиск",
+                    scrollOffset: $scrollOffset,
+                    trailing: {
+                        TelegramGlassIconButton(
+                            systemName: viewModel.searchFilters.isEmpty
+                                ? "line.3.horizontal.decrease.circle"
+                                : "line.3.horizontal.decrease.circle.fill"
+                        ) {
+                            showFilters = true
+                        }
+                    },
+                    bottom: {
+                        SlooshSearchField(
+                            text: $viewModel.searchQuery,
+                            prompt: "Фильмы и сериалы..."
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 2)
+                    }
+                )
             }
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.searchFilters, context: .search)
@@ -136,6 +154,7 @@ struct SearchView: View {
 
 struct SearchDiscoveryView: View {
     @ObservedObject var viewModel: SearchViewModel
+    @Binding var scrollOffset: CGFloat
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -237,6 +256,12 @@ struct SearchDiscoveryView: View {
                 }
             }
             .padding(.vertical, 16)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
         }
     }
 }

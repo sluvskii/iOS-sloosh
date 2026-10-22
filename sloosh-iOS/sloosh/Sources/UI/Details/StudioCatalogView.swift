@@ -66,6 +66,7 @@ struct StudioCatalogView: View {
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @Environment(\.dismiss) private var dismiss
+    @State private var scrollOffset: CGFloat = 0
 
     init(studioId: String, studioName: String) {
         self.studioId = studioId
@@ -141,8 +142,19 @@ struct StudioCatalogView: View {
                 }
             }
         }
-        .navigationTitle(studioName)
-        .navigationBarTitleDisplayMode(.large)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SlooshTopBar(
+                title: studioName,
+                scrollOffset: $scrollOffset,
+                leadingAction: { dismiss() }
+            )
+        }
         .fullWidthSwipeBack()
         .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {
             if let pending = pendingPlayerConfig {
