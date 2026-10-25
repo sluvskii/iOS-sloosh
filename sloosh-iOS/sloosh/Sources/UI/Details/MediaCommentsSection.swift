@@ -249,7 +249,7 @@ struct MediaCommentsSection: View {
                 }
 
                 if comment.isSpoiler {
-                    SpoilerRedactedView(seed: comment.text.hashValue)
+                    SpoilerRedactedView()
                 } else {
                     Text(comment.text)
                         .font(.system(size: 14))
