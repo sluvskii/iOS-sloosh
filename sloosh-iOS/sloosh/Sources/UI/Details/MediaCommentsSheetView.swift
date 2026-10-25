@@ -527,7 +527,7 @@ struct MediaCommentsSheetView: View {
                     .buttonStyle(.plain)
                 }
 
-                if !isMultilineInput && isSpoiler {
+                if !isExpandedInput && isSpoiler {
                     HStack(spacing: 5) {
                         Image(systemName: "eye.slash.fill")
                             .font(.system(size: 10, weight: .semibold))
@@ -544,7 +544,7 @@ struct MediaCommentsSheetView: View {
                 .regular.interactive(),
                 in: RoundedRectangle(cornerRadius: inputBarCornerRadius, style: .continuous)
             )
-            .animation(.easeInOut(duration: 0.2), value: isMultilineInput)
+            .animation(.easeInOut(duration: 0.2), value: isExpandedInput)
 
             if authRepo.isAuthenticated {
                 if hasTextToSending {
