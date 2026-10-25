@@ -122,16 +122,16 @@ final class SpoilerDustEmitterView: UIView {
     private func configure() {
         let cell = CAEmitterCell()
         cell.contents = Self.speckleImage
-        cell.contentsScale = 2.4
+        cell.contentsScale = 3.2
         cell.color = UIColor.white.cgColor
         cell.emissionRange = .pi * 2.0
         cell.lifetime = 1.0
         cell.lifetimeRange = 0.25
-        cell.scale = 0.4
-        cell.scaleRange = 0.22
+        cell.scale = 0.34
+        cell.scaleRange = 0.16
         cell.velocity = 4.0
         cell.velocityRange = 20.0
-        cell.alphaRange = 0.9
+        cell.alphaRange = 0.85
         cell.birthRate = 1
         cell.name = "dustCell"
 
@@ -151,9 +151,9 @@ final class SpoilerDustEmitterView: UIView {
         emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: bounds.midY)
         emitterLayer.emitterSize = CGSize(width: max(bounds.width, 1), height: max(bounds.height, 1))
 
-        // Зерно мелкое, поэтому плотность выше телеграмовской базовой.
+        // Зерно совсем мелкое, поэтому плотность выше телеграмовской базовой.
         let square = Float(bounds.width * bounds.height)
-        emitterLayer.emitterCells?.first?.birthRate = min(15_000, max(400, square * 0.6))
+        emitterLayer.emitterCells?.first?.birthRate = min(18_000, max(500, square * 0.9))
     }
 
     func setActive(_ active: Bool) {
