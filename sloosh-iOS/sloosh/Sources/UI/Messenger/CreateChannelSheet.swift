@@ -69,23 +69,19 @@ public struct CreateChannelSheet: View {
                 scrollOffset = newOffset
             }
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "Новый канал",
                     scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
-                    leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30
+                    leadingAction: { dismiss() }
                 )
             }
         }
         .tint(Color.primary)
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationBackground {
             Color.clear.glassEffect(in: .rect)
         }

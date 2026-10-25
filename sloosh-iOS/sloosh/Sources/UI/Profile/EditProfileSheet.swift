@@ -42,7 +42,7 @@ public struct EditProfileSheet: View {
                 VStack(spacing: 24) {
                     // Avatar Picker Section
                     avatarPickerSection
-                        .padding(.top, 8)
+                        .padding(.top, 12)
 
                     // Profile Details Form
                     formFieldsSection
@@ -69,25 +69,21 @@ public struct EditProfileSheet: View {
                 scrollOffset = newOffset
             }
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "Редактировать профиль",
                     scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
-                    leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30
+                    leadingAction: { dismiss() }
                 )
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationBackground {
             Color.clear.glassEffect(in: .rect)
         }
+        .preferredColorScheme(.dark)
         .onAppear {
             let user = authRepo.currentUser
             self.displayName = user?.displayName ?? ""
@@ -106,7 +102,7 @@ public struct EditProfileSheet: View {
                         avatarSource: avatarDataString,
                         fallbackText: displayName.isEmpty ? (tag.isEmpty ? "S" : tag) : displayName,
                         size: 96,
-                        accentColor: Color.slooshAccent
+                        accentColor: Color.white.opacity(0.85)
                     )
 
                     // Camera Badge
@@ -115,7 +111,7 @@ public struct EditProfileSheet: View {
                         .frame(width: 32, height: 32)
                         .overlay(
                             Circle()
-                                .fill(Color.slooshAccent)
+                                .fill(Color.white)
                                 .frame(width: 28, height: 28)
                                 .overlay(
                                     Image(systemName: "camera.fill")
@@ -251,9 +247,9 @@ public struct EditProfileSheet: View {
             .frame(height: 52)
             .background(
                 Capsule()
-                    .fill(isFormValid ? Color.slooshAccent : Color.slooshAccent.opacity(0.4))
+                    .fill(isFormValid ? Color.white : Color.white.opacity(0.35))
             )
-            .glassEffect(in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
         }
         .disabled(!isFormValid)
         .buttonStyle(PeakPressButtonStyle())

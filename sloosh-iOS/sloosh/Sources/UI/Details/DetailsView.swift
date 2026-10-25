@@ -2503,7 +2503,7 @@ struct EpisodeDetailsSheet: View {
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
                     
                     // Content
                     VStack(alignment: .leading, spacing: 14) {
@@ -2640,32 +2640,24 @@ struct EpisodeDetailsSheet: View {
                 scrollOffset = newOffset
             }
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "\(item.season) сезон, \(item.episode) серия",
                     scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
                     leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
                     titleMaxWidth: 250,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30,
                     trailing: {
                         if item.isAvailable {
-                            Button {
+                            TelegramGlassIconButton(
+                                systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle",
+                                tintColor: isWatched ? .white : Color(UIColor.secondaryLabel)
+                            ) {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
                                 generator.impactOccurred()
                                 isWatched.toggle()
                                 onWatchedToggle(isWatched)
-                            } label: {
-                                Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
-                                    .font(.system(size: 19, weight: .medium))
-                                    .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .accessibilityLabel(isWatched ? "Отметить непросмотренной" : "Отметить просмотренной")
                         }
@@ -3318,7 +3310,9 @@ struct InlineEpisodesSection: View {
             )
             .environmentObject(viewModel)
             .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            .presentationDragIndicator(.hidden)
+            .presentationBackground { Color.clear.glassEffect(in: .rect) }
+            .preferredColorScheme(.dark)
         }
     }
 

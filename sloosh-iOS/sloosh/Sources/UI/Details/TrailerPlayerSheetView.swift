@@ -7,6 +7,7 @@ struct TrailerPlayerSheetView: View {
     let trailer: TrailerVideoDto
     @Environment(\.dismiss) private var dismiss
     @State private var scrollOffset: CGFloat = 0
+    @State private var showShareSheet: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -27,7 +28,7 @@ struct TrailerPlayerSheetView: View {
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
 
                     // Trailer Title (No line limit, multiline)
                     Text(trailer.name)
@@ -44,25 +45,16 @@ struct TrailerPlayerSheetView: View {
                 scrollOffset = newOffset
             }
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "Трейлер",
                     scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
                     leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30,
                     trailing: {
-                        if let webUrl = trailer.youtubeWebUrl {
-                            ShareLink(item: webUrl) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: .circle)
+                        if trailer.youtubeWebUrl != nil {
+                            TelegramGlassIconButton(systemName: "square.and.arrow.up") {
+                                showShareSheet = true
                             }
                             .accessibilityLabel("Поделиться")
                         }
@@ -73,10 +65,16 @@ struct TrailerPlayerSheetView: View {
             .safeAreaInset(edge: .bottom) {
                 youtubeBottomButton
             }
+            .sheet(isPresented: $showShareSheet) {
+                if let webUrl = trailer.youtubeWebUrl {
+                    ShareSheet(items: [webUrl, trailer.name])
+                }
+            }
         }
         .presentationDetents([.height(440)])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Floating Red YouTube Button

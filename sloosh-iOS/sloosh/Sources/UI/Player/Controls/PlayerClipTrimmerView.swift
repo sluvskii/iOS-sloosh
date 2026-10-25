@@ -1012,6 +1012,7 @@ private struct PublishMomentSheet: View {
                 scrollOffset = newOffset
             }
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: "Новый момент",
@@ -1021,9 +1022,10 @@ private struct PublishMomentSheet: View {
                     tintColor: .black,
                     tintOpacity: 0.94,
                     titleMaxWidth: 200,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30,
+                    topPadding: 0,
+                    bottomPadding: SheetMetrics.bottomPadding,
+                    blurOverflow: SheetMetrics.blurOverflow,
+                    showsGrabber: true,
                     trailing: {
                         Button {
                             publish()
@@ -1050,7 +1052,7 @@ private struct PublishMomentSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
     }

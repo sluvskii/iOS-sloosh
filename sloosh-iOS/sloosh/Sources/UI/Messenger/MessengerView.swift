@@ -867,17 +867,12 @@ private struct NewChatSheet: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "Новое сообщение",
                     scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
                     leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30,
                     bottom: {
                         SlooshSearchField(text: $query, prompt: "Имя или @тег пользователя")
                             .padding(.horizontal, 16)
@@ -907,7 +902,7 @@ private struct NewChatSheet: View {
         }
         .tint(Color.primary)
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
     }
 }

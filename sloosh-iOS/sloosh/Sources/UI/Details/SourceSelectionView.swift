@@ -165,23 +165,24 @@ struct SourceSelectionView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isSelectingQuality)
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                headerBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
-                    .background(
-                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                    )
+                SlooshSheetHeader {
+                    headerBar
+                        .padding(.horizontal, 16)
+                }
+                .background(
+                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                        .padding(.bottom, SheetMetrics.blurOverflow)
+                        .ignoresSafeArea(edges: .top)
+                )
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
         .presentationDetents([.fraction(0.62)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
     }
 
     private var headerBar: some View {
