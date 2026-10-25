@@ -185,21 +185,35 @@ struct MediaCommentsSheetView: View {
         }
     }
 
+    private var hasError: Bool { repo.errorByKey[mediaKey] != nil }
+
     private var emptyState: some View {
         ScrollView {
-            AppEmptyStateView(
-                icon: "bubble.left.and.bubble.right",
-                title: "Пока нет комментариев",
-                description: "Поделитесь первым впечатлением — это займёт пару секунд.",
-                action: .init(label: authRepo.isAuthenticated ? "Написать" : "Войти") {
-                    if authRepo.isAuthenticated {
-                        isComposerFocused = true
-                    } else {
-                        showAuthSheet = true
+            if hasError {
+                AppEmptyStateView(
+                    icon: "wifi.exclamationmark",
+                    title: "Не удалось загрузить",
+                    description: "Проверьте соединение и попробуйте снова.",
+                    action: .init(label: "Повторить") {
+                        Task { await repo.fetch(mediaKey: mediaKey, force: true) }
                     }
-                }
-            )
-            .frame(minHeight: 420)
+                )
+                .frame(minHeight: 420)
+            } else {
+                AppEmptyStateView(
+                    icon: "bubble.left.and.bubble.right",
+                    title: "Пока нет комментариев",
+                    description: "Поделитесь первым впечатлением — это займёт пару секунд.",
+                    action: .init(label: authRepo.isAuthenticated ? "Написать" : "Войти") {
+                        if authRepo.isAuthenticated {
+                            isComposerFocused = true
+                        } else {
+                            showAuthSheet = true
+                        }
+                    }
+                )
+                .frame(minHeight: 420)
+            }
         }
         .refreshable {
             await repo.fetch(mediaKey: mediaKey, force: true)
