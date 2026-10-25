@@ -12,6 +12,7 @@ struct MediaCommentsSection: View {
     @ObservedObject private var authRepo = AuthRepository.shared
     @State private var showSheet: Bool = false
     @State private var focusComposer: Bool = false
+    @State private var selectedAuthor: SlooshUser?
 
     private var comments: [MediaComment] { repo.comments(for: mediaKey) }
     private var previewComments: [MediaComment] { Array(comments.prefix(2)) }
@@ -44,7 +45,26 @@ struct MediaCommentsSection: View {
             await repo.fetch(mediaKey: mediaKey)
         }
         .sheet(isPresented: $showSheet) {
-            MediaCommentsSheetView(mediaKey: mediaKey, autoFocusComposer: focusComposer)
+            MediaCommentsSheetView(
+                mediaKey: mediaKey,
+                autoFocusComposer: focusComposer
+            ) { user in
+                // Как в «Моментах»: закрываем лист и пушим профиль в навигацию.
+                showSheet = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    selectedAuthor = user
+                }
+            }
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { selectedAuthor != nil },
+            set: { if !$0 { selectedAuthor = nil } }
+        )) {
+            if let user = selectedAuthor {
+                UserProfileDetailView(user: user, chatContext: false)
+                    .navigationBarBackButtonHidden(true)
+                    .toolbar(.hidden, for: .navigationBar)
+            }
         }
     }
 
