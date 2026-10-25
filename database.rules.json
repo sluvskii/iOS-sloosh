@@ -1,4 +1,4 @@
-{
+﻿{
   "rules": {
     ".read": false,
     ".write": false,
@@ -93,6 +93,32 @@
       ".read": true,
       "$mediaKey": {
         ".write": true
+      }
+    },
+
+    "media_comments": {
+      ".read": true,
+      "$mediaKey": {
+        ".indexOn": ["createdAtMs"],
+        "$commentId": {
+          ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && data.child('authorId').val() == auth.uid))",
+          ".validate": "newData.hasChildren(['authorId', 'authorName', 'text', 'createdAtMs']) && newData.child('text').isString()",
+          "likedBy": {
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid",
+              ".validate": "newData.isBoolean()"
+            }
+          }
+        }
+      }
+    },
+
+    "media_comment_reports": {
+      ".read": "auth != null",
+      "$commentId": {
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
       }
     },
 
