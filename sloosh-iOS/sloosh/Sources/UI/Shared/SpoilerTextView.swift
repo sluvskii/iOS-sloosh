@@ -120,22 +120,42 @@ final class SpoilerDustEmitterView: UIView {
     }
 
     private func configure() {
-        let cell = CAEmitterCell()
-        cell.contents = Self.speckleImage
-        cell.contentsScale = 3.2
-        cell.color = UIColor.white.cgColor
-        cell.emissionRange = .pi * 2.0
-        cell.lifetime = 1.0
-        cell.lifetimeRange = 0.25
-        cell.scale = 0.34
-        cell.scaleRange = 0.16
-        cell.velocity = 4.0
-        cell.velocityRange = 20.0
-        cell.alphaRange = 0.85
-        cell.birthRate = 1
-        cell.name = "dustCell"
+        let fine = CAEmitterCell()
+        fine.contents = Self.speckleImage
+        fine.contentsScale = 3.2
+        fine.color = UIColor.white.cgColor
+        fine.emissionRange = .pi * 2.0
+        fine.lifetime = 1.0
+        fine.lifetimeRange = 0.35
+        fine.scale = 0.38
+        fine.scaleRange = 0.3
+        fine.velocity = 4.0
+        fine.velocityRange = 20.0
+        // Прозрачность у каждой пылинки своя: от еле заметной до плотной.
+        fine.alphaRange = 0.85
+        fine.alphaSpeed = -0.12
+        fine.birthRate = 1
+        fine.name = "dustFine"
 
-        emitterLayer.emitterCells = [cell]
+        // Редкие более крупные и полностью непрозрачные крупинки — дают
+        // ту самую «неоднородность» телеграмовской пыли.
+        let bright = CAEmitterCell()
+        bright.contents = Self.speckleImage
+        bright.contentsScale = 2.6
+        bright.color = UIColor.white.cgColor
+        bright.emissionRange = .pi * 2.0
+        bright.lifetime = 0.9
+        bright.lifetimeRange = 0.3
+        bright.scale = 0.52
+        bright.scaleRange = 0.18
+        bright.velocity = 3.0
+        bright.velocityRange = 16.0
+        bright.alphaRange = 0.15
+        bright.alphaSpeed = -0.2
+        bright.birthRate = 1
+        bright.name = "dustBright"
+
+        emitterLayer.emitterCells = [fine, bright]
         emitterLayer.emitterShape = .rectangle
         emitterLayer.emitterMode = .volume
         emitterLayer.emitterPosition = .zero
@@ -151,9 +171,11 @@ final class SpoilerDustEmitterView: UIView {
         emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: bounds.midY)
         emitterLayer.emitterSize = CGSize(width: max(bounds.width, 1), height: max(bounds.height, 1))
 
-        // Зерно совсем мелкое, поэтому плотность выше телеграмовской базовой.
+        // Пылинок меньше: каждая заметнее, поле дышит, а не «шумит».
         let square = Float(bounds.width * bounds.height)
-        emitterLayer.emitterCells?.first?.birthRate = min(18_000, max(500, square * 0.9))
+        let density = min(9_000, max(350, square * 0.35))
+        emitterLayer.emitterCells?.first?.birthRate = density
+        emitterLayer.emitterCells?.last?.birthRate = density * 0.12
     }
 
     func setActive(_ active: Bool) {
