@@ -320,6 +320,7 @@ extension SlooshTopBar where Bottom == EmptyView {
         bottomPadding: CGFloat = 0,
         blurThreshold: CGFloat = 30,
         blurOverflow: CGFloat = -60,
+        showsGrabber: Bool = false,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.init(
@@ -335,6 +336,7 @@ extension SlooshTopBar where Bottom == EmptyView {
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
             showsBottom: false,
+            showsGrabber: showsGrabber,
             trailing: trailing,
             bottom: { EmptyView() }
         )
@@ -354,6 +356,7 @@ extension SlooshTopBar where Trailing == EmptyView {
         bottomPadding: CGFloat = 0,
         blurThreshold: CGFloat = 30,
         blurOverflow: CGFloat = -60,
+        showsGrabber: Bool = false,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) {
         self.init(
@@ -369,6 +372,7 @@ extension SlooshTopBar where Trailing == EmptyView {
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
             showsBottom: true,
+            showsGrabber: showsGrabber,
             trailing: { EmptyView() },
             bottom: bottom
         )
