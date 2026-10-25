@@ -122,16 +122,16 @@ final class SpoilerDustEmitterView: UIView {
     private func configure() {
         let cell = CAEmitterCell()
         cell.contents = Self.speckleImage
-        cell.contentsScale = 1.8
+        cell.contentsScale = 2.4
         cell.color = UIColor.white.cgColor
         cell.emissionRange = .pi * 2.0
         cell.lifetime = 1.0
         cell.lifetimeRange = 0.25
-        cell.scale = 0.5
+        cell.scale = 0.4
         cell.scaleRange = 0.22
         cell.velocity = 4.0
         cell.velocityRange = 20.0
-        cell.alphaRange = 1.0
+        cell.alphaRange = 0.9
         cell.birthRate = 1
         cell.name = "dustCell"
 
@@ -151,9 +151,9 @@ final class SpoilerDustEmitterView: UIView {
         emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: bounds.midY)
         emitterLayer.emitterSize = CGSize(width: max(bounds.width, 1), height: max(bounds.height, 1))
 
-        // Плотность как в Telegram: квадрат площади × 0.35.
+        // Зерно мелкое, поэтому плотность выше телеграмовской базовой.
         let square = Float(bounds.width * bounds.height)
-        emitterLayer.emitterCells?.first?.birthRate = min(60_000, max(300, square * 0.35))
+        emitterLayer.emitterCells?.first?.birthRate = min(15_000, max(400, square * 0.6))
     }
 
     func setActive(_ active: Bool) {
@@ -162,14 +162,34 @@ final class SpoilerDustEmitterView: UIView {
 
     // MARK: Speckle
 
-    /// Крошечная мягкая пылинка вместо ассета Telegram (TextSpeckle).
+    /// Крошечное мягкое зерно вместо ассета Telegram (TextSpeckle):
+    /// радиальный градиент, чтобы пылинка не читалась как «кружок».
     private static func makeSpeckle() -> CGImage? {
-        let size = CGSize(width: 8, height: 8)
+        let size = CGSize(width: 6, height: 6)
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { context in
-            let rect = CGRect(x: 1.5, y: 1.5, width: 5, height: 5)
-            context.cgContext.setFillColor(UIColor.white.cgColor)
-            context.cgContext.fillEllipse(in: rect)
+            let cg = context.cgContext
+            let colors = [
+                UIColor.white.withAlphaComponent(1.0).cgColor,
+                UIColor.white.withAlphaComponent(0.75).cgColor,
+                UIColor.white.withAlphaComponent(0.0).cgColor
+            ] as CFArray
+            let locations: [CGFloat] = [0.0, 0.45, 1.0]
+            guard let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: colors,
+                locations: locations
+            ) else { return }
+
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            cg.drawRadialGradient(
+                gradient,
+                startCenter: center,
+                startRadius: 0,
+                endCenter: center,
+                endRadius: size.width / 2,
+                options: []
+            )
         }
         return image.cgImage
     }
