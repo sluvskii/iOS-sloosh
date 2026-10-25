@@ -396,6 +396,38 @@ public final class MediaCommentsRepository: ObservableObject {
         }
     }
 
+    /// Первичная активация прав: пока список `admins` пуст, владелец может
+    /// добавить себя сам (дальше правило закрывается — numChildren() != 0).
+    public func claimAdminAccess() async -> Bool {
+        guard let uid = AuthRepository.shared.currentUser?.id, !uid.isEmpty else {
+            lastModerationError = "Войдите в аккаунт"
+            return false
+        }
+        guard let url = await makeURL(path: "admins/\(uid)") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 10
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("true".utf8)
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                lastModerationError = moderationFailureMessage(status: (response as? HTTPURLResponse)?.statusCode)
+                return false
+            }
+
+            hasServerAdminAccess = true
+            lastModerationError = nil
+            await fetchReports()
+            return true
+        } catch {
+            lastModerationError = MediaCommentError.network.localizedDescription
+            return false
+        }
+    }
+
     /// Проверяет, что UID пользователя действительно есть в `admins` на сервере.
     public func checkServerAdminAccess() async {
         guard let uid = AuthRepository.shared.currentUser?.id, !uid.isEmpty else {
