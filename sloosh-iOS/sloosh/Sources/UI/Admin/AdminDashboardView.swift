@@ -1022,28 +1022,52 @@ public struct AdminDashboardView: View {
                 Spacer()
             }
 
-            Text("Опубликуйте database.rules.json и добавьте свой UID в узел admins — иначе кнопки ниже вернут отказ.")
+            Text("Опубликуйте базу правил, затем нажмите «Активировать права» — приложение само добавит ваш UID в admins.")
                 .font(.system(size: 11.5))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let uid = authRepo.currentUser?.id, !uid.isEmpty {
+            HStack(spacing: 8) {
                 Button {
-                    UIPasteboard.general.string = uid
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastManager.shared.show(title: "UID скопирован", icon: "doc.on.doc.fill")
+                    Task {
+                        let ok = await commentsRepo.claimAdminAccess()
+                        ToastManager.shared.show(
+                            title: ok ? "Права администратора активированы" : (commentsRepo.lastModerationError ?? "Не удалось активировать"),
+                            icon: ok ? "checkmark.shield.fill" : "exclamationmark.triangle.fill",
+                            iconColor: ok ? nil : .red
+                        )
+                    }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Скопировать UID")
-                            .font(.system(size: 11.5, weight: .semibold))
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Активировать права")
+                            .font(.system(size: 12, weight: .semibold))
                     }
-                    .padding(.horizontal, 10)
-                    .frame(height: 28)
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
                     .glassEffect(.regular.interactive(), in: Capsule())
                 }
                 .buttonStyle(.plain)
+
+                if let uid = authRepo.currentUser?.id, !uid.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = uid
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        ToastManager.shared.show(title: "UID скопирован", icon: "doc.on.doc.fill")
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Скопировать UID")
+                                .font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(12)
