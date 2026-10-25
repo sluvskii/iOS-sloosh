@@ -88,7 +88,7 @@ struct MediaCommentsSection: View {
             HStack(spacing: 12) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.slooshAccent)
+                    .foregroundStyle(.white.opacity(0.6))
                     .frame(width: 40, height: 40)
                     .glassEffect(.regular.interactive(), in: .circle)
 
@@ -187,18 +187,18 @@ struct MediaCommentsSection: View {
                 HStack(spacing: 6) {
                     Text(comments.count > 2 ? "Смотреть все \(comments.count)" : "Смотреть все")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.75))
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.white.opacity(0.35))
 
                     Spacer()
 
                     if authRepo.isAuthenticated {
                         Text("Написать")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.slooshAccent)
+                            .foregroundStyle(.white.opacity(0.85))
                     }
                 }
                 .padding(.horizontal, 14)
@@ -218,14 +218,14 @@ struct MediaCommentsSection: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(comment.authorName)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
 
                     Spacer(minLength: 6)
 
                     Text(comment.timeAgoFormatted)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.white.opacity(0.4))
                 }
 
                 if comment.isSpoiler {
@@ -235,11 +235,11 @@ struct MediaCommentsSection: View {
                         Text("Спойлер")
                             .font(.system(size: 12, weight: .semibold))
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.75))
                 } else {
                     Text(comment.text)
                         .font(.system(size: 14))
-                        .foregroundStyle(.primary.opacity(0.92))
+                        .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
@@ -272,12 +272,12 @@ struct MediaCommentsSection: View {
 
     private func avatarFallback(_ comment: MediaComment) -> some View {
         Circle()
-            .fill(Color.slooshAccent.opacity(0.18))
+            .fill(Color.white.opacity(0.12))
             .frame(width: 26, height: 26)
             .overlay(
                 Text(comment.authorInitials)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.slooshAccent)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.8))
             )
     }
 

@@ -1,33 +1,64 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Media Comments Sheet
+// MARK: - Media Comments Sheet (.clips-style)
 
 /// Лист комментариев к фильму или сериалу.
-/// Открывается из секции `MediaCommentsSection` на экране деталей.
+/// Визуально повторяет шторку комментариев «Моментов»: кастомная шапка
+/// с VariableBlur, стеклянные аватары, бесшовный ввод снизу.
 struct MediaCommentsSheetView: View {
     let mediaKey: String
     var autoFocusComposer: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var repo = MediaCommentsRepository.shared
-    @ObservedObject private var authRepo = AuthRepository.shared
+    @StateObject private var authRepo = AuthRepository.shared
 
-    @State private var text: String = ""
+    @State private var commentText: String = ""
     @State private var isSpoiler: Bool = false
     @State private var isSending: Bool = false
     @State private var sort: MediaCommentSort = .newest
     @State private var revealedSpoilers: Set<String> = []
+    @State private var showEditProfileSheet: Bool = false
     @State private var showAuthSheet: Bool = false
+    @State private var showSignOutAlert: Bool = false
     @State private var authorProfile: SlooshUser?
     @State private var deleteTarget: MediaComment?
     @State private var reportTarget: MediaComment?
     @State private var cooldownRemaining: Int = 0
     @State private var cooldownTask: Task<Void, Never>?
-    @FocusState private var isComposerFocused: Bool
+    @FocusState private var isInputFocused: Bool
 
     private var comments: [MediaComment] { repo.comments(for: mediaKey) }
     private var isLoading: Bool { repo.isLoading(mediaKey) }
+    private var hasError: Bool { repo.errorByKey[mediaKey] != nil }
+
+    private var hasTextToSending: Bool {
+        !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isExpandedInput: Bool {
+        commentText.contains("\n") || commentText.count > 32
+    }
+
+    private var inputBarCornerRadius: CGFloat {
+        isExpandedInput ? 20 : 22
+    }
+
+    private var inputBarHorizontalPadding: CGFloat {
+        isInputFocused ? 16 : 36
+    }
+
+    private var inputBarBottomPadding: CGFloat {
+        isInputFocused ? 8 : 4
+    }
+
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 20.0
+        return min(1.0, Double(progress))
+    }
+
+    @State private var scrollOffset: CGFloat = 0
 
     private var sortedComments: [MediaComment] {
         switch sort {
@@ -41,57 +72,82 @@ struct MediaCommentsSheetView: View {
         }
     }
 
-    private var trimmedText: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var canSend: Bool {
-        !trimmedText.isEmpty && !isSending && cooldownRemaining == 0
-    }
-
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Комментарии")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .foregroundStyle(.primary)
-                        }
-                        .accessibilityLabel("Закрыть")
-                    }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    composerBar
-                }
-                .onAppear {
-                    cooldownRemaining = repo.cooldownRemaining(mediaKey: mediaKey)
-                    startCooldownTickerIfNeeded()
-                    if autoFocusComposer, authRepo.isAuthenticated {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            isComposerFocused = true
+        ZStack {
+            if isLoading && comments.isEmpty {
+                ProgressView()
+                    .tint(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if comments.isEmpty {
+                statusStateView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 18) {
+                        ForEach(sortedComments) { comment in
+                            commentRow(comment)
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
                 }
-                .task(id: mediaKey) {
-                    repo.primeFromDisk(mediaKey: mediaKey)
-                    await repo.fetch(mediaKey: mediaKey)
+                .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .refreshable {
+                    await repo.fetch(mediaKey: mediaKey, force: true)
                 }
-                .onDisappear {
-                    cooldownTask?.cancel()
-                    cooldownTask = nil
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, newOffset in
+                    scrollOffset = newOffset
                 }
+            }
         }
-        .presentationDragIndicator(.visible)
-        .presentationDetents([.large])
+        .safeAreaInset(edge: .top, spacing: 0) {
+            headerBar
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+                .background(
+                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                        .padding(.bottom, -30)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(blurOpacity)
+                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                )
+        }
+        .safeAreaInset(edge: .bottom) {
+            composerBar
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .presentationDetents([.fraction(0.65), .large], selection: $sheetDetent)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
+        .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
+        .onAppear {
+            cooldownRemaining = repo.cooldownRemaining(mediaKey: mediaKey)
+            startCooldownTickerIfNeeded()
+            if autoFocusComposer, authRepo.isAuthenticated {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    isInputFocused = true
+                }
+            }
+        }
+        .task(id: mediaKey) {
+            repo.primeFromDisk(mediaKey: mediaKey)
+            await repo.fetch(mediaKey: mediaKey)
+        }
+        .onDisappear {
+            cooldownTask?.cancel()
+            cooldownTask = nil
+        }
+        .sheet(isPresented: $showEditProfileSheet) {
+            EditProfileSheet()
+        }
         .fullScreenCover(isPresented: $showAuthSheet) {
             AuthView()
         }
@@ -126,181 +182,164 @@ struct MediaCommentsSheetView: View {
             Button("Спойлер без пометки") { sendReport(comment, reason: "spoiler") }
             Button("Отмена", role: .cancel) {}
         }
+        .alert("Выйти из аккаунта?", isPresented: $showSignOutAlert) {
+            Button("Выйти", role: .destructive) {
+                authRepo.signOut()
+            }
+            Button("Отмена", role: .cancel) {}
+        }
     }
 
-    // MARK: - Content
+    @State private var sheetDetent: PresentationDetent = .fraction(0.65)
+
+    // MARK: - Header Bar
 
     @ViewBuilder
-    private var content: some View {
-        if isLoading && comments.isEmpty {
-            ProgressView()
-                .tint(.white)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if comments.isEmpty {
-            emptyState
-        } else {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    sortBar
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 12)
-
-                    ForEach(Array(sortedComments.enumerated()), id: \.element.id) { index, comment in
-                        commentRow(comment)
-
-                        if index < sortedComments.count - 1 {
-                            Divider()
-                                .background(Color.primary.opacity(0.06))
-                                .padding(.leading, 64)
-                        }
-                    }
-                }
-                .padding(.bottom, 12)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
-            .refreshable {
-                await repo.fetch(mediaKey: mediaKey, force: true)
-            }
-        }
-    }
-
-    private var sortBar: some View {
-        HStack(spacing: 10) {
-            Text("\(comments.count)")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+    private var headerBar: some View {
+        ZStack {
+            Text(comments.isEmpty ? "Комментарии" : "Комментарии (\(comments.count))")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: 240)
                 .contentTransition(.numericText())
 
-            Spacer()
+            HStack {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Закрыть")
 
-            Picker("Сортировка", selection: $sort.animation(.easeInOut(duration: 0.2))) {
-                ForEach(MediaCommentSort.allCases) { option in
-                    Text(option.title).tag(option)
+                Spacer()
+
+                if comments.count > 1 {
+                    Menu {
+                        ForEach(MediaCommentSort.allCases) { option in
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    sort = option
+                                }
+                            } label: {
+                                if sort == option {
+                                    Label(option.title, systemImage: "checkmark")
+                                } else {
+                                    Text(option.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.glassPress)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .accessibilityLabel("Сортировка")
                 }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 200)
         }
     }
 
-    private var hasError: Bool { repo.errorByKey[mediaKey] != nil }
+    // MARK: - Empty / Error State
 
-    private var emptyState: some View {
-        ScrollView {
-            if hasError {
-                AppEmptyStateView(
-                    icon: "wifi.exclamationmark",
-                    title: "Не удалось загрузить",
-                    description: "Проверьте соединение и попробуйте снова.",
-                    action: .init(label: "Повторить") {
-                        Task { await repo.fetch(mediaKey: mediaKey, force: true) }
-                    }
-                )
-                .frame(minHeight: 420)
-            } else {
-                AppEmptyStateView(
-                    icon: "bubble.left.and.bubble.right",
-                    title: "Пока нет комментариев",
-                    description: "Поделитесь первым впечатлением — это займёт пару секунд.",
-                    action: .init(label: authRepo.isAuthenticated ? "Написать" : "Войти") {
-                        if authRepo.isAuthenticated {
-                            isComposerFocused = true
-                        } else {
-                            showAuthSheet = true
-                        }
-                    }
-                )
-                .frame(minHeight: 420)
+    @ViewBuilder
+    private var statusStateView: some View {
+        if hasError {
+            VStack(spacing: 12) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 38))
+                    .foregroundStyle(.white.opacity(0.25))
+
+                Text("Не удалось загрузить")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+
+                Text("Проверьте соединение и попробуйте снова")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 36)
+
+                Button {
+                    Task { await repo.fetch(mediaKey: mediaKey, force: true) }
+                } label: {
+                    Text("Повторить")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.horizontal, 20)
+                        .frame(height: 40)
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
-        }
-        .refreshable {
-            await repo.fetch(mediaKey: mediaKey, force: true)
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 38))
+                    .foregroundStyle(.white.opacity(0.25))
+
+                Text("Пока нет комментариев")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+
+                Text("Будьте первым, кто поделится мнением об этом тайтле!")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 36)
+            }
         }
     }
 
     // MARK: - Comment Row
 
+    private func isOwn(_ comment: MediaComment) -> Bool {
+        comment.authorId == authRepo.currentUser?.id
+    }
+
     private func commentRow(_ comment: MediaComment) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            avatarButton(for: comment)
+            avatarButton(comment, size: 34)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(comment.authorName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    if let tag = comment.authorTag, !tag.isEmpty {
-                        Text("@\(tag)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Button {
+                        openAuthorProfile(for: comment)
+                    } label: {
+                        Text(comment.authorName)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
                             .lineLimit(1)
                     }
+                    .buttonStyle(.plain)
+
+                    Text("• \(comment.timeAgoFormatted)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.4))
 
                     Spacer(minLength: 8)
 
-                    Text(comment.timeAgoFormatted)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                    likeButton(comment)
+
+                    menuButton(comment)
                 }
 
                 textBody(comment)
-
-                HStack(spacing: 16) {
-                    likeButton(comment)
-                    Spacer()
-                    menuButton(comment)
-                }
-                .padding(.top, 2)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    private func avatarButton(for comment: MediaComment) -> some View {
-        Button {
-            openProfile(for: comment)
-        } label: {
-            avatarView(for: comment, size: 36)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(comment.authorName)
-    }
-
-    @ViewBuilder
-    private func avatarView(for comment: MediaComment, size: CGFloat) -> some View {
-        if let raw = comment.authorAvatar,
-           let url = URL(string: raw),
-           url.scheme != nil {
-            AsyncCachedImage(url: url) {
-                avatarFallback(comment, size: size)
-            } content: { image in
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } fallback: {
-                avatarFallback(comment, size: size)
-            }
-            .frame(width: size, height: size)
-            .clipShape(Circle())
-        } else {
-            avatarFallback(comment, size: size)
-        }
-    }
-
-    private func avatarFallback(_ comment: MediaComment, size: CGFloat) -> some View {
-        Circle()
-            .fill(Color.slooshAccent.opacity(0.18))
-            .frame(width: size, height: size)
-            .overlay(
-                Text(comment.authorInitials)
-                    .font(.system(size: size * 0.36, weight: .semibold))
-                    .foregroundStyle(Color.slooshAccent)
-            )
     }
 
     @ViewBuilder
@@ -312,23 +351,23 @@ struct MediaCommentsSheetView: View {
                     _ = revealedSpoilers.insert(comment.id)
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Image(systemName: "eye.slash.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Спойлер · показать")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("Спойлер — показать")
-                        .font(.system(size: 13, weight: .semibold))
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .frame(height: 34)
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(.horizontal, 10)
+                .frame(height: 30)
                 .glassEffect(.regular.interactive(), in: Capsule())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Показать спойлер")
         } else {
             Text(comment.text)
-                .font(.system(size: 15))
-                .foregroundStyle(.primary)
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
@@ -341,9 +380,9 @@ struct MediaCommentsSheetView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             Task { await repo.toggleLike(comment, mediaKey: mediaKey) }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: liked ? "heart.fill" : "heart")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .symbolEffect(.bounce, value: liked)
 
                 if comment.likesCount > 0 {
@@ -352,10 +391,8 @@ struct MediaCommentsSheetView: View {
                         .contentTransition(.numericText())
                 }
             }
-            .foregroundStyle(liked ? Color.slooshAccent : Color.secondary)
-            .frame(height: 30)
-            .padding(.horizontal, 10)
-            .background(Color.primary.opacity(0.001))
+            .foregroundStyle(liked ? .white : .white.opacity(0.45))
+            .frame(width: 30, height: 26)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -370,6 +407,14 @@ struct MediaCommentsSheetView: View {
             } label: {
                 Label("Скопировать", systemImage: "doc.on.doc")
             }
+
+            Button {
+                openAuthorProfile(for: comment)
+            } label: {
+                Label("Открыть профиль", systemImage: "person.crop.circle")
+            }
+
+            Divider()
 
             if isOwn(comment) {
                 Button(role: .destructive) {
@@ -386,117 +431,143 @@ struct MediaCommentsSheetView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 30, height: 30)
-                .contentShape(Circle())
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.45))
+                .frame(width: 24, height: 26)
+                .contentShape(Rectangle())
         }
+        .menuOrder(.priority)
+    }
+
+    private func avatarButton(_ comment: MediaComment, size: CGFloat) -> some View {
+        Button {
+            openAuthorProfile(for: comment)
+        } label: {
+            avatarView(comment, size: size)
+                .contentShape(Circle())
+                .contentShape(.contextMenuPreview, Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(comment.authorName)
+    }
+
+    @ViewBuilder
+    private func avatarView(_ comment: MediaComment, size: CGFloat) -> some View {
+        if let avatarUrl = comment.authorAvatar, let url = URL(string: avatarUrl) {
+            AsyncCachedImage(url: url) {
+                avatarFallback(comment.authorInitials, size: size)
+            } content: { img in
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } fallback: {
+                avatarFallback(comment.authorInitials, size: size)
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        } else {
+            avatarFallback(comment.authorInitials, size: size)
+        }
+    }
+
+    private func avatarFallback(_ initials: String, size: CGFloat) -> some View {
+        Circle()
+            .fill(Color.white.opacity(0.12))
+            .frame(width: size, height: size)
+            .overlay(
+                Text(initials)
+                    .font(.system(size: size * 0.35, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.8))
+            )
     }
 
     // MARK: - Composer
 
     @ViewBuilder
     private var composerBar: some View {
-        if authRepo.isAuthenticated {
-            VStack(spacing: 0) {
-                if cooldownRemaining > 0 {
-                    Text("Следующий комментарий через \(cooldownRemaining) сек.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 6)
-                        .transition(.opacity)
+        VStack(spacing: 0) {
+            if cooldownRemaining > 0 {
+                Text("Следующий комментарий через \(cooldownRemaining) сек.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, inputBarHorizontalPadding)
+                    .padding(.bottom, 4)
+            }
+
+            inputBar
+        }
+        .background(Color.clear)
+    }
+
+    private var inputBar: some View {
+        HStack(alignment: isExpandedInput ? .bottom : .center, spacing: 10) {
+            userAvatarButton
+
+            VStack(alignment: .leading, spacing: isExpandedInput ? 8 : 4) {
+                if authRepo.isAuthenticated {
+                    TextField("Комментарий", text: $commentText, axis: .vertical)
+                        .font(.system(size: 16))
+                        .foregroundColor(.primary)
+                        .tint(Color.white)
+                        .lineLimit(1...6)
+                        .focused($isInputFocused)
+                        .frame(minHeight: isExpandedInput ? 24 : 38)
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        showAuthSheet = true
+                    } label: {
+                        Text("Войдите, чтобы комментировать")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(minHeight: isExpandedInput ? 24 : 38)
+                    }
+                    .buttonStyle(.plain)
                 }
 
-                HStack(alignment: .bottom, spacing: 10) {
-                    composerAvatar
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("Оставьте комментарий…", text: $text, axis: .vertical)
-                            .font(.system(size: 15))
-                            .foregroundStyle(.primary)
-                            .tint(.white)
-                            .lineLimit(1...5)
-                            .focused($isComposerFocused)
-
-                        HStack(spacing: 8) {
-                            spoilerToggle
-
-                            Spacer()
-
-                            if text.count > 800 {
-                                Text("\(text.count)/\(MediaCommentLimits.maxLength)")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(text.count > MediaCommentLimits.maxLength ? Color.red : Color.secondary)
-                            }
-                        }
+                if !isMultilineInput && isSpoiler {
+                    HStack(spacing: 5) {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Пометка спойлера")
+                            .font(.system(size: 11, weight: .semibold))
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .glassEffect(
-                        .regular.interactive(),
-                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    )
+                    .foregroundStyle(.white.opacity(0.55))
+                }
+            }
+            .padding(.top, isExpandedInput ? 6 : 2)
+            .padding(.bottom, isExpandedInput ? 8 : 2)
+            .padding(.horizontal, 14)
+            .glassEffect(
+                .regular.interactive(),
+                in: RoundedRectangle(cornerRadius: inputBarCornerRadius, style: .continuous)
+            )
+            .animation(.easeInOut(duration: 0.2), value: isMultilineInput)
 
-                    if !trimmedText.isEmpty {
-                        sendButton
-                            .transition(
-                                .asymmetric(
-                                    insertion: .scale(scale: 0.3).combined(with: .opacity),
-                                    removal: .scale(scale: 0.3).combined(with: .opacity)
-                                )
+            if authRepo.isAuthenticated {
+                if hasTextToSending {
+                    sendButton
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
+                                removal: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing))
                             )
-                    }
+                        )
+                } else {
+                    spoilerComposerToggle
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 6)
-                .padding(.bottom, cooldownRemaining > 0 ? 10 : 6)
-                .animation(.spring(response: 0.32, dampingFraction: 0.8), value: trimmedText.isEmpty)
+            } else {
+                Color.clear
+                    .frame(width: 40, height: 40)
             }
-        } else {
-            guestComposer
         }
-    }
-
-    @ViewBuilder
-    private var composerAvatar: some View {
-        if let user = authRepo.currentUser {
-            SlooshAvatarView(
-                avatarSource: user.photoURL,
-                fallbackText: user.avatarInitials,
-                size: 34
-            )
-        } else {
-            Circle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(width: 34, height: 34)
-        }
-    }
-
-    private var spoilerToggle: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                isSpoiler.toggle()
-            }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: isSpoiler ? "eye.slash.fill" : "eye.slash")
-                    .font(.system(size: 11, weight: .semibold))
-                Text("Спойлер")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .foregroundStyle(isSpoiler ? Color.white : Color.secondary)
-            .padding(.horizontal, 9)
-            .frame(height: 24)
-            .background(
-                Capsule()
-                    .fill(isSpoiler ? Color.slooshAccent.opacity(0.9) : Color.primary.opacity(0.08))
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isSpoiler ? "Снять пометку спойлера" : "Пометить как спойлер")
+        .padding(.horizontal, inputBarHorizontalPadding)
+        .padding(.top, 4)
+        .padding(.bottom, inputBarBottomPadding)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
 
     private var sendButton: some View {
@@ -509,50 +580,98 @@ struct MediaCommentsSheetView: View {
                         .tint(.black)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.black)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.black)
                 }
             }
             .frame(width: 40, height: 40)
             .background(Circle().fill(Color.white))
             .glassEffect(.regular.interactive(), in: .circle)
         }
-        .buttonStyle(.plain)
-        .disabled(!canSend)
-        .opacity(canSend ? 1 : 0.5)
+        .buttonStyle(.glassPress)
+        .disabled(isSending)
         .accessibilityLabel("Отправить")
     }
 
-    private var guestComposer: some View {
+    private var spoilerComposerToggle: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showAuthSheet = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("Войдите, чтобы комментировать")
-                    .font(.system(size: 14, weight: .semibold))
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                isSpoiler.toggle()
             }
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .glassEffect(.regular.interactive(), in: Capsule())
+        } label: {
+            Image(systemName: isSpoiler ? "eye.slash.fill" : "eye.slash")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(isSpoiler ? .white : .white.opacity(0.5))
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle().fill(isSpoiler ? Color.white.opacity(0.16) : Color.white.opacity(0.001))
+                )
+                .glassEffect(.regular.interactive(), in: .circle)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .padding(.top, 6)
+        .accessibilityLabel(isSpoiler ? "Снять пометку спойлера" : "Пометить как спойлер")
+    }
+
+    @ViewBuilder
+    private var userAvatarButton: some View {
+        if authRepo.isAuthenticated, let user = authRepo.currentUser {
+            Menu {
+                Section {
+                    let displayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let effectiveName = (displayName?.isEmpty == false) ? displayName! : (user.tag ?? "Пользователь")
+                    Text(effectiveName)
+                    if let tag = user.tag, !tag.isEmpty {
+                        Text("@\(tag)")
+                    }
+                }
+
+                Button {
+                    showEditProfileSheet = true
+                } label: {
+                    Label("Редактировать профиль", systemImage: "pencil")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    showSignOutAlert = true
+                } label: {
+                    Label("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } label: {
+                SlooshAvatarView(userProfile: user, size: 38)
+                    .frame(width: 38, height: 38)
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+                    .contentShape(.contextMenuPreview, Circle())
+            }
+            .menuOrder(.priority)
+            .tint(.white)
+            .buttonStyle(.plain)
+            .frame(width: 38, height: isExpandedInput ? 38 : 42, alignment: .center)
+        } else {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showAuthSheet = true
+            } label: {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 38))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 38, height: 38)
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .frame(width: 38, height: isExpandedInput ? 38 : 42, alignment: .center)
+        }
     }
 
     // MARK: - Actions
 
-    private func isOwn(_ comment: MediaComment) -> Bool {
-        guard let uid = authRepo.currentUser?.id else { return false }
-        return comment.authorId == uid
-    }
-
-    private func openProfile(for comment: MediaComment) {
+    private func openAuthorProfile(for comment: MediaComment) {
         guard comment.authorId != authRepo.currentUser?.id else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         authorProfile = SlooshUser(
@@ -564,8 +683,8 @@ struct MediaCommentsSheetView: View {
     }
 
     private func send() {
-        guard canSend else { return }
-        let body = trimmedText
+        guard canSendNow else { return }
+        let body = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         isSending = true
 
         Task { @MainActor in
@@ -573,7 +692,7 @@ struct MediaCommentsSheetView: View {
             do {
                 _ = try await repo.addComment(mediaKey: mediaKey, text: body, isSpoiler: isSpoiler)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                text = ""
+                commentText = ""
                 isSpoiler = false
                 cooldownRemaining = repo.cooldownRemaining(mediaKey: mediaKey)
                 startCooldownTickerIfNeeded()
@@ -586,6 +705,13 @@ struct MediaCommentsSheetView: View {
                 )
             }
         }
+    }
+
+    private var canSendNow: Bool {
+        !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isSending
+            && cooldownRemaining == 0
+            && commentText.count <= MediaCommentLimits.maxLength
     }
 
     private func delete(_ comment: MediaComment) {
