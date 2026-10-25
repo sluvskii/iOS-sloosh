@@ -1,155 +1,161 @@
 import SwiftUI
+import UIKit
 
-// MARK: - SpoilerTextView (frosted glass)
+// MARK: - SpoilerTextView (Telegram dust, like InvisibleInkDustNode)
 
-/// Текст под спойлером: размыт, накрыт стеклянной плиткой с мягким бликом
-/// и бейджем «Спойлер». Тап раскрывает текст пружиной. Стейт живёт в блоке.
+/// Текст под спойлером, как в Telegram: сам текст скрыт, а его место
+/// занимает облако мерцающих «пылинок» (CAEmitterLayer + TextSpeckle).
+/// Тап мягко растворяет пыль и проявляет текст.
 struct SpoilerTextView: View {
     let text: String
     var font: Font = .system(size: 14)
     var contentColor: Color = .white.opacity(0.85)
-    var badgeSize: BadgeSize = .full
-
-    enum BadgeSize {
-        case full
-        case preview
-    }
 
     @State private var revealed = false
 
     var body: some View {
         Text(text)
             .font(font)
-            .foregroundColor(revealed ? contentColor : .white.opacity(0.5))
-            .lineLimit(badgeSize == .preview ? 1 : nil)
+            .foregroundColor(contentColor)
             .fixedSize(horizontal: false, vertical: true)
-            .blur(radius: revealed ? 0 : 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(revealed ? 1 : 0)
             .overlay {
                 if !revealed {
-                    SpoilerGlassPlate()
+                    SpoilerDustOverlay()
                         .transition(.opacity)
-                }
-            }
-            .overlay {
-                if !revealed {
-                    badge
-                        .transition(.opacity.combined(with: .scale(scale: 0.94)))
                 }
             }
             .contentShape(Rectangle())
             .onTapGesture {
                 guard !revealed else { return }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                withAnimation(.easeOut(duration: 0.22)) {
                     revealed = true
                 }
             }
-            .textSelection(.enabled)
+            .textSelection(revealed ? .enabled : .disabled)
             .accessibilityLabel(revealed ? text : "Скрытый спойлер. Нажмите, чтобы показать")
-    }
-
-    private var badge: some View {
-        HStack(spacing: badgeSize == .full ? 5 : 4) {
-            Image(systemName: "eye.slash.fill")
-                .font(.system(size: badgeSize == .full ? 11 : 9, weight: .semibold))
-
-            Text("Спойлер")
-                .font(.system(size: badgeSize == .full ? 11.5 : 9.5, weight: .semibold))
-        }
-        .foregroundStyle(.white.opacity(0.95))
-        .padding(.horizontal, badgeSize == .full ? 10 : 7)
-        .frame(height: badgeSize == .full ? 26 : 20)
-        .background(Capsule().fill(Color.black.opacity(0.4)))
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.6)
-        )
-        .shadow(color: .black.opacity(0.28), radius: 6, y: 2)
     }
 }
 
 // MARK: - Redacted Preview Block
 
-/// Компактный «закрытый» блок для превью в секции на экране детали:
-/// размытые полоски под тем же стеклом и мини-бейджем.
+/// Компактный блок для превью в секции на экране детали: то же облако пыли
+/// и мини-бейдж «Спойлер». Реального текста тут нет вовсе.
 struct SpoilerRedactedView: View {
-    var lines: Int = 2
-
     var body: some View {
         ZStack {
-            SpoilerGlassPlate()
-
-            VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                    .fill(Color.white.opacity(0.2))
-                    .frame(width: lines > 1 ? 190 : 150, height: 8)
-                if lines > 1 {
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .fill(Color.white.opacity(0.15))
-                        .frame(width: 124, height: 8)
-                }
-            }
-            .blur(radius: 2.5)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            SpoilerDustOverlay()
 
             HStack {
                 Spacer()
+
                 HStack(spacing: 4) {
                     Image(systemName: "eye.slash.fill")
                         .font(.system(size: 9, weight: .semibold))
                     Text("Спойлер")
                         .font(.system(size: 9.5, weight: .semibold))
                 }
-                .foregroundStyle(.white.opacity(0.95))
+                .foregroundStyle(.white.opacity(0.92))
                 .padding(.horizontal, 7)
                 .frame(height: 20)
-                .background(Capsule().fill(Color.black.opacity(0.4)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.6))
+                .background(Capsule().fill(Color.black.opacity(0.35)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
             }
         }
+        .frame(height: 28)
         .contentShape(Rectangle())
+        .allowsHitTesting(false)
     }
 }
 
-// MARK: - Glass Plate
+// MARK: - Dust Overlay
 
-/// Плитка «замороженного стекла»: мягкий градиентный блик сверху,
-/// тонкая светлая кромка и лёгкая внутренняя тень. Никакой анимации —
-/// спойлер должен выглядеть спокойно, а не как загрузка.
-private struct SpoilerGlassPlate: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color.white.opacity(0.055))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.10),
-                                Color.white.opacity(0.015),
-                                Color.black.opacity(0.04)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.26),
-                                Color.white.opacity(0.07)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.7
-                    )
-            )
-            .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
-            .allowsHitTesting(false)
+/// Слой пыли поверх скрытого текста. Параметры повторяют Telegram:
+/// speckle-текстура 1.8 contentsScale, scale 0.5, lifetime 1s,
+/// плотность ≈ площадь × 0.35.
+private struct SpoilerDustOverlay: UIViewRepresentable {
+    func makeUIView(context: Context) -> SpoilerDustEmitterView {
+        let view = SpoilerDustEmitterView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: SpoilerDustEmitterView, context: Context) {}
+}
+
+final class SpoilerDustEmitterView: UIView {
+    override class var layerClass: AnyClass { CAEmitterLayer.self }
+
+    private var emitterLayer: CAEmitterLayer {
+        layer as! CAEmitterLayer
+    }
+
+    private static let speckleImage: CGImage? = SpoilerDustEmitterView.makeSpeckle()
+
+    override init(frame: CGRect = .zero) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        configure()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func configure() {
+        let cell = CAEmitterCell()
+        cell.contents = Self.speckleImage
+        cell.contentsScale = 1.8
+        cell.color = UIColor.white.cgColor
+        cell.emissionRange = .pi * 2.0
+        cell.lifetime = 1.0
+        cell.lifetimeRange = 0.25
+        cell.scale = 0.5
+        cell.scaleRange = 0.22
+        cell.velocity = 4.0
+        cell.velocityRange = 20.0
+        cell.alphaRange = 1.0
+        cell.birthRate = 1
+        cell.name = "dustCell"
+
+        emitterLayer.emitterCells = [cell]
+        emitterLayer.emitterShape = .rectangle
+        emitterLayer.emitterMode = .volume
+        emitterLayer.emitterPosition = .zero
+        emitterLayer.emitterSize = .zero
+        emitterLayer.birthRate = 1
+        emitterLayer.seed = UInt32.random(in: 1...UInt32.max)
+        emitterLayer.drawsAsynchronously = true
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        emitterLayer.emitterPosition = CGPoint(x: bounds.midX, y: bounds.midY)
+        emitterLayer.emitterSize = CGSize(width: max(bounds.width, 1), height: max(bounds.height, 1))
+
+        // Плотность как в Telegram: квадрат площади × 0.35.
+        let square = Float(bounds.width * bounds.height)
+        emitterLayer.emitterCells?.first?.birthRate = min(60_000, max(300, square * 0.35))
+    }
+
+    func setActive(_ active: Bool) {
+        emitterLayer.birthRate = active ? 1 : 0
+    }
+
+    // MARK: Speckle
+
+    /// Крошечная мягкая пылинка вместо ассета Telegram (TextSpeckle).
+    private static func makeSpeckle() -> CGImage? {
+        let size = CGSize(width: 8, height: 8)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            let rect = CGRect(x: 1.5, y: 1.5, width: 5, height: 5)
+            context.cgContext.setFillColor(UIColor.white.cgColor)
+            context.cgContext.fillEllipse(in: rect)
+        }
+        return image.cgImage
     }
 }
