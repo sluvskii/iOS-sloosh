@@ -33,13 +33,28 @@ struct SpoilerTextView: View {
                     revealed = true
                 }
             }
-            .textSelection(revealed ? .enabled : .disabled)
+            .modifier(SpoilerSelectionModifier(isEnabled: revealed))
             .accessibilityLabel(revealed ? text : "Скрытый спойлер. Нажмите, чтобы показать")
     }
 }
 
-// MARK: - Redacted Preview Block
+// MARK: - Conditional selection
 
+/// `.textSelection` принимает статический тип, поэтому переключаем модификатором.
+private struct SpoilerSelectionModifier: ViewModifier {
+    let isEnabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.textSelection(.enabled)
+        } else {
+            content.textSelection(.disabled)
+        }
+    }
+}
+
+// MARK: - Redacted Preview Block
 /// Компактный блок для превью в секции на экране детали: то же облако пыли
 /// и мини-бейдж «Спойлер». Реального текста тут нет вовсе.
 struct SpoilerRedactedView: View {
