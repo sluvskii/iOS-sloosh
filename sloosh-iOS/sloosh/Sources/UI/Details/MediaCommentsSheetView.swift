@@ -31,7 +31,6 @@ struct MediaCommentsSheetView: View {
     @State private var isSpoiler: Bool = false
     @State private var isSending: Bool = false
     @State private var sort: MediaCommentSort = .newest
-    @State private var revealedSpoilers: Set<String> = []
     @State private var showEditProfileSheet: Bool = false
     @State private var showAuthSheet: Bool = false
     @State private var showSignOutAlert: Bool = false
@@ -351,42 +350,17 @@ struct MediaCommentsSheetView: View {
     @ViewBuilder
     private func textBody(_ comment: MediaComment) -> some View {
         if comment.isSpoiler {
-            let revealed = revealedSpoilers.contains(comment.id)
-
-            Text(comment.text)
-                .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.85))
-                .blur(radius: revealed ? 0 : 10)
-                .overlay {
-                    if !revealed {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.white.opacity(0.055))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
-                            )
-                            .shimmer()
-                            .allowsHitTesting(false)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .contentShape(Rectangle())
-                .onTapGesture { revealSpoiler(comment.id) }
-                .animation(.easeInOut(duration: 0.28), value: revealed)
-                .accessibilityLabel(revealed ? "Спойлер раскрыт" : "Спойлер. Нажмите, чтобы показать")
+            SpoilerTextView(
+                text: comment.text,
+                font: .system(size: 14),
+                contentColor: .white.opacity(0.85)
+            )
         } else {
             Text(comment.text)
                 .font(.system(size: 14))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
-        }
-    }
-
-    private func revealSpoiler(_ id: String) {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-            _ = revealedSpoilers.insert(id)
         }
     }
 
