@@ -50,17 +50,13 @@ public struct MovieSelectorSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "Прикрепить фильм",
                     scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
-                    leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30
+                    leadingAction: { dismiss() }
                 )
             }
             .task {
@@ -71,7 +67,7 @@ public struct MovieSelectorSheet: View {
         }
         .tint(Color.primary)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationDetents([.medium, .large])
         .preferredColorScheme(.dark)
     }

@@ -119,7 +119,7 @@ struct HomeDirectPlayWrapper: View {
             onPlay(config)
         }
         .presentationDetents([.fraction(0.62)])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .task {
             if let initialKpId = initialKpId, initialKpId > 0 {
                 await viewModel.fetchSources(kpId: initialKpId, title: fallbackTitle)

@@ -156,7 +156,7 @@ struct MediaArtworkPickerSheet: View {
                             .padding(.horizontal, 16)
                     }
                 }
-                .padding(.top, 8)
+                .padding(.top, 12)
                 .padding(.bottom, 36)
             }
             .scrollContentBackground(.hidden)
@@ -170,37 +170,26 @@ struct MediaArtworkPickerSheet: View {
             }
             .tint(.white)
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: "Оформление",
                     scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
                     leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30,
                     trailing: {
-                        Button {
-                            Task { await saveChanges() }
-                        } label: {
-                            if isSaving {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(.primary)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: .circle)
-                            } else {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: .circle)
+                        if isSaving {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        } else {
+                            TelegramGlassIconButton(systemName: "checkmark", tintColor: .white) {
+                                Task { await saveChanges() }
                             }
+                            .disabled(isSaving)
+                            .accessibilityLabel("Сохранить")
                         }
-                        .disabled(isSaving)
-                        .accessibilityLabel("Сохранить")
                     }
                 )
             }
@@ -211,7 +200,7 @@ struct MediaArtworkPickerSheet: View {
         }
         .preferredColorScheme(.dark)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
     }
 
     // MARK: - Initial State Setup

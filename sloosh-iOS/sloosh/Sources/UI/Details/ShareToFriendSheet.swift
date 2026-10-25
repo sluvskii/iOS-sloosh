@@ -44,21 +44,16 @@ struct ShareToFriendSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.top, 12)
             .padding(.bottom, 16)
             .toolbar(.hidden, for: .navigationBar)
+            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
+                SlooshTopBar.sheet(
                     title: clip != nil ? "Поделиться моментом" : "Отправить",
                     scrollOffset: .constant(0),
-                    leadingIcon: "xmark",
                     leadingAction: { dismiss() },
-                    tintColor: .clear,
-                    tintOpacity: 0,
                     titleMaxWidth: 240,
-                    topPadding: 8,
-                    bottomPadding: 4,
-                    blurOverflow: -30,
                     trailing: {
                         TelegramGlassIconButton(systemName: "square.and.arrow.up") {
                             showSystemShareSheet = true
@@ -81,7 +76,7 @@ struct ShareToFriendSheet: View {
             }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationDetents([.height(380)])
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedUsers.isEmpty)
         .preferredColorScheme(.dark)
@@ -162,7 +157,7 @@ struct ShareToFriendSheet: View {
                                     if isSelected {
                                         ZStack {
                                             Circle()
-                                                .fill(Color.slooshAccent.opacity(0.85))
+                                                .fill(Color.white)
                                                 .frame(width: 20, height: 20)
                                                 .glassEffect(.regular.interactive(), in: Circle())
 
@@ -351,7 +346,8 @@ struct ShareToFriendSheet: View {
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
-                .background(Color.slooshAccent, in: Capsule())
+                .background(Color.white, in: Capsule())
+                .glassEffect(.regular.interactive(), in: Capsule())
             }
             .buttonStyle(ScaleButtonStyle())
             .disabled(isSending || selectedUsers.isEmpty)
