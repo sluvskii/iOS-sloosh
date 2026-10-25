@@ -8,7 +8,20 @@ import UIKit
 /// с VariableBlur, стеклянные аватары, бесшовный ввод снизу.
 struct MediaCommentsSheetView: View {
     let mediaKey: String
-    var autoFocusComposer: Bool = false
+    let autoFocusComposer: Bool
+    /// Открыть профиль автора. Родитель закрывает шторку и пушит экран профиля —
+    /// ровно так же, как это делают комментарии «Моментов».
+    let onSelectAuthor: ((SlooshUser) -> Void)?
+
+    init(
+        mediaKey: String,
+        autoFocusComposer: Bool = false,
+        onSelectAuthor: ((SlooshUser) -> Void)? = nil
+    ) {
+        self.mediaKey = mediaKey
+        self.autoFocusComposer = autoFocusComposer
+        self.onSelectAuthor = onSelectAuthor
+    }
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var repo = MediaCommentsRepository.shared
@@ -22,7 +35,6 @@ struct MediaCommentsSheetView: View {
     @State private var showEditProfileSheet: Bool = false
     @State private var showAuthSheet: Bool = false
     @State private var showSignOutAlert: Bool = false
-    @State private var authorProfile: SlooshUser?
     @State private var deleteTarget: MediaComment?
     @State private var reportTarget: MediaComment?
     @State private var cooldownRemaining: Int = 0
@@ -147,9 +159,6 @@ struct MediaCommentsSheetView: View {
         }
         .fullScreenCover(isPresented: $showAuthSheet) {
             AuthView()
-        }
-        .sheet(item: $authorProfile) { user in
-            UserProfileDetailView(user: user)
         }
         .confirmationDialog(
             "Удалить комментарий?",
@@ -314,7 +323,7 @@ struct MediaCommentsSheetView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Button {
-                        openAuthorProfile(for: comment)
+                        selectAuthor(for: comment)
                     } label: {
                         Text(comment.authorName)
                             .font(.system(size: 13, weight: .semibold))
@@ -406,7 +415,7 @@ struct MediaCommentsSheetView: View {
             }
 
             Button {
-                openProfileFromMenu(comment)
+                selectAuthor(for: comment)
             } label: {
                 Label("Открыть профиль", systemImage: "person.crop.circle")
             }
@@ -438,7 +447,7 @@ struct MediaCommentsSheetView: View {
 
     private func avatarButton(_ comment: MediaComment, size: CGFloat) -> some View {
         Button {
-            openAuthorProfile(for: comment)
+            selectAuthor(for: comment)
         } label: {
             avatarView(comment, size: size)
                 .contentShape(Circle())
@@ -664,49 +673,17 @@ struct MediaCommentsSheetView: View {
 
     // MARK: - Actions
 
-    private func openAuthorProfile(for comment: MediaComment) {
+    /// Открыть профиль автора — всегда тем же экраном, что и везде в приложении.
+    /// Родитель закрывает шторку и пушит `UserProfileDetailView`.
+    private func selectAuthor(for comment: MediaComment) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-        if isOwn(comment) {
-            // Свой профиль редактируется из меню аватара композера.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                showEditProfileSheet = true
-            }
-            return
-        }
-
         let user = SlooshUser(
             id: comment.authorId,
             displayName: comment.authorName,
             tag: comment.authorTag,
             avatarUrl: comment.authorAvatar
         )
-        // Пауза нужна, чтобы шторка гарантированно презентовалась
-        // поверх закрывающегося меню: системный quirk Menu -> sheet.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            authorProfile = user
-        }
-    }
-
-    /// Публичная точка для меню: тоже с небольшой задержкой.
-    private func openProfileFromMenu(_ comment: MediaComment) {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        if isOwn(comment) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                showEditProfileSheet = true
-            }
-            return
-        }
-
-        let user = SlooshUser(
-            id: comment.authorId,
-            displayName: comment.authorName,
-            tag: comment.authorTag,
-            avatarUrl: comment.authorAvatar
-        )
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            authorProfile = user
-        }
+        onSelectAuthor?(user)
     }
 
     private func send() {
