@@ -350,32 +350,43 @@ struct MediaCommentsSheetView: View {
 
     @ViewBuilder
     private func textBody(_ comment: MediaComment) -> some View {
-        if comment.isSpoiler && !revealedSpoilers.contains(comment.id) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    _ = revealedSpoilers.insert(comment.id)
+        if comment.isSpoiler {
+            let revealed = revealedSpoilers.contains(comment.id)
+
+            Text(comment.text)
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.85))
+                .blur(radius: revealed ? 0 : 10)
+                .overlay {
+                    if !revealed {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.white.opacity(0.055))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                            )
+                            .shimmer()
+                            .allowsHitTesting(false)
+                    }
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "eye.slash.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Спойлер · показать")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white.opacity(0.75))
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .glassEffect(.regular.interactive(), in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Показать спойлер")
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(Rectangle())
+                .onTapGesture { revealSpoiler(comment.id) }
+                .animation(.easeInOut(duration: 0.28), value: revealed)
+                .accessibilityLabel(revealed ? "Спойлер раскрыт" : "Спойлер. Нажмите, чтобы показать")
         } else {
             Text(comment.text)
                 .font(.system(size: 14))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
+        }
+    }
+
+    private func revealSpoiler(_ id: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+            _ = revealedSpoilers.insert(id)
         }
     }
 

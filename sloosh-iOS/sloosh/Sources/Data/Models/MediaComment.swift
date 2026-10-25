@@ -14,7 +14,7 @@ public struct MediaComment: Identifiable, Codable, Hashable, Sendable {
     public let authorAvatar: String?
     public let text: String
     public let createdAtMs: Int64
-    public let isSpoiler: Bool
+    public var isSpoiler: Bool
     /// `[uid: true]` — карта лайков прямо в узле комментария.
     /// Счётчик не расходится с данными и не требует отдельного поля.
     public var likedBy: [String: Bool]?
@@ -109,6 +109,67 @@ public enum MediaCommentLimits {
     public static let pageSize = 200
     /// Минимальный интервал между отправками с одного устройства.
     public static let sendCooldown: TimeInterval = 15
+}
+
+// MARK: - Reports (moderation)
+
+/// Одна жалоба на комментарий — узел `media_comment_reports/{commentId}/{uid}`.
+public struct MediaCommentReport: Codable, Sendable, Equatable {
+    public let reason: String?
+    public let mediaKey: String?
+    public let commentAuthorId: String?
+    public let createdAtMs: Int64?
+
+    public var reasonTitle: String {
+        switch reason ?? "" {
+        case "spam": return "Спам"
+        case "abuse": return "Оскорбления"
+        case "spoiler": return "Спойлер без пометки"
+        default: return "Жалоба"
+        }
+    }
+
+    public var reasonIcon: String {
+        switch reason ?? "" {
+        case "spam": return "envelope.badge.fill"
+        case "abuse": return "hand.raised.fill"
+        case "spoiler": return "eye.slash.fill"
+        default: return "flag.fill"
+        }
+    }
+}
+
+/// Жалобы, сгруппированные по комментарию — строка админской модерации.
+public struct CommentReportGroup: Identifiable, Sendable, Equatable {
+    public let id: String
+    public let mediaKey: String
+    public let reports: [MediaCommentReport]
+    public var comment: MediaComment?
+
+    public var reportsCount: Int { reports.count }
+
+    public var createdAtMs: Int64 {
+        reports.compactMap { $0.createdAtMs }.max() ?? 0
+    }
+
+    public var reasonCounts: [(title: String, icon: String, count: Int)] {
+        var grouped: [String: (title: String, icon: String, count: Int)] = [:]
+        for report in reports {
+            let key = report.reason ?? "other"
+            var entry = grouped[key] ?? (report.reasonTitle, report.reasonIcon, 0)
+            entry.count += 1
+            grouped[key] = entry
+        }
+        return grouped.values.sorted { $0.count > $1.count }
+    }
+
+    public var authorName: String {
+        comment?.authorName ?? "Удалённый пользователь"
+    }
+
+    public var authorAvatar: String? {
+        comment?.authorAvatar
+    }
 }
 
 // MARK: - Media Key

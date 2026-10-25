@@ -96,12 +96,19 @@
       }
     },
 
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": false
+      }
+    },
+
     "media_comments": {
       ".read": true,
       "$mediaKey": {
         ".indexOn": ["createdAtMs"],
         "$commentId": {
-          ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && data.child('authorId').val() == auth.uid))",
+          ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && (data.child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))",
           ".validate": "newData.hasChildren(['authorId', 'authorName', 'text', 'createdAtMs']) && newData.child('text').isString()",
           "likedBy": {
             "$uid": {
@@ -114,8 +121,9 @@
     },
 
     "media_comment_reports": {
-      ".read": "auth != null",
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() == true",
       "$commentId": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() == true",
         "$uid": {
           ".write": "auth != null && auth.uid == $uid"
         }

@@ -44,6 +44,11 @@ public final class MediaCommentsRepository: ObservableObject {
     @Published public private(set) var loadingKeys: Set<String> = []
     @Published public private(set) var errorByKey: [String: String] = [:]
 
+    // Модерация (админ-панель)
+    @Published public private(set) var reports: [CommentReportGroup] = []
+    @Published public private(set) var isLoadingReports: Bool = false
+    @Published public private(set) var reportsError: String?
+
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let diskKeyPrefix = "sloosh_media_comments_v1_"
     private let lastSentPrefix = "sloosh_media_comment_last_sent_"
@@ -308,9 +313,166 @@ public final class MediaCommentsRepository: ObservableObject {
         }
     }
 
+    // MARK: - Moderation (admin)
+
+    /// Подтягивает все жалобы и джойнит их с комментариями.
+    /// Доступно только админу (серверная проверка через `admins/{uid}`).
+    public func fetchReports() async {
+        isLoadingReports = true
+        defer { isLoadingReports = false }
+
+        guard let url = await makeURL(path: "media_comment_reports") else {
+            reportsError = MediaCommentError.network.localizedDescription
+            return
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 12
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                reportsError = MediaCommentError.network.localizedDescription
+                return
+            }
+
+            guard (200...299).contains(http.statusCode) else {
+                // 401 — UID не добавлен в /admins
+                reportsError = http.statusCode == 401
+                    ? "Нет доступа. Добавьте свой UID в узел admins базы."
+                    : MediaCommentError.network.localizedDescription
+                return
+            }
+
+            if data.isEmpty || String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) == "null" {
+                reports = []
+                reportsError = nil
+                return
+            }
+
+            let dict = try decoder.decode([String: [String: MediaCommentReport]].self, from: data)
+
+            var groups: [CommentReportGroup] = []
+            for (commentId, byUid) in dict {
+                let reportList = Array(byUid.values)
+                guard let mediaKey = reportList.compactMap({ $0.mediaKey }).first(where: { !$0.isEmpty }) else { continue }
+                let comment = await fetchSingleComment(mediaKey: mediaKey, commentId: commentId)
+                groups.append(CommentReportGroup(
+                    id: commentId,
+                    mediaKey: mediaKey,
+                    reports: reportList,
+                    comment: comment
+                ))
+            }
+
+            groups.sort { $0.createdAtMs > $1.createdAtMs }
+            reports = groups
+            reportsError = nil
+        } catch {
+            reportsError = MediaCommentError.network.localizedDescription
+        }
+    }
+
+    /// Удаление любого комментария админом (правила разрешают автору или админу).
+    public func deleteCommentAsAdmin(_ group: CommentReportGroup) async -> Bool {
+        guard let url = await makeURL(path: "media_comments/\(group.mediaKey)/\(group.id)") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 12
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return false
+            }
+
+            var cached = commentsByKey[group.mediaKey] ?? []
+            cached.removeAll { $0.id == group.id }
+            commentsByKey[group.mediaKey] = cached
+            saveToDisk(mediaKey: group.mediaKey, comments: cached)
+
+            _ = await dismissReports(group)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Пометить/снять пометку спойлера у комментария (админ-право в правилах).
+    public func setSpoiler(_ group: CommentReportGroup, isSpoiler: Bool) async -> Bool {
+        guard let url = await makeURL(path: "media_comments/\(group.mediaKey)/\(group.id)/isSpoiler") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 12
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data((isSpoiler ? "true" : "false").utf8)
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return false
+            }
+
+            if var cached = commentsByKey[group.mediaKey],
+               let index = cached.firstIndex(where: { $0.id == group.id }) {
+                cached[index].isSpoiler = isSpoiler
+                commentsByKey[group.mediaKey] = cached
+                saveToDisk(mediaKey: group.mediaKey, comments: cached)
+            }
+            if let index = reports.firstIndex(where: { $0.id == group.id }) {
+                reports[index].comment?.isSpoiler = isSpoiler
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// «Игнорировать»: удаляем жалобы по комментарию, сам комментарий остаётся.
+    public func dismissReports(_ group: CommentReportGroup) async -> Bool {
+        guard let url = await makeURL(path: "media_comment_reports/\(group.id)") else { return false }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 12
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return false
+            }
+            reports.removeAll { $0.id == group.id }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func fetchSingleComment(mediaKey: String, commentId: String) async -> MediaComment? {
+        guard let url = await makeURL(path: "media_comments/\(mediaKey)/\(commentId)") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode),
+              let comment = try? decoder.decode(MediaComment.self, from: data) else {
+            return nil
+        }
+
+        var result = comment
+        result.id = commentId
+        return result
+    }
+
     /// Время до конца кулдауна в секундах (0 — можно отправлять).
-    public func cooldownRemaining(mediaKey: String) -> Int {
-        let last = UserDefaults.standard.double(forKey: lastSentPrefix + mediaKey)
+    public func cooldownRemaining(mediaKey: String) -> Int {        let last = UserDefaults.standard.double(forKey: lastSentPrefix + mediaKey)
         guard last > 0 else { return 0 }
         let elapsed = Date().timeIntervalSince1970 - last
         let remaining = MediaCommentLimits.sendCooldown - elapsed

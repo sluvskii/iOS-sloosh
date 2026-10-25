@@ -249,13 +249,16 @@ struct MediaCommentsSection: View {
                 }
 
                 if comment.isSpoiler {
-                    HStack(spacing: 5) {
-                        Image(systemName: "eye.slash.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Спойлер")
-                            .font(.system(size: 12, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 5) {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.white.opacity(0.10))
+                            .frame(width: 190, height: 8)
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 120, height: 8)
                     }
-                    .foregroundStyle(.white.opacity(0.75))
+                    .shimmer()
+                    .accessibilityLabel("Спойлер")
                 } else {
                     Text(comment.text)
                         .font(.system(size: 14))

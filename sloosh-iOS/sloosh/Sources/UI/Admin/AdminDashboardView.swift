@@ -4,6 +4,7 @@ import SwiftUI
 
 public struct AdminDashboardView: View {
     @StateObject private var repo = AdminRepository.shared
+    @StateObject private var commentsRepo = MediaCommentsRepository.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
@@ -21,6 +22,8 @@ public struct AdminDashboardView: View {
     @State private var selectedUserForDetails: AdminUserItem? = nil
     @State private var channelToDelete: ChannelModel? = nil
     @State private var showDeleteChannelAlert: Bool = false
+    @State private var commentToDelete: CommentReportGroup? = nil
+    @State private var showDeleteCommentAlert: Bool = false
     @State private var scrollOffsets: [AdminTab: CGFloat] = [:]
 
     private var blurOpacity: Double {
@@ -40,6 +43,7 @@ public struct AdminDashboardView: View {
     private enum AdminTab: String, CaseIterable, Identifiable {
         case analytics = "Аналитика"
         case users = "Пользователи"
+        case reports = "Жалобы"
         case channels = "Каналы"
         case artworks = "Оформление"
         case diagnostics = "Система"
@@ -50,6 +54,7 @@ public struct AdminDashboardView: View {
             switch self {
             case .analytics: return "chart.xyaxis.line"
             case .users: return "person.2.fill"
+            case .reports: return "exclamationmark.bubble.fill"
             case .channels: return "megaphone.fill"
             case .artworks: return "paintbrush.fill"
             case .diagnostics: return "waveform.path.ecg"
@@ -94,6 +99,18 @@ public struct AdminDashboardView: View {
                     MediaArtworkPickerSheet(details: details)
                 }
             }
+            .confirmationDialog(
+                "Удалить комментарий?",
+                isPresented: $showDeleteCommentAlert,
+                presenting: commentToDelete
+            ) { group in
+                Button("Удалить", role: .destructive) {
+                    deleteReportedComment(group)
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: { group in
+                Text("Комментарий \(group.authorName) будет удалён безвозвратно.")
+            }
             .task {
                 await repo.fetchOverviewStats()
             }
@@ -109,6 +126,8 @@ public struct AdminDashboardView: View {
             analyticsTab
         case .users:
             usersTab
+        case .reports:
+            reportsTab
         case .channels:
             channelsTab
         case .artworks:
@@ -135,6 +154,7 @@ public struct AdminDashboardView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task {
                             await repo.fetchOverviewStats()
+                            await commentsRepo.fetchReports()
                         }
                     }
 
@@ -875,6 +895,278 @@ public struct AdminDashboardView: View {
             ch.tag.lowercased().contains(query) ||
             ch.ownerId.lowercased().contains(query)
         }
+    }
+
+    // MARK: - Reports Tab (Comment Moderation)
+
+    private var totalReports: Int {
+        commentsRepo.reports.reduce(0) { $0 + $1.reportsCount }
+    }
+
+    private var reportsTab: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Text("\(commentsRepo.reports.count) с жалобами")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.primary)
+
+                    if totalReports > 0 {
+                        Text("•")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Text("\(totalReports) жалоб")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .glassEffect(in: Capsule())
+
+                if commentsRepo.isLoadingReports && commentsRepo.reports.isEmpty {
+                    ProgressView()
+                        .controlSize(.large)
+                        .padding(.vertical, 40)
+                } else if let error = commentsRepo.reportsError, commentsRepo.reports.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 28))
+                            .foregroundColor(.secondary)
+
+                        Text(error)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+
+                        Button {
+                            Task { await commentsRepo.fetchReports() }
+                        } label: {
+                            Text("Повторить")
+                                .font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 16)
+                                .frame(height: 36)
+                                .glassEffect(.regular.interactive(), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 36)
+                } else if commentsRepo.reports.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "checkmark.bubble")
+                            .font(.system(size: 28))
+                            .foregroundColor(.secondary)
+                        Text("Жалоб нет")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 36)
+                } else {
+                    LazyVStack(spacing: 8) {
+                        ForEach(commentsRepo.reports) { group in
+                            reportCard(group)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
+        }
+        .scrollContentBackground(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffsets[.reports] = newOffset
+        }
+        .task {
+            if commentsRepo.reports.isEmpty {
+                await commentsRepo.fetchReports()
+            }
+        }
+    }
+
+    private func reportCard(_ group: CommentReportGroup) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                SlooshAvatarView(
+                    avatarSource: group.authorAvatar,
+                    fallbackText: group.authorName,
+                    size: 38
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.authorName)
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    Text("\(group.reportsCount) жалоб · \(reportTimeAgo(group.createdAtMs))")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer(minLength: 6)
+
+                Text(group.mediaKey)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+            }
+
+            if let comment = group.comment {
+                Text(comment.text)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(.primary.opacity(0.9))
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if comment.isSpoiler {
+                    HStack(spacing: 4) {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("Спойлер")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+            } else {
+                Text("Комментарий уже удалён")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(Array(group.reasonCounts.enumerated()), id: \.offset) { _, reason in
+                    HStack(spacing: 4) {
+                        Image(systemName: reason.icon)
+                            .font(.system(size: 9, weight: .semibold))
+                        Text(reason.count > 1 ? "\(reason.title) ×\(reason.count)" : reason.title)
+                            .font(.system(size: 10.5, weight: .semibold))
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.07))
+                    .clipShape(Capsule())
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                if let comment = group.comment {
+                    moderationPill(
+                        title: comment.isSpoiler ? "Снять спойлер" : "В спойлер",
+                        icon: comment.isSpoiler ? "eye" : "eye.slash",
+                        tint: .primary
+                    ) {
+                        toggleSpoiler(group)
+                    }
+                }
+
+                moderationPill(title: "Удалить", icon: "trash", tint: .red) {
+                    commentToDelete = group
+                    showDeleteCommentAlert = true
+                }
+
+                moderationPill(title: "Скрыть жалобы", icon: "checkmark", tint: .primary) {
+                    ignoreReports(group)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12)
+        .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func moderationPill(
+        title: String,
+        icon: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(tint)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .glassEffect(.regular.interactive(), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleSpoiler(_ group: CommentReportGroup) {
+        guard let comment = group.comment else { return }
+        let newValue = !comment.isSpoiler
+
+        Task {
+            let ok = await commentsRepo.setSpoiler(group, isSpoiler: newValue)
+            ToastManager.shared.show(
+                title: ok
+                    ? (newValue ? "Помечено спойлером" : "Пометка спойлера снята")
+                    : "Не удалось изменить",
+                icon: ok ? "eye.slash.fill" : "exclamationmark.triangle.fill",
+                iconColor: ok ? nil : .red
+            )
+        }
+    }
+
+    private func ignoreReports(_ group: CommentReportGroup) {
+        Task {
+            let ok = await commentsRepo.dismissReports(group)
+            ToastManager.shared.show(
+                title: ok ? "Жалобы скрыты" : "Не удалось скрыть",
+                icon: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                iconColor: ok ? nil : .red
+            )
+        }
+    }
+
+    private func deleteReportedComment(_ group: CommentReportGroup) {
+        Task {
+            let ok = await commentsRepo.deleteCommentAsAdmin(group)
+            ToastManager.shared.show(
+                title: ok ? "Комментарий удалён" : "Не удалось удалить",
+                icon: ok ? "trash.fill" : "exclamationmark.triangle.fill",
+                iconColor: ok ? nil : .red
+            )
+        }
+    }
+
+    private func reportTimeAgo(_ ms: Int64) -> String {
+        guard ms > 0 else { return "—" }
+        let seconds = max(0, Int64(Date().timeIntervalSince1970) - ms / 1000)
+        if seconds < 60 { return "только что" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes) мин" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours) ч" }
+        let days = hours / 24
+        return "\(days) дн"
     }
 
     private var channelsTab: some View {
