@@ -16,6 +16,7 @@ struct MediaCommentsSection: View {
     private var comments: [MediaComment] { repo.comments(for: mediaKey) }
     private var previewComments: [MediaComment] { Array(comments.prefix(2)) }
     private var isLoading: Bool { repo.isLoading(mediaKey) }
+    private var hasError: Bool { repo.errorByKey[mediaKey] != nil }
 
     var body: some View {
         Group {
@@ -26,7 +27,11 @@ struct MediaCommentsSection: View {
                     header
 
                     if comments.isEmpty {
-                        emptyCard
+                        if hasError {
+                            errorCard
+                        } else {
+                            emptyCard
+                        }
                     } else {
                         previewCard
                     }
@@ -116,8 +121,49 @@ struct MediaCommentsSection: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Preview Card
+    // MARK: - Error Card
 
+    private var errorCard: some View {
+        Button {
+            Task { await repo.fetch(mediaKey: mediaKey, force: true) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 40, height: 40)
+                    .glassEffect(.regular.interactive(), in: .circle)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Не удалось загрузить комментарии")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text("Нажмите, чтобы повторить")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.secondary)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+    }
+
+    // MARK: - Preview Card
     private var previewCard: some View {
         Button {
             openSheet(focus: false)
