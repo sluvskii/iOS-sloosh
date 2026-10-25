@@ -17,7 +17,6 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     private let blurThreshold: CGFloat
     private let blurOverflow: CGFloat
     private let showsBottom: Bool
-    private let showsGrabber: Bool
     private let trailingContent: () -> Trailing
     private let bottomContent: () -> Bottom
 
@@ -34,7 +33,6 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
         blurThreshold: CGFloat = 30,
         blurOverflow: CGFloat = -60,
         showsBottom: Bool = true,
-        showsGrabber: Bool = false,
         @ViewBuilder trailing: @escaping () -> Trailing,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) {
@@ -50,7 +48,6 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
         self.blurThreshold = blurThreshold
         self.blurOverflow = blurOverflow
         self.showsBottom = showsBottom
-        self.showsGrabber = showsGrabber
         self.trailingContent = trailing
         self.bottomContent = bottom
     }
@@ -62,17 +59,6 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsGrabber {
-                // Собственный grabber вместо системного: геометрия шапки
-                // больше не зависит от типа presentationDetents.
-                Capsule(style: .continuous)
-                    .fill(Color.primary.opacity(0.22))
-                    .frame(width: SheetMetrics.grabberWidth, height: SheetMetrics.grabberHeight)
-                    .padding(.top, SheetMetrics.grabberTopPadding)
-                    .padding(.bottom, SheetMetrics.grabberSpacing)
-                    .accessibilityHidden(true)
-            }
-
             ZStack {
                 Text(title)
                     .font(.system(size: 18, weight: .semibold))
@@ -92,7 +78,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
             }
             .frame(height: 44)
             .padding(.horizontal, 16)
-            .padding(.top, showsGrabber ? 0 : topPadding)
+            .padding(.top, topPadding)
 
             if showsBottom {
                 bottomContent()
@@ -110,170 +96,6 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     }
 }
 
-// MARK: - Canonical Sheet Header Factory
-
-/// Единые канонические метрики для всех модальных шторок приложения.
-/// Ритм строго симметричный: 8pt до «ручки», 8pt до заголовка, 8pt снизу.
-/// Заголовок всегда начинается на одной и той же высоте от кромки шторки,
-/// независимо от типа `presentationDetents`.
-enum SheetMetrics {
-    static let grabberWidth: CGFloat = 36
-    static let grabberHeight: CGFloat = 5
-    static let grabberTopPadding: CGFloat = 8
-    static let grabberSpacing: CGFloat = 8
-    static let bottomPadding: CGFloat = 8
-    static let blurOverflow: CGFloat = -30
-    static let blurThreshold: CGFloat = 20
-
-    /// Расстояние от кромки шторки до ряда кнопок (8 + 5 + 8).
-    static var rowTopInset: CGFloat {
-        grabberTopPadding + grabberHeight + grabberSpacing
-    }
-}
-
-/// «Ручка» шторки в каноническом ритме — для кастомных шапок,
-/// которым нужна собственная раскладка кнопок.
-struct SlooshSheetGrabber: View {
-    var body: some View {
-        Capsule(style: .continuous)
-            .fill(Color.primary.opacity(0.22))
-            .frame(width: SheetMetrics.grabberWidth, height: SheetMetrics.grabberHeight)
-            .padding(.top, SheetMetrics.grabberTopPadding)
-            .padding(.bottom, SheetMetrics.grabberSpacing)
-            .accessibilityHidden(true)
-    }
-}
-
-/// Контейнер кастомной шапки шторки: «ручка» + тот же ритм 8/8/8,
-/// что и у `SlooshTopBar.sheet(...)`.
-struct SlooshSheetHeader<Content: View>: View {
-    private let content: () -> Content
-
-    init(@ViewBuilder content: @escaping () -> Content) {
-        self.content = content
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            SlooshSheetGrabber()
-            content()
-        }
-        .padding(.bottom, SheetMetrics.bottomPadding)
-    }
-}
-
-extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
-    /// Каноническая шапка шторки без правых кнопок и без подвала.
-    static func sheet(
-        title: String,
-        scrollOffset: Binding<CGFloat>,
-        leadingIcon: String? = "xmark",
-        leadingAction: (() -> Void)? = nil,
-        titleMaxWidth: CGFloat = 220
-    ) -> SlooshTopBar<EmptyView, EmptyView> {
-        SlooshTopBar(
-            title: title,
-            scrollOffset: scrollOffset,
-            leadingIcon: leadingIcon,
-            leadingAction: leadingAction,
-            tintColor: .clear,
-            tintOpacity: 0,
-            titleMaxWidth: titleMaxWidth,
-            topPadding: 0,
-            bottomPadding: SheetMetrics.bottomPadding,
-            blurThreshold: SheetMetrics.blurThreshold,
-            blurOverflow: SheetMetrics.blurOverflow,
-            showsGrabber: true
-        )
-    }
-}
-
-extension SlooshTopBar where Bottom == EmptyView {
-    /// Каноническая шапка шторки с trailing-элементами (иконки, действия).
-    static func sheet(
-        title: String,
-        scrollOffset: Binding<CGFloat>,
-        leadingIcon: String? = "xmark",
-        leadingAction: (() -> Void)? = nil,
-        titleMaxWidth: CGFloat = 220,
-        @ViewBuilder trailing: @escaping () -> Trailing
-    ) -> SlooshTopBar<Trailing, EmptyView> {
-        SlooshTopBar(
-            title: title,
-            scrollOffset: scrollOffset,
-            leadingIcon: leadingIcon,
-            leadingAction: leadingAction,
-            tintColor: .clear,
-            tintOpacity: 0,
-            titleMaxWidth: titleMaxWidth,
-            topPadding: 0,
-            bottomPadding: SheetMetrics.bottomPadding,
-            blurThreshold: SheetMetrics.blurThreshold,
-            blurOverflow: SheetMetrics.blurOverflow,
-            showsGrabber: true,
-            trailing: trailing
-        )
-    }
-}
-
-extension SlooshTopBar where Trailing == EmptyView {
-    /// Каноническая шапка шторки со строкой поиска или табами внизу.
-    static func sheet(
-        title: String,
-        scrollOffset: Binding<CGFloat>,
-        leadingIcon: String? = "xmark",
-        leadingAction: (() -> Void)? = nil,
-        titleMaxWidth: CGFloat = 220,
-        @ViewBuilder bottom: @escaping () -> Bottom
-    ) -> SlooshTopBar<EmptyView, Bottom> {
-        SlooshTopBar(
-            title: title,
-            scrollOffset: scrollOffset,
-            leadingIcon: leadingIcon,
-            leadingAction: leadingAction,
-            tintColor: .clear,
-            tintOpacity: 0,
-            titleMaxWidth: titleMaxWidth,
-            topPadding: 0,
-            bottomPadding: SheetMetrics.bottomPadding,
-            blurThreshold: SheetMetrics.blurThreshold,
-            blurOverflow: SheetMetrics.blurOverflow,
-            showsGrabber: true,
-            bottom: bottom
-        )
-    }
-}
-
-extension SlooshTopBar {
-    /// Каноническая шапка шторки с trailing-элементами и нижней строкой.
-    static func sheet(
-        title: String,
-        scrollOffset: Binding<CGFloat>,
-        leadingIcon: String? = "xmark",
-        leadingAction: (() -> Void)? = nil,
-        titleMaxWidth: CGFloat = 220,
-        @ViewBuilder trailing: @escaping () -> Trailing,
-        @ViewBuilder bottom: @escaping () -> Bottom
-    ) -> SlooshTopBar<Trailing, Bottom> {
-        SlooshTopBar(
-            title: title,
-            scrollOffset: scrollOffset,
-            leadingIcon: leadingIcon,
-            leadingAction: leadingAction,
-            tintColor: .clear,
-            tintOpacity: 0,
-            titleMaxWidth: titleMaxWidth,
-            topPadding: 0,
-            bottomPadding: SheetMetrics.bottomPadding,
-            blurThreshold: SheetMetrics.blurThreshold,
-            blurOverflow: SheetMetrics.blurOverflow,
-            showsGrabber: true,
-            trailing: trailing,
-            bottom: bottom
-        )
-    }
-}
-
 extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
     init(
         title: String,
@@ -286,8 +108,7 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
         topPadding: CGFloat = 0,
         bottomPadding: CGFloat = 0,
         blurThreshold: CGFloat = 30,
-        blurOverflow: CGFloat = -60,
-        showsGrabber: Bool = false
+        blurOverflow: CGFloat = -60
     ) {
         self.init(
             title: title,
@@ -302,7 +123,6 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
             showsBottom: false,
-            showsGrabber: showsGrabber,
             trailing: { EmptyView() },
             bottom: { EmptyView() }
         )
@@ -322,7 +142,6 @@ extension SlooshTopBar where Bottom == EmptyView {
         bottomPadding: CGFloat = 0,
         blurThreshold: CGFloat = 30,
         blurOverflow: CGFloat = -60,
-        showsGrabber: Bool = false,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.init(
@@ -338,7 +157,6 @@ extension SlooshTopBar where Bottom == EmptyView {
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
             showsBottom: false,
-            showsGrabber: showsGrabber,
             trailing: trailing,
             bottom: { EmptyView() }
         )
@@ -358,7 +176,6 @@ extension SlooshTopBar where Trailing == EmptyView {
         bottomPadding: CGFloat = 0,
         blurThreshold: CGFloat = 30,
         blurOverflow: CGFloat = -60,
-        showsGrabber: Bool = false,
         @ViewBuilder bottom: @escaping () -> Bottom
     ) {
         self.init(
@@ -374,7 +191,6 @@ extension SlooshTopBar where Trailing == EmptyView {
             blurThreshold: blurThreshold,
             blurOverflow: blurOverflow,
             showsBottom: true,
-            showsGrabber: showsGrabber,
             trailing: { EmptyView() },
             bottom: bottom
         )

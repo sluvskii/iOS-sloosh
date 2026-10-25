@@ -83,7 +83,6 @@ public struct AdminDashboardView: View {
                 }
             ))
             .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
                 customTopHeader
             }
@@ -100,7 +99,7 @@ public struct AdminDashboardView: View {
             }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
     }
 
     @ViewBuilder
@@ -122,46 +121,43 @@ public struct AdminDashboardView: View {
     // MARK: - Custom Top Header (Liquid Glass & Progressive Variable Blur)
 
     private var customTopHeader: some View {
-        VStack(spacing: 0) {
-            SlooshSheetGrabber()
+        VStack(spacing: 12) {
+            // Header Bar (Title & Actions)
+            ZStack {
+                Text("Панель управления")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .allowsHitTesting(false)
 
-            VStack(spacing: 12) {
-                // Header Bar (Title & Actions)
-                ZStack {
-                    Text("Панель управления")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .allowsHitTesting(false)
-
-                    HStack {
-                        // Refresh Button (44x44 TelegramGlassIconButton)
-                        AdminRefreshButton(repo: repo) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            Task {
-                                await repo.fetchOverviewStats()
-                            }
-                        }
-
-                        Spacer()
-
-                        // Close Button (44x44 TelegramGlassIconButton)
-                        TelegramGlassIconButton(systemName: "xmark", iconSize: 17, buttonSize: 44) {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            dismiss()
+                HStack {
+                    // Refresh Button (44x44 TelegramGlassIconButton)
+                    AdminRefreshButton(repo: repo) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task {
+                            await repo.fetchOverviewStats()
                         }
                     }
-                }
-                .padding(.horizontal, 16)
 
-                // Category Text Tabs
-                tabSelector
-                    .padding(.bottom, 4)
+                    Spacer()
+
+                    // Close Button (44x44 TelegramGlassIconButton)
+                    TelegramGlassIconButton(systemName: "xmark", iconSize: 17, buttonSize: 44) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    }
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+
+            // Category Text Tabs
+            tabSelector
+                .padding(.bottom, 4)
         }
-        .padding(.bottom, SheetMetrics.bottomPadding)
+        .padding(.bottom, 2)
         .background(
             VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                .padding(.bottom, SheetMetrics.blurOverflow)
+                .padding(.bottom, -30)
                 .ignoresSafeArea(edges: .top)
                 .opacity(blurOpacity)
                 .animation(.easeInOut(duration: 0.2), value: blurOpacity)
@@ -1638,18 +1634,20 @@ private struct AdminUserDetailSheet: View {
             } action: { _, newOffset in
                 scrollOffset = newOffset
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Профиль пользователя",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() }
-                )
+            .navigationTitle("Профиль пользователя")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Закрыть") {
+                        dismiss()
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                }
             }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
     }
 
     private func detailRow(title: String, value: String, canCopy: Bool) -> some View {

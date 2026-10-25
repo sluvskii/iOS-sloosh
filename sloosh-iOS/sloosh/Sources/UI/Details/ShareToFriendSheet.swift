@@ -44,23 +44,34 @@ struct ShareToFriendSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 8)
             .padding(.bottom, 16)
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: clip != nil ? "Поделиться моментом" : "Отправить",
-                    scrollOffset: .constant(0),
-                    leadingAction: { dismiss() },
-                    titleMaxWidth: 240,
-                    trailing: {
-                        TelegramGlassIconButton(systemName: "square.and.arrow.up") {
-                            showSystemShareSheet = true
-                        }
-                        .accessibilityLabel("Поделиться")
+            .navigationTitle(clip != nil ? "Поделиться моментом" : "Отправить")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Кнопка Закрыть
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
                     }
-                )
+                    .tint(.white)
+                }
+
+                // Кнопка Системный Шеринг
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showSystemShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .tint(.white)
+                }
             }
             .task {
                 await repo.fetchConversations()
@@ -76,8 +87,8 @@ struct ShareToFriendSheet: View {
             }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.hidden)
-        .presentationDetents([.height(380)])
+        .presentationDragIndicator(.visible)
+        .presentationDetents([.height(340)])
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedUsers.isEmpty)
         .preferredColorScheme(.dark)
     }
@@ -157,7 +168,7 @@ struct ShareToFriendSheet: View {
                                     if isSelected {
                                         ZStack {
                                             Circle()
-                                                .fill(Color.white)
+                                                .fill(Color.slooshAccent.opacity(0.85))
                                                 .frame(width: 20, height: 20)
                                                 .glassEffect(.regular.interactive(), in: Circle())
 
@@ -346,8 +357,7 @@ struct ShareToFriendSheet: View {
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
-                .background(Color.white, in: Capsule())
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .background(Color.slooshAccent, in: Capsule())
             }
             .buttonStyle(ScaleButtonStyle())
             .disabled(isSending || selectedUsers.isEmpty)
