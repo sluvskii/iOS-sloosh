@@ -85,19 +85,18 @@ public struct ClipCommentsSheetView: View {
                 }
             }
         }
-        .ignoresSafeArea(.container, edges: .top)
         .safeAreaInset(edge: .top, spacing: 0) {
-            SlooshSheetHeader {
-                headerBar
-                    .padding(.horizontal, 16)
-            }
-            .background(
-                VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                    .padding(.bottom, SheetMetrics.blurOverflow)
-                    .ignoresSafeArea(edges: .top)
-                    .opacity(blurOpacity)
-                    .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-            )
+            headerBar
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+                .background(
+                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                        .padding(.bottom, -30)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(blurOpacity)
+                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                )
         }
         .safeAreaInset(edge: .bottom) {
             inputBar
@@ -107,7 +106,7 @@ public struct ClipCommentsSheetView: View {
         .presentationDetents([.fraction(0.65)], selection: $sheetDetent)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .task {

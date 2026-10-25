@@ -9,7 +9,6 @@ public struct MovieSelectorSheet: View {
     @State private var popularMovies: [MediaDto] = []
     @State private var isLoading: Bool = false
     @State private var searchTask: Task<Void, Never>? = nil
-    @State private var scrollOffset: CGFloat = 0
 
     public let onSelect: (MediaCardPayload) -> Void
 
@@ -48,16 +47,16 @@ public struct MovieSelectorSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Прикрепить фильм",
-                    scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
-                    leadingAction: { dismiss() }
-                )
+            .padding(.top, 12)
+            .navigationTitle("Прикрепить фильм")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                    .foregroundColor(.primary)
+                }
             }
             .task {
                 if popularMovies.isEmpty {
@@ -67,7 +66,7 @@ public struct MovieSelectorSheet: View {
         }
         .tint(Color.primary)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationDetents([.medium, .large])
         .preferredColorScheme(.dark)
     }
@@ -82,7 +81,6 @@ public struct MovieSelectorSheet: View {
                 .foregroundColor(.primary)
                 .autocorrectionDisabled()
                 .onChange(of: query) { _, newQuery in
-                    scrollOffset = 0
                     performDebouncedSearch(query: newQuery)
                 }
 
@@ -169,11 +167,6 @@ public struct MovieSelectorSheet: View {
             .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
-        }
     }
 
     private func performDebouncedSearch(query: String) {

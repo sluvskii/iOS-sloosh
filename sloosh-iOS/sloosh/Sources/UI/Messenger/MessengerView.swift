@@ -866,19 +866,9 @@ private struct NewChatSheet: View {
                     }
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Новое сообщение",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() },
-                    bottom: {
-                        SlooshSearchField(text: $query, prompt: "Имя или @тег пользователя")
-                            .padding(.horizontal, 16)
-                    }
-                )
-            }
+            .navigationTitle("Новое сообщение")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, prompt: "Имя или @тег пользователя")
             .onChange(of: query) { _, newQ in
                 searchTask?.cancel()
                 scrollOffset = 0
@@ -899,11 +889,15 @@ private struct NewChatSheet: View {
                     }
                 }
             }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                }
+            }
         }
         .tint(Color.primary)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
-        .presentationBackground { Color.clear.glassEffect(in: .rect) }
     }
 }
 

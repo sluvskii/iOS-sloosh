@@ -6,8 +6,6 @@ import WebKit
 struct TrailerPlayerSheetView: View {
     let trailer: TrailerVideoDto
     @Environment(\.dismiss) private var dismiss
-    @State private var scrollOffset: CGFloat = 0
-    @State private var showShareSheet: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -28,7 +26,7 @@ struct TrailerPlayerSheetView: View {
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
 
                     // Trailer Title (No line limit, multiline)
                     Text(trailer.name)
@@ -39,42 +37,41 @@ struct TrailerPlayerSheetView: View {
                 }
                 .padding(.bottom, 16)
             }
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Трейлер",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() },
-                    trailing: {
-                        if trailer.youtubeWebUrl != nil {
-                            TelegramGlassIconButton(systemName: "square.and.arrow.up") {
-                                showShareSheet = true
-                            }
-                            .accessibilityLabel("Поделиться")
-                        }
+            .navigationTitle("Трейлер")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Кнопка закрытия как на других экранах (стандартный нативный размер)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.primary)
                     }
-                )
+                    .tint(.primary)
+                    .buttonStyle(.plain)
+                }
+
+                // Кнопка «Поделиться» сверху в шапке (стандартный нативный размер)
+                ToolbarItem(placement: .primaryAction) {
+                    if let webUrl = trailer.youtubeWebUrl {
+                        ShareLink(item: webUrl) {
+                            Image(systemName: "square.and.arrow.up")
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundStyle(.primary)
+                        }
+                        .tint(.primary)
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             // Закрепленная снизу плавающая кнопка «Открыть в YouTube» (красная, Liquid Glass)
             .safeAreaInset(edge: .bottom) {
                 youtubeBottomButton
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let webUrl = trailer.youtubeWebUrl {
-                    ShareSheet(items: [webUrl, trailer.name])
-                }
-            }
         }
         .presentationDetents([.height(440)])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .preferredColorScheme(.dark)
     }
 
     // MARK: - Floating Red YouTube Button
@@ -105,7 +102,7 @@ struct TrailerPlayerSheetView: View {
                 .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.glassPress)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 28)
             .padding(.bottom, 8)
         }
     }

@@ -62,7 +62,6 @@ struct MediaArtworkPickerSheet: View {
     @State private var isLoading: Bool = false
     @State private var isSaving: Bool = false
     @State private var hasLoadedFullImages: Bool = false
-    @State private var scrollOffset: CGFloat = 0
 
     init(
         mediaId: String,
@@ -156,42 +155,47 @@ struct MediaArtworkPickerSheet: View {
                             .padding(.horizontal, 16)
                     }
                 }
-                .padding(.top, 12)
+                .padding(.top, 10)
                 .padding(.bottom, 36)
             }
             .scrollContentBackground(.hidden)
             .refreshable {
                 await loadAvailableImagesIfNeeded(force: true)
             }
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
+            .navigationTitle("Оформление")
+            .navigationBarTitleDisplayMode(.inline)
             .tint(.white)
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Оформление",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() },
-                    trailing: {
+            .toolbar {
+                // Native Close Button (Pure White, no green tint)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.white)
+                    }
+                    .tint(.white)
+                    .accessibilityLabel("Закрыть")
+                }
+
+                // Native Save Button (Pure White, no green tint)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await saveChanges() }
+                    } label: {
                         if isSaving {
                             ProgressView()
                                 .controlSize(.small)
                                 .tint(.white)
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
                         } else {
-                            TelegramGlassIconButton(systemName: "checkmark", tintColor: .white) {
-                                Task { await saveChanges() }
-                            }
-                            .disabled(isSaving)
-                            .accessibilityLabel("Сохранить")
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.white)
                         }
                     }
-                )
+                    .disabled(isSaving)
+                    .tint(.white)
+                    .accessibilityLabel("Сохранить")
+                }
             }
             .task {
                 setupInitialSelection()
@@ -200,7 +204,7 @@ struct MediaArtworkPickerSheet: View {
         }
         .preferredColorScheme(.dark)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Initial State Setup

@@ -1011,48 +1011,39 @@ private struct PublishMomentSheet: View {
             } action: { _, newOffset in
                 scrollOffset = newOffset
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
-                    title: "Новый момент",
-                    scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
-                    leadingAction: { dismiss() },
-                    tintColor: .black,
-                    tintOpacity: 0.94,
-                    titleMaxWidth: 200,
-                    topPadding: 0,
-                    bottomPadding: SheetMetrics.bottomPadding,
-                    blurOverflow: SheetMetrics.blurOverflow,
-                    showsGrabber: true,
-                    trailing: {
-                        Button {
-                            publish()
-                        } label: {
-                            if vm.isClipPublishing {
-                                ProgressView()
-                                    .tint(.black)
-                                    .frame(width: 92, height: 44)
-                                    .background(Color.white)
-                                    .clipShape(Capsule())
-                            } else {
-                                Text("Опубликовать")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(.black)
-                                    .padding(.horizontal, 16)
-                                    .frame(height: 44)
-                                    .background(Color.white)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                        .disabled(vm.isClipPublishing)
+            .navigationTitle("Новый момент")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
                     }
-                )
+                    .foregroundStyle(.white.opacity(0.8))
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        publish()
+                    } label: {
+                        if vm.isClipPublishing {
+                            ProgressView()
+                                .tint(.black)
+                        } else {
+                            Text("Опубликовать")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(Color.white)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .disabled(vm.isClipPublishing)
+                }
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
     }

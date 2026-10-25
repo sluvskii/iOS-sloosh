@@ -19,7 +19,6 @@ public struct CreateChannelSheet: View {
     @State private var isTagAvailable: Bool = false
     @State private var isCreating: Bool = false
     @State private var errorMessage: String? = nil
-    @State private var scrollOffset: CGFloat = 0
 
     public init(onCreated: @escaping (ChannelModel) -> Void) {
         self.onCreated = onCreated
@@ -42,7 +41,7 @@ public struct CreateChannelSheet: View {
                 VStack(spacing: 24) {
                     // Avatar Section with Photo Picker
                     avatarPreviewSection
-                        .padding(.top, 8)
+                        .padding(.top, 16)
 
                     // Form Fields Section
                     formFieldsSection
@@ -60,28 +59,23 @@ public struct CreateChannelSheet: View {
                         .padding(.top, 8)
                         .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Новый канал",
-                    scrollOffset: $scrollOffset,
-                    leadingIcon: "xmark",
-                    leadingAction: { dismiss() }
-                )
+            .navigationTitle("Новый канал")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                    .foregroundColor(.secondary)
+                }
             }
         }
         .tint(Color.primary)
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationBackground {
             Color.clear.glassEffect(in: .rect)
         }

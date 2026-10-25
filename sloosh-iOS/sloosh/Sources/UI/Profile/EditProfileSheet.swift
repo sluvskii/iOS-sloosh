@@ -16,7 +16,6 @@ public struct EditProfileSheet: View {
     @State private var isTagAvailable: Bool = true
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
-    @State private var scrollOffset: CGFloat = 0
 
     public init() {}
 
@@ -42,7 +41,7 @@ public struct EditProfileSheet: View {
                 VStack(spacing: 24) {
                     // Avatar Picker Section
                     avatarPickerSection
-                        .padding(.top, 12)
+                        .padding(.top, 16)
 
                     // Profile Details Form
                     formFieldsSection
@@ -60,30 +59,25 @@ public struct EditProfileSheet: View {
                         .padding(.top, 8)
                         .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Редактировать профиль",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() }
-                )
+            .navigationTitle("Редактировать профиль")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                    .foregroundColor(.secondary)
+                }
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationBackground {
             Color.clear.glassEffect(in: .rect)
         }
-        .preferredColorScheme(.dark)
         .onAppear {
             let user = authRepo.currentUser
             self.displayName = user?.displayName ?? ""
@@ -102,7 +96,7 @@ public struct EditProfileSheet: View {
                         avatarSource: avatarDataString,
                         fallbackText: displayName.isEmpty ? (tag.isEmpty ? "S" : tag) : displayName,
                         size: 96,
-                        accentColor: Color.white.opacity(0.85)
+                        accentColor: Color.slooshAccent
                     )
 
                     // Camera Badge
@@ -111,7 +105,7 @@ public struct EditProfileSheet: View {
                         .frame(width: 32, height: 32)
                         .overlay(
                             Circle()
-                                .fill(Color.white)
+                                .fill(Color.slooshAccent)
                                 .frame(width: 28, height: 28)
                                 .overlay(
                                     Image(systemName: "camera.fill")
@@ -247,9 +241,9 @@ public struct EditProfileSheet: View {
             .frame(height: 52)
             .background(
                 Capsule()
-                    .fill(isFormValid ? Color.white : Color.white.opacity(0.35))
+                    .fill(isFormValid ? Color.slooshAccent : Color.slooshAccent.opacity(0.4))
             )
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .glassEffect(in: Capsule())
         }
         .disabled(!isFormValid)
         .buttonStyle(PeakPressButtonStyle())

@@ -2503,7 +2503,7 @@ struct EpisodeDetailsSheet: View {
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                     
                     // Content
                     VStack(alignment: .leading, spacing: 14) {
@@ -2639,30 +2639,36 @@ struct EpisodeDetailsSheet: View {
             } action: { _, newOffset in
                 scrollOffset = newOffset
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "\(item.season) сезон, \(item.episode) серия",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() },
-                    titleMaxWidth: 250,
-                    trailing: {
-                        if item.isAvailable {
-                            TelegramGlassIconButton(
-                                systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle",
-                                tintColor: isWatched ? .white : Color(UIColor.secondaryLabel)
-                            ) {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                isWatched.toggle()
-                                onWatchedToggle(isWatched)
-                            }
-                            .accessibilityLabel(isWatched ? "Отметить непросмотренной" : "Отметить просмотренной")
-                        }
+            .navigationTitle("\(item.season) сезон, \(item.episode) серия")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
                     }
-                )
+                    .tint(.primary)
+                    .buttonStyle(.plain)
+                }
+                
+                if item.isAvailable {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            isWatched.toggle()
+                            onWatchedToggle(isWatched)
+                        } label: {
+                            Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
+                        }
+                        .accessibilityLabel(isWatched ? "Отметить непросмотренной" : "Отметить просмотренной")
+                    }
+                }
             }
         }
         .onAppear {
@@ -3310,9 +3316,7 @@ struct InlineEpisodesSection: View {
             )
             .environmentObject(viewModel)
             .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.hidden)
-            .presentationBackground { Color.clear.glassEffect(in: .rect) }
-            .preferredColorScheme(.dark)
+            .presentationDragIndicator(.visible)
         }
     }
 

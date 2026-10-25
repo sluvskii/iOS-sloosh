@@ -75,26 +75,24 @@ struct SearchFilterSheet: View {
                 scrollOffset = newOffset
             }
             .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
             .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshSheetHeader {
-                    headerBar
-                        .padding(.horizontal, 16)
-                }
-                .background(
-                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                        .padding(.bottom, SheetMetrics.blurOverflow)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(blurOpacity)
-                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                )
+                headerBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                    .background(
+                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                            .padding(.bottom, -30)
+                            .ignoresSafeArea(edges: .top)
+                            .opacity(blurOpacity)
+                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                    )
             }
             .background(Color.clear)
         }
         .presentationDetents(context == .search ? [.height(568)] : [.height(484)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.hidden)
-        .preferredColorScheme(.dark)
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Header Bar
@@ -107,27 +105,39 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: 200)
 
             HStack {
-                TelegramGlassIconButton(
-                    systemName: "arrow.counterclockwise",
-                    tintColor: filters.isEmpty ? Color.white.opacity(0.3) : .white
-                ) {
-                    guard !filters.isEmpty else { return }
+                Button {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.prepare()
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         filters = SearchFilters()
                     }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(filters.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
                 .disabled(filters.isEmpty)
                 .accessibilityLabel("Сбросить")
 
                 Spacer()
 
-                TelegramGlassIconButton(systemName: "xmark", tintColor: .white) {
+                Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
                 .accessibilityLabel("Закрыть")
             }
         }

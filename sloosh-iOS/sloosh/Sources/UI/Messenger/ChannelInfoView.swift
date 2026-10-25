@@ -356,18 +356,19 @@ public struct EditChannelSheet: View {
             } action: { _, newOffset in
                 scrollOffset = newOffset
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .ignoresSafeArea(.container, edges: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar.sheet(
-                    title: "Настройки канала",
-                    scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() }
-                )
+            .navigationTitle("Настройки канала")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                    .foregroundColor(.secondary)
+                }
             }
         }
         .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationBackground {
             Color.clear.glassEffect(in: .rect)
         }
