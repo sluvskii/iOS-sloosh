@@ -145,6 +145,11 @@ public struct CommentReportGroup: Identifiable, Sendable, Equatable {
     public let mediaKey: String
     public let reports: [MediaCommentReport]
     public var comment: MediaComment?
+    /// Не удалось загрузить комментарий (сеть/права), а не «его нет».
+    public var commentLoadFailed: Bool = false
+    /// Человеческое название тайтла, подтягивается из API по mediaKey.
+    public var mediaTitle: String?
+    public var posterUrl: String?
 
     public var reportsCount: Int { reports.count }
 
@@ -169,6 +174,11 @@ public struct CommentReportGroup: Identifiable, Sendable, Equatable {
 
     public var authorAvatar: String? {
         comment?.authorAvatar
+    }
+
+    public var displayTitle: String {
+        if let mediaTitle, !mediaTitle.isEmpty { return mediaTitle }
+        return mediaKey
     }
 }
 
