@@ -94,9 +94,6 @@ struct MediaCommentsSheetView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .scrollEdgeEffectStyle(.soft, for: .bottom)
-                .refreshable {
-                    await repo.fetch(mediaKey: mediaKey, force: true)
-                }
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
                 } action: { _, newOffset in
@@ -409,7 +406,7 @@ struct MediaCommentsSheetView: View {
             }
 
             Button {
-                openAuthorProfile(for: comment)
+                openProfileFromMenu(comment)
             } label: {
                 Label("Открыть профиль", systemImage: "person.crop.circle")
             }
@@ -526,16 +523,6 @@ struct MediaCommentsSheetView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                if !isExpandedInput && isSpoiler {
-                    HStack(spacing: 5) {
-                        Image(systemName: "eye.slash.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Пометка спойлера")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(.white.opacity(0.55))
-                }
             }
             .padding(.top, isExpandedInput ? 6 : 2)
             .padding(.bottom, isExpandedInput ? 8 : 2)
@@ -546,9 +533,12 @@ struct MediaCommentsSheetView: View {
             )
             .animation(.easeInOut(duration: 0.2), value: isExpandedInput)
 
+
             if authRepo.isAuthenticated {
                 if hasTextToSending {
                     sendButton
+                        .disabled(isSending || cooldownRemaining > 0)
+                        .opacity(cooldownRemaining > 0 ? 0.5 : 1)
                         .transition(
                             .asymmetric(
                                 insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
@@ -595,10 +585,13 @@ struct MediaCommentsSheetView: View {
 
     private var spoilerComposerToggle: some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                isSpoiler.toggle()
-            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            isSpoiler.toggle()
+            ToastManager.shared.show(
+                title: isSpoiler ? "Комментарий будет скрыт как спойлер" : "Пометка спойлера снята",
+                icon: isSpoiler ? "eye.slash.fill" : "eye",
+                duration: 1.6
+            )
         } label: {
             Image(systemName: isSpoiler ? "eye.slash.fill" : "eye.slash")
                 .font(.system(size: 17, weight: .medium))
@@ -672,14 +665,48 @@ struct MediaCommentsSheetView: View {
     // MARK: - Actions
 
     private func openAuthorProfile(for comment: MediaComment) {
-        guard comment.authorId != authRepo.currentUser?.id else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        authorProfile = SlooshUser(
+
+        if isOwn(comment) {
+            // Свой профиль редактируется из меню аватара композера.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                showEditProfileSheet = true
+            }
+            return
+        }
+
+        let user = SlooshUser(
             id: comment.authorId,
             displayName: comment.authorName,
             tag: comment.authorTag,
             avatarUrl: comment.authorAvatar
         )
+        // Пауза нужна, чтобы шторка гарантированно презентовалась
+        // поверх закрывающегося меню: системный quirk Menu -> sheet.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            authorProfile = user
+        }
+    }
+
+    /// Публичная точка для меню: тоже с небольшой задержкой.
+    private func openProfileFromMenu(_ comment: MediaComment) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if isOwn(comment) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                showEditProfileSheet = true
+            }
+            return
+        }
+
+        let user = SlooshUser(
+            id: comment.authorId,
+            displayName: comment.authorName,
+            tag: comment.authorTag,
+            avatarUrl: comment.authorAvatar
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            authorProfile = user
+        }
     }
 
     private func send() {
