@@ -1668,6 +1668,11 @@ struct DetailsView: View {
                             .padding(.top, 16)
                         }
 
+                        if !details.commentsMediaKey.isEmpty {
+                            MediaCommentsSection(mediaKey: details.commentsMediaKey)
+                                .padding(.top, 16)
+                        }
+
                         if let collection = viewModel.movieCollection ?? details.collection {
                             FranchiseCollectionSection(collection: collection, onDirectPlay: { movie in
                                 directPlaybackMovie = movie
@@ -1853,6 +1858,11 @@ struct DetailsView: View {
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
                                 }
                                 .padding(.top, 16)
+                            }
+
+                            if !details.commentsMediaKey.isEmpty {
+                                MediaCommentsSection(mediaKey: details.commentsMediaKey)
+                                    .padding(.top, 16)
                             }
 
                             if let collection = viewModel.movieCollection ?? details.collection {
