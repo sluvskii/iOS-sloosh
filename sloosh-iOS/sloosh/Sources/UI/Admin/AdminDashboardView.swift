@@ -5,6 +5,7 @@ import SwiftUI
 public struct AdminDashboardView: View {
     @StateObject private var repo = AdminRepository.shared
     @StateObject private var commentsRepo = MediaCommentsRepository.shared
+    @StateObject private var authRepo = AuthRepository.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
@@ -117,6 +118,7 @@ public struct AdminDashboardView: View {
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
+        .withToasts()
     }
 
     @ViewBuilder
@@ -927,6 +929,10 @@ public struct AdminDashboardView: View {
                 .padding(.vertical, 8)
                 .glassEffect(in: Capsule())
 
+                if commentsRepo.hasServerAdminAccess == false {
+                    adminAccessBanner
+                }
+
                 if commentsRepo.isLoadingReports && commentsRepo.reports.isEmpty {
                     ProgressView()
                         .controlSize(.large)
@@ -988,10 +994,61 @@ public struct AdminDashboardView: View {
             scrollOffsets[.reports] = newOffset
         }
         .task {
-            if commentsRepo.reports.isEmpty {
-                await commentsRepo.fetchReports()
+            await commentsRepo.fetchReports()
+        }
+    }
+
+    private var mediaPosterPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
+            .overlay(
+                Image(systemName: "film")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            )
+    }
+
+    private var adminAccessBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.trianglebadge.exclamationmark.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.orange)
+
+                Text("Серверные права не активны")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+            }
+
+            Text("Опубликуйте database.rules.json и добавьте свой UID в узел admins — иначе кнопки ниже вернут отказ.")
+                .font(.system(size: 11.5))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let uid = authRepo.currentUser?.id, !uid.isEmpty {
+                Button {
+                    UIPasteboard.general.string = uid
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    ToastManager.shared.show(title: "UID скопирован", icon: "doc.on.doc.fill")
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Скопировать UID")
+                            .font(.system(size: 11.5, weight: .semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func reportCard(_ group: CommentReportGroup) -> some View {
@@ -1015,14 +1072,37 @@ public struct AdminDashboardView: View {
                 }
 
                 Spacer(minLength: 6)
+            }
 
-                Text(group.mediaKey)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Capsule())
+            HStack(spacing: 8) {
+                if let poster = group.posterUrl, let url = URL(string: poster) {
+                    AsyncCachedImage(url: url) {
+                        mediaPosterPlaceholder
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } fallback: {
+                        mediaPosterPlaceholder
+                    }
+                    .frame(width: 28, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(group.displayTitle)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    if group.mediaTitle != nil {
+                        Text(group.mediaKey)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 0)
             }
 
             if let comment = group.comment {
@@ -1045,8 +1125,27 @@ public struct AdminDashboardView: View {
                     .background(Color.primary.opacity(0.08))
                     .clipShape(Capsule())
                 }
+            } else if group.commentLoadFailed {
+                HStack(spacing: 8) {
+                    Text("Не удалось загрузить комментарий")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+
+                    Spacer(minLength: 6)
+
+                    Button {
+                        Task { await commentsRepo.fetchReports() }
+                    } label: {
+                        Text("Повторить")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 28)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             } else {
-                Text("Комментарий уже удалён")
+                Text("Комментарий удалён")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
             }
@@ -1128,7 +1227,7 @@ public struct AdminDashboardView: View {
             ToastManager.shared.show(
                 title: ok
                     ? (newValue ? "Помечено спойлером" : "Пометка спойлера снята")
-                    : "Не удалось изменить",
+                    : (commentsRepo.lastModerationError ?? "Не удалось изменить"),
                 icon: ok ? "eye.slash.fill" : "exclamationmark.triangle.fill",
                 iconColor: ok ? nil : .red
             )
@@ -1139,7 +1238,7 @@ public struct AdminDashboardView: View {
         Task {
             let ok = await commentsRepo.dismissReports(group)
             ToastManager.shared.show(
-                title: ok ? "Жалобы скрыты" : "Не удалось скрыть",
+                title: ok ? "Жалобы скрыты" : (commentsRepo.lastModerationError ?? "Не удалось скрыть"),
                 icon: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
                 iconColor: ok ? nil : .red
             )
@@ -1150,7 +1249,7 @@ public struct AdminDashboardView: View {
         Task {
             let ok = await commentsRepo.deleteCommentAsAdmin(group)
             ToastManager.shared.show(
-                title: ok ? "Комментарий удалён" : "Не удалось удалить",
+                title: ok ? "Комментарий удалён" : (commentsRepo.lastModerationError ?? "Не удалось удалить"),
                 icon: ok ? "trash.fill" : "exclamationmark.triangle.fill",
                 iconColor: ok ? nil : .red
             )

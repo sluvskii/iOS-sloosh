@@ -48,6 +48,11 @@ public final class MediaCommentsRepository: ObservableObject {
     @Published public private(set) var reports: [CommentReportGroup] = []
     @Published public private(set) var isLoadingReports: Bool = false
     @Published public private(set) var reportsError: String?
+    /// `nil` — ещё не проверяли; `false` — UID отсутствует в `/admins`.
+    @Published public private(set) var hasServerAdminAccess: Bool?
+    @Published public private(set) var lastModerationError: String?
+    /// Названия тайтлов по mediaKey (чтобы админка показывала фильм, а не `kp_…`).
+    private var mediaMetaCache: [String: (title: String, poster: String?)] = [:]
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let diskKeyPrefix = "sloosh_media_comments_v1_"
@@ -321,6 +326,8 @@ public final class MediaCommentsRepository: ObservableObject {
         isLoadingReports = true
         defer { isLoadingReports = false }
 
+        await checkServerAdminAccess()
+
         guard let url = await makeURL(path: "media_comment_reports") else {
             reportsError = MediaCommentError.network.localizedDescription
             return
@@ -339,10 +346,9 @@ public final class MediaCommentsRepository: ObservableObject {
             }
 
             guard (200...299).contains(http.statusCode) else {
-                // 401 — UID не добавлен в /admins
-                reportsError = http.statusCode == 401
-                    ? "Нет доступа. Добавьте свой UID в узел admins базы."
-                    : MediaCommentError.network.localizedDescription
+                reportsError = (http.statusCode == 401 || http.statusCode == 403)
+                    ? "Нет серверных прав. Опубликуйте rules и добавьте свой UID в узел admins."
+                    : "Не удалось загрузить жалобы (HTTP \(http.statusCode))."
                 return
             }
 
@@ -358,13 +364,28 @@ public final class MediaCommentsRepository: ObservableObject {
             for (commentId, byUid) in dict {
                 let reportList = Array(byUid.values)
                 guard let mediaKey = reportList.compactMap({ $0.mediaKey }).first(where: { !$0.isEmpty }) else { continue }
-                let comment = await fetchSingleComment(mediaKey: mediaKey, commentId: commentId)
-                groups.append(CommentReportGroup(
+
+                var group = CommentReportGroup(
                     id: commentId,
                     mediaKey: mediaKey,
                     reports: reportList,
-                    comment: comment
-                ))
+                    comment: nil
+                )
+
+                switch await lookupComment(mediaKey: mediaKey, commentId: commentId) {
+                case .found(let comment):
+                    group.comment = comment
+                case .failed:
+                    group.commentLoadFailed = true
+                case .deleted:
+                    break
+                }
+
+                let meta = await mediaMeta(for: mediaKey)
+                group.mediaTitle = meta.title
+                group.posterUrl = meta.poster
+
+                groups.append(group)
             }
 
             groups.sort { $0.createdAtMs > $1.createdAtMs }
@@ -372,6 +393,35 @@ public final class MediaCommentsRepository: ObservableObject {
             reportsError = nil
         } catch {
             reportsError = MediaCommentError.network.localizedDescription
+        }
+    }
+
+    /// Проверяет, что UID пользователя действительно есть в `admins` на сервере.
+    public func checkServerAdminAccess() async {
+        guard let uid = AuthRepository.shared.currentUser?.id, !uid.isEmpty else {
+            hasServerAdminAccess = false
+            return
+        }
+        guard let url = await makeURL(path: "admins/\(uid)") else {
+            hasServerAdminAccess = nil
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else {
+            hasServerAdminAccess = nil
+            return
+        }
+
+        if (200...299).contains(http.statusCode) {
+            hasServerAdminAccess = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+        } else {
+            hasServerAdminAccess = false
         }
     }
 
@@ -386,6 +436,7 @@ public final class MediaCommentsRepository: ObservableObject {
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                lastModerationError = moderationFailureMessage(status: (response as? HTTPURLResponse)?.statusCode)
                 return false
             }
 
@@ -395,6 +446,7 @@ public final class MediaCommentsRepository: ObservableObject {
             saveToDisk(mediaKey: group.mediaKey, comments: cached)
 
             _ = await dismissReports(group)
+            lastModerationError = nil
             return true
         } catch {
             return false
@@ -414,6 +466,7 @@ public final class MediaCommentsRepository: ObservableObject {
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                lastModerationError = moderationFailureMessage(status: (response as? HTTPURLResponse)?.statusCode)
                 return false
             }
 
@@ -426,6 +479,7 @@ public final class MediaCommentsRepository: ObservableObject {
             if let index = reports.firstIndex(where: { $0.id == group.id }) {
                 reports[index].comment?.isSpoiler = isSpoiler
             }
+            lastModerationError = nil
             return true
         } catch {
             return false
@@ -443,36 +497,141 @@ public final class MediaCommentsRepository: ObservableObject {
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                lastModerationError = moderationFailureMessage(status: (response as? HTTPURLResponse)?.statusCode)
                 return false
             }
             reports.removeAll { $0.id == group.id }
+            lastModerationError = nil
             return true
         } catch {
             return false
         }
     }
 
-    private func fetchSingleComment(mediaKey: String, commentId: String) async -> MediaComment? {
-        guard let url = await makeURL(path: "media_comments/\(mediaKey)/\(commentId)") else { return nil }
+    private enum CommentLookup {
+        case found(MediaComment)
+        case deleted
+        case failed
+    }
+
+    private func lookupComment(mediaKey: String, commentId: String) async -> CommentLookup {
+        switch await fetchCommentNode(mediaKey: mediaKey, commentId: commentId) {
+        case .found(let comment):
+            return .found(comment)
+        case .failed:
+            return .failed
+        case .deleted:
+            // Ключ в жалобе мог не совпасть с ключом, под которым лежит комментарий.
+            if let found = await searchCommentAcrossMedia(commentId: commentId) {
+                return .found(found)
+            }
+            return .deleted
+        }
+    }
+
+    private func fetchCommentNode(mediaKey: String, commentId: String) async -> CommentLookup {
+        guard let url = await makeURL(path: "media_comments/\(mediaKey)/\(commentId)") else { return .failed }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 8
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200...299).contains(http.statusCode),
-              let comment = try? decoder.decode(MediaComment.self, from: data) else {
+              let http = response as? HTTPURLResponse else {
+            return .failed
+        }
+
+        guard (200...299).contains(http.statusCode) else { return .failed }
+
+        let raw = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if raw.isEmpty || raw == "null" { return .deleted }
+
+        guard var comment = try? decoder.decode(MediaComment.self, from: data) else { return .failed }
+        comment.id = commentId
+        return .found(comment)
+    }
+
+    /// Поиск комментария по всем тайтлам — на случай, если в жалобе другой ключ.
+    private func searchCommentAcrossMedia(commentId: String) async -> MediaComment? {
+        guard let listURL = await makeURL(path: "media_comments", query: [URLQueryItem(name: "shallow", value: "true")]),
+              let (listData, listResponse) = try? await URLSession.shared.data(for: URLRequest(url: listURL)),
+              let listHTTP = listResponse as? HTTPURLResponse,
+              (200...299).contains(listHTTP.statusCode),
+              let keys = try? decoder.decode([String: Bool].self, from: listData) else {
             return nil
         }
 
-        var result = comment
-        result.id = commentId
-        return result
+        for key in keys.keys.prefix(30) {
+            guard let idsURL = await makeURL(
+                path: "media_comments/\(key)",
+                query: [URLQueryItem(name: "shallow", value: "true")]
+            ) else { continue }
+
+            guard let (idsData, idsResponse) = try? await URLSession.shared.data(for: URLRequest(url: idsURL)),
+                  let idsHTTP = idsResponse as? HTTPURLResponse,
+                  (200...299).contains(idsHTTP.statusCode),
+                  let ids = try? decoder.decode([String: Bool].self, from: idsData),
+                  ids[commentId] == true else {
+                continue
+            }
+
+            if case .found(let comment) = await fetchCommentNode(mediaKey: key, commentId: commentId) {
+                return comment
+            }
+        }
+
+        return nil
+    }
+
+    /// Название и постер тайтла по `mediaKey` (`kp_…` / `tmdb_…`).
+    private func mediaMeta(for mediaKey: String) async -> (title: String?, poster: String?) {
+        if let cached = mediaMetaCache[mediaKey] {
+            return (cached.title, cached.poster)
+        }
+
+        // 1. Аналитика уже знает человеческие названия по mediaKey.
+        if let hit = AdminRepository.shared.mediaAnalytics.first(where: { $0.mediaKey == mediaKey }),
+           !hit.title.isEmpty {
+            mediaMetaCache[mediaKey] = (hit.title, hit.posterUrl)
+            return (hit.title, hit.posterUrl)
+        }
+
+        // 2. Пробуем детали по ключу как есть.
+        if let details = try? await MoviesRepository.shared.getDetails(id: mediaKey),
+           let title = details.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty {
+            mediaMetaCache[mediaKey] = (title, details.displayPosterUrl)
+            return (title, details.displayPosterUrl)
+        }
+
+        // 3. Числовой id — только если API подтверждает, что это тот же Кинопоиск.
+        if mediaKey.hasPrefix("kp_") {
+            let numeric = String(mediaKey.dropFirst(3))
+            if let details = try? await MoviesRepository.shared.getDetails(id: numeric),
+               let title = details.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !title.isEmpty,
+               String(details.externalIds?.kp ?? details.ids?.kp ?? 0) == numeric {
+                mediaMetaCache[mediaKey] = (title, details.displayPosterUrl)
+                return (title, details.displayPosterUrl)
+            }
+        }
+
+        return (nil, nil)
+    }
+
+    private func moderationFailureMessage(status: Int?) -> String {
+        switch status ?? 0 {
+        case 401, 403:
+            return "Нет прав администратора на сервере. Проверьте rules и узел admins."
+        default:
+            return "Не удалось выполнить действие. Проверьте соединение."
+        }
     }
 
     /// Время до конца кулдауна в секундах (0 — можно отправлять).
-    public func cooldownRemaining(mediaKey: String) -> Int {        let last = UserDefaults.standard.double(forKey: lastSentPrefix + mediaKey)
+    public func cooldownRemaining(mediaKey: String) -> Int {
+        let last = UserDefaults.standard.double(forKey: lastSentPrefix + mediaKey)
         guard last > 0 else { return 0 }
         let elapsed = Date().timeIntervalSince1970 - last
         let remaining = MediaCommentLimits.sendCooldown - elapsed
