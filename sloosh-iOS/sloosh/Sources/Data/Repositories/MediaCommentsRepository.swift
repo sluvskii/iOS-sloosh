@@ -50,7 +50,10 @@ public final class MediaCommentsRepository: ObservableObject {
     private var inFlight: [String: Task<[MediaComment], Never>] = [:]
     private var lastFetchedAt: [String: Date] = [:]
     /// Свежесть кэша между открытиями: в пределах TTL сеть не дёргаем.
-    private let cacheTTL: TimeInterval = 60
+    private let cacheTTL: TimeInterval = 600
+    /// Насколько «свежий» локальный комментарий доживает при обновлении,
+    /// чтобы только что отправленный ничего не потерял.
+    private let localMergeWindow: Int64 = 90_000
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
@@ -142,6 +145,15 @@ public final class MediaCommentsRepository: ObservableObject {
                 comment.id = key
                 return comment
             }
+
+            // Сохраняем свежие локальные комментарии (например, только что
+            // отправленный), если сервер их ещё не отдал.
+            let remoteIds = Set(list.map { $0.id })
+            let localOnly = (commentsByKey[mediaKey] ?? []).filter { local in
+                !remoteIds.contains(local.id)
+                    && (Int64(Date().timeIntervalSince1970 * 1000) - local.createdAtMs) < localMergeWindow
+            }
+            list.append(contentsOf: localOnly)
             list.sort { $0.createdAtMs > $1.createdAtMs }
 
             commentsByKey[mediaKey] = list
