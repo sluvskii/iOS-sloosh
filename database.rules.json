@@ -99,7 +99,7 @@
     "admins": {
       "$uid": {
         ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && auth.uid == $uid && root.child('admins').numChildren() == 0"
+        ".write": "auth != null && auth.uid == $uid && !root.child('admins').hasChildren()"
       }
     },
 
