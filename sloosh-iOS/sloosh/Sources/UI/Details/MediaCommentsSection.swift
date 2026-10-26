@@ -4,7 +4,7 @@ import UIKit
 // MARK: - Media Comments Section (Details)
 
 /// Секция «Комментарии» на экране фильма/сериала: счётчик, превью последних
-/// и вход в полноценный лист комментариев.
+/// и бесшовный вход в полноценный лист комментариев по тапу в любую точку.
 struct MediaCommentsSection: View {
     let mediaKey: String
 
@@ -71,31 +71,30 @@ struct MediaCommentsSection: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Комментарии")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.primary)
+        Button {
+            openSheet(focus: false)
+        } label: {
+            HStack(alignment: .center, spacing: 6) {
+                Text("Комментарии")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.primary)
 
-            if !comments.isEmpty {
-                Text("\(comments.count)")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-            }
-
-            Spacer()
-
-            if !comments.isEmpty {
-                Button {
-                    openSheet(focus: false)
-                } label: {
-                    Text("Все")
-                        .font(.system(size: 14, weight: .semibold))
+                if !comments.isEmpty {
+                    Text("\(comments.count)")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
                 }
-                .buttonStyle(.plain)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary.opacity(0.6))
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.horizontal)
     }
 
@@ -116,7 +115,7 @@ struct MediaCommentsSection: View {
                     Text("Пока нет комментариев")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.primary)
-                    Text("Поделитесь первым впечатлением")
+                    Text("Нажмите, чтобы поделиться впечатлением")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -134,10 +133,11 @@ struct MediaCommentsSection: View {
                 }
             }
             .padding(14)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.cardPress(scale: 0.985))
         .padding(.horizontal)
     }
 
@@ -176,14 +176,16 @@ struct MediaCommentsSection: View {
                 }
             }
             .padding(14)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.cardPress(scale: 0.985))
         .padding(.horizontal)
     }
 
     // MARK: - Preview Card
+
     private var previewCard: some View {
         Button {
             openSheet(focus: false)
@@ -198,35 +200,12 @@ struct MediaCommentsSection: View {
                             .padding(.leading, 50)
                     }
                 }
-
-                Divider()
-                    .background(Color.primary.opacity(0.06))
-                    .padding(.leading, 14)
-                    .padding(.trailing, 14)
-
-                HStack(spacing: 6) {
-                    Text(comments.count > 2 ? "Смотреть все \(comments.count)" : "Смотреть все")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.75))
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.35))
-
-                    Spacer()
-
-                    if authRepo.isAuthenticated {
-                        Text("Написать")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.cardPress(scale: 0.985))
         .padding(.horizontal)
     }
 
@@ -234,11 +213,11 @@ struct MediaCommentsSection: View {
         HStack(alignment: .top, spacing: 10) {
             avatarView(for: comment)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(comment.authorName)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
+                        .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
 
                     Spacer(minLength: 6)
@@ -260,7 +239,9 @@ struct MediaCommentsSection: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
