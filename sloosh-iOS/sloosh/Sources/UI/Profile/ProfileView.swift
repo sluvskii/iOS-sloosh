@@ -283,6 +283,16 @@ struct ProfileView: View {
                     Label("Редактировать профиль", systemImage: "pencil")
                 }
 
+                if let uid = authRepo.currentUser?.id, !uid.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = uid
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        ToastManager.shared.show(title: "UID скопирован", subtitle: uid, icon: "doc.on.doc.fill")
+                    } label: {
+                        Label("Скопировать UID", systemImage: "doc.on.doc")
+                    }
+                }
+
                 Button {
                     Task {
                         await CloudSyncService.shared.syncAllDataAsync()

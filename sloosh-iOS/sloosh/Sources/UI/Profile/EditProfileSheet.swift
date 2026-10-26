@@ -218,6 +218,54 @@ public struct EditProfileSheet: View {
                         .padding(.leading, 4)
                 }
             }
+
+            // User ID (UID)
+            if let uid = authRepo.currentUser?.id, !uid.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("ИДЕНТИФИКАТОР АККАУНТА (UID)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 4)
+
+                    HStack {
+                        Text(uid)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Spacer()
+
+                        Button {
+                            UIPasteboard.general.string = uid
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            ToastManager.shared.show(title: "UID скопирован", subtitle: uid, icon: "doc.on.doc.fill")
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text("Скопировать")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(Color.slooshAccent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color.slooshAccent.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.primary.opacity(0.06))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                }
+            }
         }
     }
 
