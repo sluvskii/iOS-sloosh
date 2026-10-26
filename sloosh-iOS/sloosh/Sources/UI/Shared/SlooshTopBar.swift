@@ -9,6 +9,8 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     @Binding private var scrollOffset: CGFloat
     private let leadingIcon: String?
     private let leadingAction: (() -> Void)?
+    private let leadingView: AnyView?
+    private let titleView: AnyView?
     private let tintColor: Color
     private let tintOpacity: Double
     private let titleMaxWidth: CGFloat
@@ -21,10 +23,12 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     private let bottomContent: () -> Bottom
 
     init(
-        title: String,
+        title: String = "",
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
+        leadingView: AnyView? = nil,
+        titleView: AnyView? = nil,
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         titleMaxWidth: CGFloat = 220,
@@ -40,6 +44,8 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
         self._scrollOffset = scrollOffset
         self.leadingIcon = leadingIcon
         self.leadingAction = leadingAction
+        self.leadingView = leadingView
+        self.titleView = titleView
         self.tintColor = tintColor
         self.tintOpacity = tintOpacity
         self.titleMaxWidth = titleMaxWidth
@@ -60,14 +66,21 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                Text(title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: titleMaxWidth)
+                if let titleView {
+                    titleView
+                        .frame(maxWidth: titleMaxWidth)
+                } else if !title.isEmpty {
+                    Text(title)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .frame(maxWidth: titleMaxWidth)
+                }
 
                 HStack {
-                    if let leadingIcon, let leadingAction {
+                    if let leadingView {
+                        leadingView
+                    } else if let leadingIcon, let leadingAction {
                         TelegramGlassIconButton(systemName: leadingIcon, action: leadingAction)
                     }
 
@@ -98,10 +111,12 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
 
 extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
     init(
-        title: String,
+        title: String = "",
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
+        leadingView: AnyView? = nil,
+        titleView: AnyView? = nil,
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         titleMaxWidth: CGFloat = 220,
@@ -115,6 +130,8 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
             scrollOffset: scrollOffset,
             leadingIcon: leadingIcon,
             leadingAction: leadingAction,
+            leadingView: leadingView,
+            titleView: titleView,
             tintColor: tintColor,
             tintOpacity: tintOpacity,
             titleMaxWidth: titleMaxWidth,
@@ -131,10 +148,12 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
 
 extension SlooshTopBar where Bottom == EmptyView {
     init(
-        title: String,
+        title: String = "",
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
+        leadingView: AnyView? = nil,
+        titleView: AnyView? = nil,
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         titleMaxWidth: CGFloat = 220,
@@ -149,6 +168,8 @@ extension SlooshTopBar where Bottom == EmptyView {
             scrollOffset: scrollOffset,
             leadingIcon: leadingIcon,
             leadingAction: leadingAction,
+            leadingView: leadingView,
+            titleView: titleView,
             tintColor: tintColor,
             tintOpacity: tintOpacity,
             titleMaxWidth: titleMaxWidth,
@@ -165,10 +186,12 @@ extension SlooshTopBar where Bottom == EmptyView {
 
 extension SlooshTopBar where Trailing == EmptyView {
     init(
-        title: String,
+        title: String = "",
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
+        leadingView: AnyView? = nil,
+        titleView: AnyView? = nil,
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         titleMaxWidth: CGFloat = 220,
@@ -183,6 +206,8 @@ extension SlooshTopBar where Trailing == EmptyView {
             scrollOffset: scrollOffset,
             leadingIcon: leadingIcon,
             leadingAction: leadingAction,
+            leadingView: leadingView,
+            titleView: titleView,
             tintColor: tintColor,
             tintOpacity: tintOpacity,
             titleMaxWidth: titleMaxWidth,
