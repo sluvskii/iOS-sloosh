@@ -1,10 +1,12 @@
 import SwiftUI
 
 public struct MessengerView: View {
+    @Namespace private var messengerNamespace
     @StateObject private var repo = MessengerRepository.shared
     @ObservedObject private var authRepo = AuthRepository.shared
     @Environment(\.dismiss) private var dismiss
 
+    @State private var isEditing: Bool = false
     @State private var searchQuery: String = ""
     @State private var scrollOffset: CGFloat = 0
     @State private var selectedPeerUser: SlooshUser? = nil
@@ -73,12 +75,66 @@ public struct MessengerView: View {
                 SlooshTopBar(
                     title: "Чаты",
                     scrollOffset: $scrollOffset,
-                    leadingAction: { dismiss() },
+                    leadingView: AnyView(
+                        TelegramGlassPlatter(
+                            id: "edit",
+                            title: isEditing ? "Готово" : "Изм.",
+                            tintColor: isEditing ? .slooshAccent : nil,
+                            action: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    isEditing.toggle()
+                                }
+                            },
+                            onLongPress: {
+                                dismiss()
+                            }
+                        )
+                        .matchedGeometryIfPresent(id: "nav_platter_leading", in: messengerNamespace)
+                    ),
+                    titleView: AnyView(
+                        Text("Чаты")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .matchedGeometryIfPresent(id: "nav_platter_title", in: messengerNamespace)
+                    ),
                     trailing: {
                         if authRepo.isAuthenticated {
-                            TelegramGlassIconButton(systemName: "square.and.pencil") {
-                                showNewChatSheet = true
-                            }
+                            TelegramGlassPlatter(items: [
+                                TelegramGlassPlatterItem(
+                                    id: "proxy",
+                                    systemName: "shield.lefthalf.filled",
+                                    tintColor: Color.green,
+                                    action: {
+                                        ToastManager.shared.show(
+                                            title: "Cloudflare Edge Gateway активен",
+                                            subtitle: "Шифрованное соединение с защитой от блокировок",
+                                            icon: "shield.lefthalf.filled",
+                                            iconColor: .green
+                                        )
+                                    }
+                                ),
+                                TelegramGlassPlatterItem(
+                                    id: "camera",
+                                    systemName: "camera.fill",
+                                    action: {
+                                        ToastManager.shared.show(
+                                            title: "Камера и Моменты",
+                                            subtitle: "Создание клипов доступно в плеере во время просмотра",
+                                            icon: "camera.fill",
+                                            iconColor: .white
+                                        )
+                                    }
+                                ),
+                                TelegramGlassPlatterItem(
+                                    id: "compose",
+                                    systemName: "square.and.pencil",
+                                    action: {
+                                        showNewChatSheet = true
+                                    }
+                                )
+                            ])
+                            .matchedGeometryIfPresent(id: "nav_platter_trailing", in: messengerNamespace)
                         }
                     },
                     bottom: {
@@ -114,7 +170,7 @@ public struct MessengerView: View {
                 }
             }
             .navigationDestination(item: $selectedPeerUser) { peer in
-                ChatDetailView(peerUser: peer)
+                ChatDetailView(peerUser: peer, animationNamespace: messengerNamespace)
             }
             .navigationDestination(item: $selectedChannel) { channel in
                 ChannelDetailView(channel: channel)
@@ -272,17 +328,27 @@ public struct MessengerView: View {
                     switch item {
                     case .directChat(let chat):
                         Button {
-                            selectedPeerUser = chat.peerUser
-                        } label: {
-                            PeakChatRow(chat: chat, onDelete: {
+                            if isEditing {
                                 peerToDelete = chat.peerUser
                                 showDeleteChatConfirm = true
-                            })
+                            } else {
+                                selectedPeerUser = chat.peerUser
+                            }
+                        } label: {
+                            PeakChatRow(
+                                chat: chat,
+                                isEditing: isEditing,
+                                onDelete: {
+                                    peerToDelete = chat.peerUser
+                                    showDeleteChatConfirm = true
+                                }
+                            )
                         }
                         .buttonStyle(PeakPressButtonStyle())
 
                         PeakDivider()
-                            .padding(.leading, 86)
+                            .padding(.leading, isEditing ? 120 : 86)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isEditing)
 
                     case .channel(let channel):
                         Button {
@@ -616,10 +682,24 @@ public struct PublicChannelSearchRow: View {
 
 private struct PeakChatRow: View {
     let chat: ChatConversation
+    var isEditing: Bool = false
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
+            if isEditing {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onDelete()
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+            }
+
             SlooshAvatarView(user: chat.peerUser, size: 56, showOnline: true)
 
             // Content

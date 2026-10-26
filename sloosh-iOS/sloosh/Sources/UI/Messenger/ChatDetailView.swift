@@ -3,6 +3,7 @@ import UIKit
 
 public struct ChatDetailView: View {
     public let peerUser: SlooshUser
+    public var animationNamespace: Namespace.ID? = nil
 
     @StateObject private var repo = MessengerRepository.shared
     @State private var messages: [ChatMessage] = []
@@ -28,8 +29,9 @@ public struct ChatDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
-    public init(peerUser: SlooshUser) {
+    public init(peerUser: SlooshUser, animationNamespace: Namespace.ID? = nil) {
         self.peerUser = peerUser
+        self.animationNamespace = animationNamespace
         let cached = UserPresenceService.shared.getCachedPresence(userId: peerUser.id) ?? (peerUser.isCurrentlyOnline, peerUser.lastSeenMs)
         _livePresence = State(initialValue: cached)
     }
@@ -159,11 +161,13 @@ public struct ChatDetailView: View {
                 .frame(maxWidth: 200)
             }
             .buttonStyle(.plain)
+            .matchedGeometryIfPresent(id: "nav_platter_title", in: animationNamespace)
 
             HStack {
-                TelegramGlassIconButton(systemName: "chevron.left") {
+                TelegramGlassPlatter(id: "back", systemName: "chevron.left") {
                     dismiss()
                 }
+                .matchedGeometryIfPresent(id: "nav_platter_leading", in: animationNamespace)
 
                 Spacer()
 
@@ -171,15 +175,19 @@ public struct ChatDetailView: View {
                     isShowingInfo = true
                 } label: {
                     let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
-                    SlooshAvatarView(
-                        avatarSource: peerUser.avatarUrl,
-                        fallbackText: peerUser.displayTitle,
-                        size: 34,
-                        showOnline: true,
-                        isOnline: online
-                    )
+                    TelegramGlassCustomPlatter {
+                        SlooshAvatarView(
+                            avatarSource: peerUser.avatarUrl,
+                            fallbackText: peerUser.displayTitle,
+                            size: 34,
+                            showOnline: true,
+                            isOnline: online
+                        )
+                        .frame(width: 44, height: 44)
+                    }
                 }
-                .buttonStyle(PeakPressButtonStyle())
+                .buttonStyle(PlatterPressButtonStyle())
+                .matchedGeometryIfPresent(id: "nav_platter_trailing", in: animationNamespace)
             }
         }
         .frame(height: 44)
