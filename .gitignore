@@ -1,10 +1,12 @@
- 
-# API secrets — never commit
+# API secrets - never commit
 Secrets.xcconfig
 scratch/
 neomovies-mobile/
 
 Peak-Messenger/
+
+telegram-ios/
+Telegram-iOS/
 
 **/node_modules/
 **/.env
