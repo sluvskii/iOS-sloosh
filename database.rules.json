@@ -1,54 +1,96 @@
-﻿{
+{
   "rules": {
     ".read": false,
     ".write": false,
 
     "users": {
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid == $uid"
+        ".read": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)",
+        ".write": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)",
+        ".validate": "!newData.hasChild('isBanned') || data.child('isBanned').val() == newData.child('isBanned').val() || root.child('admins').child(auth.uid).val() == true"
       }
     },
 
     "user_profiles": {
       ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && auth.uid == $uid"
+        ".write": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)"
       }
     },
 
     "userTags": {
       ".read": "auth != null",
       "$tag": {
-        ".write": "auth != null"
+        ".write": "auth != null && ((!data.exists() && newData.val() == auth.uid) || (data.exists() && (data.val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))"
       }
     },
 
     "channels": {
       ".read": "auth != null",
       "$channelId": {
-        ".write": "auth != null"
+        ".write": "auth != null && ((!data.exists() && newData.child('ownerId').val() == auth.uid) || (data.exists() && (data.child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))",
+        "subscriberCount": {
+          ".write": "auth != null && data.parent().exists()"
+        },
+        "lastPostText": {
+          ".write": "auth != null && (data.parent().child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+        },
+        "lastPostTimestampMs": {
+          ".write": "auth != null && (data.parent().child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+        }
       }
     },
 
     "public_channels": {
       ".read": "auth != null",
       "$channelId": {
-        ".write": "auth != null"
+        ".write": "auth != null && ((!data.exists() && (root.child('channels').child($channelId).child('ownerId').val() == auth.uid || newData.child('ownerId').val() == auth.uid)) || (data.exists() && (root.child('channels').child($channelId).child('ownerId').val() == auth.uid || data.child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))",
+        "subscriberCount": {
+          ".write": "auth != null && data.parent().exists()"
+        },
+        "lastPostText": {
+          ".write": "auth != null && (data.parent().child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+        },
+        "lastPostTimestampMs": {
+          ".write": "auth != null && (data.parent().child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+        },
+        "posts": {
+          "$postId": {
+            ".write": "auth != null && (root.child('channels').child($channelId).child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)",
+            "viewsCount": {
+              ".write": "auth != null && data.parent().exists()"
+            },
+            "reactions": {
+              "$uid": {
+                ".write": "auth != null && ($uid == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+              }
+            }
+          }
+        }
       }
     },
 
     "channelTags": {
       ".read": "auth != null",
       "$tag": {
-        ".write": "auth != null"
+        ".write": "auth != null && ((!data.exists() && root.child('channels').child(newData.val()).child('ownerId').val() == auth.uid) || (data.exists() && (root.child('channels').child(data.val()).child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))"
       }
     },
 
     "channel_posts": {
       "$channelId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null && (root.child('channels').child($channelId).child('ownerId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)",
+        "$postId": {
+          "viewsCount": {
+            ".write": "auth != null && data.parent().exists()"
+          },
+          "reactions": {
+            "$uid": {
+              ".write": "auth != null && ($uid == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+            }
+          }
+        }
       }
     },
 
@@ -56,50 +98,98 @@
       "$channelId": {
         ".read": "auth != null",
         "$uid": {
-          ".write": "auth != null && auth.uid == $uid"
+          ".write": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)"
         }
       }
     },
 
     "user_channel_subscriptions": {
       "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && auth.uid == $uid"
+        ".read": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)",
+        ".write": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)"
       }
     },
 
     "chats": {
       "$chatId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": "auth != null && ($chatId.contains(auth.uid) || root.child('admins').child(auth.uid).val() == true)",
+        ".write": "auth != null && ($chatId.contains(auth.uid) || root.child('admins').child(auth.uid).val() == true)"
       }
     },
 
     "user_chats": {
       "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && auth.uid == $uid"
+        ".read": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)",
+        "$chatId": {
+          ".write": "auth != null && ($uid == auth.uid || $chatId.contains(auth.uid) || root.child('admins').child(auth.uid).val() == true)"
+        }
       }
     },
 
     "active_sessions": {
-      ".read": "auth != null",
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() == true",
       "$sessionId": {
-        ".write": true
+        ".write": "(auth != null && ($sessionId == 'usr_' + auth.uid || root.child('admins').child(auth.uid).val() == true)) || ($sessionId.beginsWith('guest_') && newData.child('userId').val() == null)"
       }
     },
 
     "media_stats": {
       ".read": true,
+      "media_artwork_overrides": {
+        ".read": true,
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() == true"
+      },
+      "clips": {
+        ".read": true,
+        "$clipId": {
+          ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && (data.child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))",
+          "likesCount": {
+            ".write": "auth != null && data.parent().exists()"
+          },
+          "viewsCount": {
+            ".write": "auth != null && data.parent().exists()"
+          },
+          "commentsCount": {
+            ".write": "auth != null && data.parent().exists()"
+          }
+        }
+      },
+      "clips_likes": {
+        ".read": true,
+        "$clipId": {
+          ".write": "auth != null && (root.child('media_stats').child('clips').child($clipId).child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true || !root.child('media_stats').child('clips').child($clipId).exists())",
+          "$userId": {
+            ".write": "auth != null && ($userId == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+          }
+        }
+      },
+      "clips_views": {
+        ".read": true,
+        "$clipId": {
+          ".write": "auth != null && (root.child('media_stats').child('clips').child($clipId).child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true || !root.child('media_stats').child('clips').child($clipId).exists())",
+          "$userId": {
+            ".write": "auth != null && ($userId == auth.uid || root.child('admins').child(auth.uid).val() == true)"
+          }
+        }
+      },
+      "clips_comments": {
+        ".read": true,
+        "$clipId": {
+          ".write": "auth != null && (root.child('media_stats').child('clips').child($clipId).child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true || !root.child('media_stats').child('clips').child($clipId).exists())",
+          "$commentId": {
+            ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && (data.child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))"
+          }
+        }
+      },
       "$mediaKey": {
-        ".write": true
+        ".write": "auth != null && $mediaKey != 'media_artwork_overrides' && $mediaKey != 'clips' && $mediaKey != 'clips_likes' && $mediaKey != 'clips_views' && $mediaKey != 'clips_comments'"
       }
     },
 
     "admins": {
       "$uid": {
-        ".read": "auth != null && auth.uid == $uid",
-        ".write": "auth != null && auth.uid == $uid && !root.child('admins').hasChildren()"
+        ".read": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)",
+        ".write": false
       }
     },
 
@@ -132,7 +222,7 @@
 
     "global_stats": {
       ".read": true,
-      ".write": true
+      ".write": "auth != null"
     }
   }
 }

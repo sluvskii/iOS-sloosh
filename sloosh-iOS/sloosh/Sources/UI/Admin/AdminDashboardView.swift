@@ -1022,34 +1022,12 @@ public struct AdminDashboardView: View {
                 Spacer()
             }
 
-            Text("Опубликуйте базу правил, затем нажмите «Активировать права» — приложение само добавит ваш UID в admins.")
+            Text("Добавьте свой UID в узел admins в консоли Firebase для доступа к серверной модерации жалоб.")
                 .font(.system(size: 11.5))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
-                Button {
-                    Task {
-                        let ok = await commentsRepo.claimAdminAccess()
-                        ToastManager.shared.show(
-                            title: ok ? "Права администратора активированы" : (commentsRepo.lastModerationError ?? "Не удалось активировать"),
-                            icon: ok ? "checkmark.shield.fill" : "exclamationmark.triangle.fill",
-                            iconColor: ok ? nil : .red
-                        )
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Активировать права")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .glassEffect(.regular.interactive(), in: Capsule())
-                }
-                .buttonStyle(.plain)
-
                 if let uid = authRepo.currentUser?.id, !uid.isEmpty {
                     Button {
                         UIPasteboard.general.string = uid
@@ -1068,6 +1046,24 @@ public struct AdminDashboardView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                Button {
+                    Task {
+                        await commentsRepo.checkServerAdminAccess()
+                        await commentsRepo.fetchReports()
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Проверить снова")
+                            .font(.system(size: 11.5, weight: .semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(12)

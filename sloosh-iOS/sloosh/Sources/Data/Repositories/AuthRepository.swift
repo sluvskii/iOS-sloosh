@@ -12,6 +12,7 @@ public final class AuthRepository: ObservableObject {
     @Published public private(set) var currentUser: UserProfile?
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var lastError: String?
+    @Published public private(set) var isAdmin: Bool = false
 
     private let userDefaultsKey = "sloosh_user_profile"
     private var tokenLastRefreshedAt: Date = .distantPast
@@ -36,61 +37,50 @@ public final class AuthRepository: ObservableObject {
         currentUser?.isAnonymous ?? true
     }
 
-    public var isAdmin: Bool {
-        // 1. Permanent device admin unlock
-        if UserDefaults.standard.bool(forKey: "sloosh_is_admin_device_master") {
-            return true
+    // MARK: - Server-Verified Admin Privileges
+    // Права администратора определяются ИСКЛЮЧИТЕЛЬНО серверным узлом /admins/{uid} в Firebase RTDB.
+    // Никаких клиентских паролей, хардкода или локальных эвристик.
+    public func checkAdminStatus() async {
+        guard let user = currentUser, !user.isAnonymous, !user.id.isEmpty else {
+            if self.isAdmin { self.isAdmin = false }
+            return
         }
 
-        guard let user = currentUser, !user.isAnonymous else { return false }
-
-        // 2. Specific user id unlock
-        if UserDefaults.standard.bool(forKey: "sloosh_is_admin_\(user.id)") {
-            return true
+        guard let token = await ensureFreshToken(), !token.isEmpty else {
+            if self.isAdmin { self.isAdmin = false }
+            return
         }
 
-        let tag = (user.tag ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = (user.displayName ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let email = (user.email ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Known admin handles and developer emails
-        let adminTags = ["wassupskii", "sluvskii", "admin", "sloosh", "creator", "owner"]
-        if adminTags.contains(tag) || adminTags.contains(name) {
-            // Permanently lock admin for this UID and device
-            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_\(user.id)")
-            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_device_master")
-            return true
-        }
-        if email.contains("wassupskii") || email.contains("sluvskii") || email.contains("sloosh") || email.contains("admin") {
-            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_\(user.id)")
-            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_device_master")
-            return true
+        guard let url = URL(string: "https://sloosh-77434-default-rtdb.firebaseio.com/admins/\(user.id).json?auth=\(token)") else {
+            if self.isAdmin { self.isAdmin = false }
+            return
         }
 
-        return false
-    }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
 
-    public func activateAdminModeWithPasscode(_ pass: String) -> Bool {
-        let clean = pass.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let validPasscodes = ["wassupskii", "sluvskii", "sloosh2026", "slooshadmin"]
-        if validPasscodes.contains(clean) {
-            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_device_master")
-            if let user = currentUser {
-                UserDefaults.standard.set(true, forKey: "sloosh_is_admin_\(user.id)")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else {
+            return
+        }
+
+        if (200...299).contains(http.statusCode) {
+            let str = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let verified = (str == "true")
+            if self.isAdmin != verified {
+                self.isAdmin = verified
             }
-            objectWillChange.send()
-            return true
+        } else {
+            if self.isAdmin { self.isAdmin = false }
         }
-        return false
-    }
-
-    public func setAdminStatus(userId: String, isAdmin: Bool) {
-        UserDefaults.standard.set(isAdmin, forKey: "sloosh_is_admin_\(userId)")
-        objectWillChange.send()
     }
 
     private init() {
         loadStoredUser()
+        Task {
+            await checkAdminStatus()
+        }
     }
 
     public func clearError() {
@@ -98,9 +88,13 @@ public final class AuthRepository: ObservableObject {
     }
 
     private func loadStoredUser() {
+        // Очищаем устаревшие локальные мастер-флаги обхода
+        UserDefaults.standard.removeObject(forKey: "sloosh_is_admin_device_master")
+
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
            let user = try? JSONDecoder().decode(UserProfile.self, from: data) {
             self.currentUser = user
+            UserDefaults.standard.removeObject(forKey: "sloosh_is_admin_\(user.id)")
         } else {
             let guest = UserProfile(
                 id: "guest_\(UUID().uuidString.prefix(8))",
@@ -114,11 +108,19 @@ public final class AuthRepository: ObservableObject {
 
     public func saveUser(_ user: UserProfile) {
         self.currentUser = user
+        if user.isAnonymous {
+            self.isAdmin = false
+        }
         if user.idToken != nil {
             self.tokenLastRefreshedAt = Date()
         }
         if let data = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        }
+        if !user.isAnonymous {
+            Task {
+                await checkAdminStatus()
+            }
         }
     }
 
