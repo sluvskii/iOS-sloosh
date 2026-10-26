@@ -262,7 +262,7 @@ public final class MediaOverridesRepository: ObservableObject {
             let id = localItem.mediaId
             return remoteMap[id] == nil && remoteMap["\(localItem.tmdbId ?? 0)"] == nil
         }
-        if !missingOnRemote.isEmpty {
+        if !missingOnRemote.isEmpty && AuthRepository.shared.isAdmin {
             AppDiagnostics.shared.log("MediaOverridesRepository: uploading \(missingOnRemote.count) local unpushed overrides to backend...")
             for item in missingOnRemote {
                 _ = try? await MoviesApi.shared.saveMediaOverride(item)
@@ -270,7 +270,7 @@ public final class MediaOverridesRepository: ObservableObject {
             }
         }
 
-        if updated || !missingOnRemote.isEmpty {
+        if updated || (!missingOnRemote.isEmpty && AuthRepository.shared.isAdmin) {
             saveToCache()
             AppDiagnostics.shared.log("MediaOverridesRepository: synchronized \(self.overrides.count) overrides successfully")
         }
@@ -292,8 +292,10 @@ public final class MediaOverridesRepository: ObservableObject {
     }
 
     private func pushDirectToFirebase(_ item: MediaArtworkOverride) async {
+        guard AuthRepository.shared.isAdmin else { return }
+        guard let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty else { return }
         guard let cleanId = item.mediaId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json") else { return }
+              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json?auth=\(token)") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -305,8 +307,10 @@ public final class MediaOverridesRepository: ObservableObject {
     }
 
     private func deleteDirectFromFirebase(_ id: String) async {
+        guard AuthRepository.shared.isAdmin else { return }
+        guard let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty else { return }
         guard let cleanId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json") else { return }
+              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json?auth=\(token)") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
         req.timeoutInterval = 4.0
@@ -325,6 +329,9 @@ public final class MediaOverridesRepository: ObservableObject {
         backdropUrl: String? = nil,
         backdropUrls: [String]? = nil
     ) async throws {
+        guard AuthRepository.shared.isAdmin else {
+            throw URLError(.userAuthenticationRequired)
+        }
         let item = MediaArtworkOverride(
             mediaId: mediaId,
             kpId: kpId,
@@ -360,6 +367,9 @@ public final class MediaOverridesRepository: ObservableObject {
     }
 
     public func deleteOverride(mediaId: String, kpId: Int? = nil, tmdbId: Int? = nil) async throws {
+        guard AuthRepository.shared.isAdmin else {
+            throw URLError(.userAuthenticationRequired)
+        }
         // 1. Удаляем из локального кэша
         self.overrides.removeValue(forKey: mediaId)
         if let tmdb = tmdbId, tmdb > 0 {
