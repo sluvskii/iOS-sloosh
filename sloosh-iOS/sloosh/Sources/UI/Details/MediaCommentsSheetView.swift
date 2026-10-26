@@ -132,7 +132,6 @@ struct MediaCommentsSheetView: View {
         .background(Color.clear)
         .presentationDetents([.fraction(0.65), .large], selection: $sheetDetent)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
