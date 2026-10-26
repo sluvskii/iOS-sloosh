@@ -265,50 +265,6 @@ public struct UserProfileDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 1)
-                    .contextMenu {
-                        Button {
-                            UIPasteboard.general.string = user.displayTag
-                            ToastManager.shared.show(title: "Тег скопирован", subtitle: user.displayTag, icon: "at")
-                        } label: {
-                            Label("Скопировать тег", systemImage: "at")
-                        }
-
-                        if isCurrentSessionUser {
-                            Button {
-                                UIPasteboard.general.string = user.id
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                ToastManager.shared.show(title: "UID скопирован", subtitle: user.id, icon: "doc.on.doc.fill")
-                            } label: {
-                                Label("Скопировать UID аккаунта", systemImage: "doc.on.doc")
-                            }
-                        }
-                    }
-                }
-
-                // Кнопка копирования UID для своего профиля
-                if isCurrentSessionUser && !user.id.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = user.id
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        ToastManager.shared.show(title: "UID скопирован", subtitle: user.id, icon: "doc.on.doc.fill")
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text("UID: \(user.id)")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.45))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(maxWidth: 180)
-
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.35))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .glassEffect(.regular.interactive(), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
                 }
 
                 // Live Presence Status
