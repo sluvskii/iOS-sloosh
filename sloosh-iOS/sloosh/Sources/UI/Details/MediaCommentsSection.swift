@@ -71,30 +71,28 @@ struct MediaCommentsSection: View {
     // MARK: - Header
 
     private var header: some View {
-        Button {
-            openSheet(focus: false)
-        } label: {
-            HStack(alignment: .center, spacing: 6) {
-                Text("Комментарии")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.primary)
+        HStack(alignment: .center, spacing: 6) {
+            Text("Комментарии")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.primary)
 
-                if !comments.isEmpty {
-                    Text("\(comments.count)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary.opacity(0.6))
+            if !comments.isEmpty {
+                Text("\(comments.count)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
             }
-            .contentShape(Rectangle())
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            openSheet(focus: false)
+        }
         .padding(.horizontal)
     }
 
@@ -137,7 +135,7 @@ struct MediaCommentsSection: View {
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.cardPress(scale: 0.985))
+        .buttonStyle(.plain)
         .padding(.horizontal)
     }
 
@@ -180,7 +178,7 @@ struct MediaCommentsSection: View {
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.cardPress(scale: 0.985))
+        .buttonStyle(.plain)
         .padding(.horizontal)
     }
 
@@ -191,10 +189,10 @@ struct MediaCommentsSection: View {
             openSheet(focus: false)
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(previewComments.enumerated()), id: \.element.id) { index, comment in
+                ForEach(previewComments) { comment in
                     previewRow(comment)
 
-                    if index < previewComments.count - 1 {
+                    if comment.id != previewComments.last?.id {
                         Divider()
                             .background(Color.primary.opacity(0.06))
                             .padding(.leading, 50)
@@ -205,7 +203,7 @@ struct MediaCommentsSection: View {
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.cardPress(scale: 0.985))
+        .buttonStyle(.plain)
         .padding(.horizontal)
     }
 
