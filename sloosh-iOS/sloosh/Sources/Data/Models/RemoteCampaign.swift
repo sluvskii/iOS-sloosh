@@ -73,6 +73,35 @@ struct RemoteCampaign: Codable, Equatable, Identifiable {
 }
 
 struct CampaignCountdown: Equatable {
+    enum Unit: CaseIterable {
+        case days, hours, minutes, seconds
+
+        func label(for value: Int) -> String {
+            let forms: (one: String, few: String, many: String)
+            switch self {
+            case .days: forms = ("день", "дня", "дней")
+            case .hours: forms = ("час", "часа", "часов")
+            case .minutes: forms = ("минута", "минуты", "минут")
+            case .seconds: forms = ("секунда", "секунды", "секунд")
+            }
+            // 11–14 take precedence over the last digit: 111 дней, not день.
+            // magnitude also avoids overflow for Int.min.
+            let lastHundred = value.magnitude % 100
+            if (11...14).contains(lastHundred) { return forms.many }
+            switch value.magnitude % 10 {
+            case 1: return forms.one
+            case 2...4: return forms.few
+            default: return forms.many
+            }
+        }
+    }
+
+    var spokenDescription: String {
+        [(days, Unit.days), (hours, .hours), (minutes, .minutes), (seconds, .seconds)]
+            .map { "\($0.0) \($0.1.label(for: $0.0))" }
+            .joined(separator: ", ")
+    }
+
     let days: Int
     let hours: Int
     let minutes: Int

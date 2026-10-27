@@ -68,144 +68,67 @@ struct PremiereCampaignSlot<Fallback: View>: View {
     }
 }
 
+/// Inline typography, not a card: the screen's own backdrop remains untouched.
 private struct PremiereCampaignView: View {
     let campaign: RemoteCampaign
     let now: Date
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .title) private var digitSize: CGFloat = 30
-
-    private var tint: Color {
-        switch campaign.theme {
-        case .emerald: return Color(red: 0.60, green: 0.88, blue: 0.49)
-        case .crimson: return Color(red: 0.95, green: 0.44, blue: 0.40)
-        case .neutral: return .white
-        }
-    }
+    @ScaledMetric(relativeTo: .largeTitle) private var digitSize: CGFloat = 36
+    @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 11
 
     private var isCompleted: Bool {
         campaign.kind == .countdown && campaign.countdownTo.map { now >= $0 } == true
     }
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 7) {
-                Image(systemName: isCompleted ? "sparkle" : "hourglass")
-                    .foregroundStyle(tint)
-                    .accessibilityHidden(true)
-                Text(isCompleted ? (campaign.completedText ?? campaign.title) : campaign.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .tracking(0.4)
-                    .multilineTextAlignment(.center)
-            }
-
+        Group {
             if campaign.kind == .countdown, !isCompleted, let target = campaign.countdownTo {
                 countdown(until: target)
+            } else {
+                // Preserve remote feature/completion messages without bringing
+                // the old card decoration back into the countdown layout.
+                Text(isCompleted ? (campaign.completedText ?? campaign.title) : campaign.title)
+                    .font(.subheadline.weight(.semibold))
+                    .multilineTextAlignment(.center)
             }
-
-            VStack(spacing: 4) {
-                Text(campaign.subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                if campaign.kind == .countdown {
-                    Text(campaign.premiereDateLabel())
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(tint)
-                }
-                if let disclaimer = campaign.disclaimer {
-                    Text(disclaimer)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.60))
-                        .padding(.top, 2)
-                }
-            }
-            .multilineTextAlignment(.center)
         }
         .foregroundStyle(.white)
-        .padding(.vertical, 18)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: 460)
-        .background {
-            artwork
-                .overlay(Color.black.opacity(0.72))
-                .overlay {
-                    LinearGradient(colors: [tint.opacity(0.12), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
-                }
-                .clipShape(.rect(cornerRadius: 22))
-        }
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22)
-                .strokeBorder(LinearGradient(colors: [tint.opacity(0.35), .white.opacity(0.05)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 0.5)
-                .allowsHitTesting(false)
-        }
-    }
-
-    @ViewBuilder
-    private var artwork: some View {
-        if let value = campaign.artworkURL, let url = URL(string: value) {
-            GeometryReader { geometry in
-                AsyncCachedImage(url: url) {
-                    tint.opacity(0.10)
-                } content: { image in
-                    Image(uiImage: image).resizable().scaledToFill()
-                } fallback: {
-                    tint.opacity(0.10)
-                }
-                .frame(width: geometry.size.width, height: geometry.size.height)
-                .clipped()
-            }
-        } else if campaign.bundledArtwork == "doomsday" {
-            GeometryReader { geometry in
-                Image("CampaignDoomsday")
-                    .resizable().scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
-            }
-        } else {
-            tint.opacity(0.08)
-        }
+        .padding(.vertical, 14)
+        .frame(maxWidth: 420)
     }
 
     private func countdown(until target: Date) -> some View {
         let value = CampaignCountdown(until: target, now: now)
         return HStack(alignment: .top, spacing: 0) {
-            unit(value.days, label: "ДНИ")
-            separator
-            unit(value.hours, label: "ЧАСЫ")
-            separator
-            unit(value.minutes, label: "МИНУТЫ")
-            separator
-            unit(value.seconds, label: "СЕКУНДЫ")
+            unit(value.days, kind: .days)
+            unit(value.hours, kind: .hours)
+            unit(value.minutes, kind: .minutes)
+            unit(value.seconds, kind: .seconds)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("До дня премьеры: \(value.days) дн., \(value.hours) ч., \(value.minutes) мин.")
-        // No live announcement every second; VoiceOver reads the current value
-        // only when focused. Reduce Motion removes numeric rolling transitions.
+        .accessibilityLabel("До дня премьеры: \(value.spokenDescription)")
+        // Stable columns prevent shifting at 10→09 and when labels change.
+        // No live announcements every second; Reduce Motion disables rolling.
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: value.seconds)
     }
 
-    private func unit(_ value: Int, label: String) -> some View {
-        VStack(spacing: 5) {
+    private func unit(_ value: Int, kind: CampaignCountdown.Unit) -> some View {
+        VStack(spacing: 6) {
             Text(String(format: "%02d", value))
-                .font(.system(size: min(digitSize, 44), weight: .light))
+                .font(.system(size: min(digitSize, 50), weight: .bold))
                 .monospacedDigit()
+                .tracking(-1)
                 .contentTransition(.numericText(countsDown: true))
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(label)
-                .font(.system(size: 8, weight: .semibold))
-                .tracking(0.5)
-                .foregroundStyle(.white.opacity(0.60))
+                .minimumScaleFactor(0.55)
+            Text(kind.label(for: value))
+                .font(.system(size: min(labelSize, 16), weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.7)
+                // Only digits roll. Noun changes should not slide or crossfade.
+                .transaction { $0.animation = nil }
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var separator: some View {
-        Text(":")
-            .font(.system(size: min(digitSize, 44), weight: .ultraLight))
-            .foregroundStyle(tint.opacity(0.6))
-            .accessibilityHidden(true)
     }
 }

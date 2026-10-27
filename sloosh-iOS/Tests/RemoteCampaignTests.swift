@@ -75,10 +75,35 @@ struct RemoteCampaignTests {
         precondition(completedCampaign.isActive(at: date("2026-12-18T05:00:00Z")))
         precondition(!completedCampaign.isActive(at: date("2026-12-20T05:00:00Z")))
 
+        let unitForms: [(CampaignCountdown.Unit, [String])] = [
+            (.days, ["день", "дня", "дней"]),
+            (.hours, ["час", "часа", "часов"]),
+            (.minutes, ["минута", "минуты", "минут"]),
+            (.seconds, ["секунда", "секунды", "секунд"])
+        ]
+        for (unit, forms) in unitForms {
+            // Cover every two-digit suffix and repeat them in the hundreds.
+            for value in 0...999 {
+                let suffix = value % 100
+                let form: Int
+                if (11...14).contains(suffix) { form = 2 }
+                else if value % 10 == 1 { form = 0 }
+                else if (2...4).contains(value % 10) { form = 1 }
+                else { form = 2 }
+                precondition(unit.label(for: value) == forms[form], "Wrong plural at \(value)")
+                precondition(unit.label(for: -value) == forms[form])
+            }
+            precondition(!unit.label(for: Int.min).isEmpty)
+        }
+        precondition(CampaignCountdown.Unit.days.label(for: 51) == "день")
+        precondition(CampaignCountdown.Unit.days.label(for: 22) == "дня")
+        precondition(CampaignCountdown.Unit.days.label(for: 111) == "дней")
+
         let target = date("2026-12-18T05:00:00Z")
         let value = CampaignCountdown(until: target, now: target.addingTimeInterval(-90_061))
         precondition(value == CampaignCountdown(until: target.addingTimeInterval(123), now: target.addingTimeInterval(-89_938)))
         precondition(value.days == 1 && value.hours == 1 && value.minutes == 1 && value.seconds == 1)
+        precondition(value.spokenDescription == "1 день, 1 час, 1 минута, 1 секунда")
         let last = CampaignCountdown(until: target, now: target.addingTimeInterval(-0.1))
         precondition(last.seconds == 1)
         let zero = CampaignCountdown(until: target, now: target.addingTimeInterval(1))
