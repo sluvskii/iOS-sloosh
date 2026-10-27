@@ -98,7 +98,7 @@ private struct PremiereCampaignView: View {
     }
 
     private func countdown(until target: Date) -> some View {
-        let value = CampaignCountdown(until: target, now: now, timeZone: TimeZone(identifier: campaign.timeZone) ?? .gmt)
+        let value = CampaignCountdown(until: target, now: now)
         return HStack(alignment: .top, spacing: 0) {
             unit(value.months, kind: .months)
             separator

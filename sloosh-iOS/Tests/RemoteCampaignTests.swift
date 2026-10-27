@@ -113,13 +113,27 @@ struct RemoteCampaignTests {
             precondition(result.months == months && result.days == days, "Wrong calendar split: \(start) → \(end)")
             precondition(result.hours == 0 && result.minutes == 0 && result.seconds == 0)
         }
-        let newYork = TimeZone(identifier: "America/New_York")!
-        for (start, end) in [
-            ("2026-03-08T05:00:00Z", "2026-04-08T04:00:00Z"),
-            ("2026-10-08T04:00:00Z", "2026-11-08T05:00:00Z")
+        // Regression for the supplied comparison screenshot: same absolute
+        // deadline, but NY calendar decomposition used to lose one display hour
+        // to the November DST transition. Do not "fix" it by shifting the target.
+        let screenshotTarget = date("2026-12-18T05:00:00Z")
+        let screenshotNow = date("2026-10-27T10:25:41Z")
+        let reference = CampaignCountdown(until: screenshotTarget, now: screenshotNow)
+        precondition(reference.months == 1 && reference.days == 20)
+        precondition(reference.hours == 18 && reference.minutes == 34 && reference.seconds == 19)
+        let previousDefault = NSTimeZone.default
+        for zone in ["America/New_York", "Europe/Moscow", "Asia/Yekaterinburg", "Pacific/Auckland"] {
+            NSTimeZone.default = TimeZone(identifier: zone)!
+            precondition(CampaignCountdown(until: screenshotTarget, now: screenshotNow) == reference,
+                         "Device zone must never change the displayed remaining time")
+        }
+        NSTimeZone.default = previousDefault
+        for (start, end, months, days, hours) in [
+            ("2026-03-08T05:00:00Z", "2026-04-08T04:00:00Z", 0, 30, 23),
+            ("2026-10-08T04:00:00Z", "2026-11-08T05:00:00Z", 1, 0, 1)
         ] {
-            let result = CampaignCountdown(until: date(end), now: date(start), timeZone: newYork)
-            precondition(result.months == 1 && result.days == 0 && result.hours == 0)
+            let result = CampaignCountdown(until: date(end), now: date(start))
+            precondition(result.months == months && result.days == days && result.hours == hours)
         }
 
         let target = date("2026-12-18T05:00:00Z")

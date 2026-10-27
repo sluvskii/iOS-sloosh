@@ -109,11 +109,13 @@ struct CampaignCountdown: Equatable {
     let minutes: Int
     let seconds: Int
 
-    init(until target: Date, now: Date, timeZone: TimeZone = .gmt) {
+    init(until target: Date, now: Date) {
         // Months and residual days are calendar units, not fixed 30-day buckets.
-        // Fix the Gregorian calendar and event zone, independent of device settings.
+        // Decompose in UTC like the reference countdown. A local/event calendar
+        // would put a DST change inside a month/day and shift the hours field.
+        // The campaign's timeZone is date-display metadata, not timer arithmetic.
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
+        calendar.timeZone = .gmt
         guard target > now else {
             months = 0; days = 0; hours = 0; minutes = 0; seconds = 0
             return
