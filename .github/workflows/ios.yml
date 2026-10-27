@@ -55,6 +55,9 @@ jobs:
       - name: Test clip playback policy
         run: bash sloosh-iOS/Tests/run-clip-playback-tests.sh
 
+      - name: Test remote campaigns
+        run: bash sloosh-iOS/Tests/run-campaign-tests.sh
+
       - name: Install XcodeGen
         run: |
           if ! which xcodegen > /dev/null 2>&1; then

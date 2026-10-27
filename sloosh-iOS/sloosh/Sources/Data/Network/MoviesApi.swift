@@ -242,6 +242,15 @@ class MoviesApi {
                         self.currentNotice = nil
                     }
                     
+                    // Editorial campaigns are independently decoded: malformed
+                    // content must never break API/stream endpoint recovery.
+                    let campaignData = (json["campaigns"] as? [String: Any]).flatMap {
+                        try? JSONSerialization.data(withJSONObject: $0)
+                    }
+                    await MainActor.run {
+                        RemoteCampaignStore.shared.apply(campaignData)
+                    }
+
                     Task {
                         await MediaOverridesRepository.shared.fetchOverrides()
                     }
