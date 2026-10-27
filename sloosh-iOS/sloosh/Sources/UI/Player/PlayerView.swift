@@ -11,7 +11,7 @@ struct PlayerPresenter: UIViewControllerRepresentable {
     var onDismiss: () -> Void
 
     func makeUIViewController(context: Context) -> PlayerHostingController<PlayerContainerView> {
-        NotificationCenter.default.post(name: NSNotification.Name("SlooshMainPlayerWillStart"), object: nil)
+        vm.acquirePlaybackFocus()
         let container = PlayerContainerView(vm: vm, onDismiss: {
             context.coordinator.dismissPlayer()
         })
@@ -233,6 +233,12 @@ public final class PlayerTimeTracker: ObservableObject {
 
 @MainActor
 class PlayerViewModel: ObservableObject {
+    private let playbackFocusID = UUID()
+
+    func acquirePlaybackFocus() {
+        PlaybackFocus.shared.beginMainPlayer(playbackFocusID)
+    }
+
     struct PlaybackQualityOption: Equatable {
         let key: String
         let url: URL
@@ -542,7 +548,9 @@ class PlayerViewModel: ObservableObject {
         backdropUrl: String? = nil,
         logoUrl: String? = nil
     ) {
+        guard !isPreparedForDismiss, !isCleaningUp else { return }
         if hasStartedLoading { return } // Защита от двойного вызова
+        acquirePlaybackFocus()
         hasStartedLoading = true
         if let posterUrl, !posterUrl.isEmpty { self.posterUrl = posterUrl }
         if let backdropUrl, !backdropUrl.isEmpty { self.backdropUrl = backdropUrl }
@@ -1309,6 +1317,9 @@ class PlayerViewModel: ObservableObject {
         let finalVoiceover = voiceover
         let finalIsSeekPending = isSeekPending
 
+        // Keep moments blocked until proxy/audio teardown is finished too. A
+        // resumed moment must not have its audio session deactivated underneath it.
+        let focusID = playbackFocusID
         // Отложенная очистка: даём UI-анимации закрытия завершиться без малейших микрофризов
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
@@ -1328,10 +1339,11 @@ class PlayerViewModel: ObservableObject {
 
             HlsProxyServer.shared.stop()
 
-            Task.detached(priority: .utility) {
+            await Task.detached(priority: .utility) {
                 try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
                 try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            }
+            }.value
+            PlaybackFocus.shared.endMainPlayer(focusID)
         }
     }
 
@@ -2267,7 +2279,8 @@ class PlayerViewModel: ObservableObject {
     
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
-        NotificationCenter.default.post(name: NSNotification.Name("SlooshMainPlayerWillStart"), object: nil)
+        guard !isPreparedForDismiss, !isCleaningUp else { return }
+        acquirePlaybackFocus()
         logDebug("playVideo: starting playback, url=\(url.absoluteString)")
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)

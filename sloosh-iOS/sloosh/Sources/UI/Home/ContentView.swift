@@ -74,7 +74,7 @@ struct ContentView: View {
                         tabLabel("Поиск", systemImage: "magnifyingglass")
                     }
                     Tab(value: .clips) {
-                        ClipsFeedView()
+                        ClipsFeedView(isSelected: selectedTab == .clips)
                     } label: {
                         tabLabel("Моменты", systemImage: "sparkles.tv.fill")
                     }
@@ -162,13 +162,6 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentContinueWatching"))) { notification in
                 selectedTab = .continueWatching
-            }
-            .onChange(of: selectedTab) { oldTab, newTab in
-                if newTab != .clips {
-                    NotificationCenter.default.post(name: NSNotification.Name("SlooshPauseClipsPlayback"), object: nil)
-                } else {
-                    NotificationCenter.default.post(name: NSNotification.Name("SlooshResumeClipsPlayback"), object: nil)
-                }
             }
             .onChange(of: deepLinkManager.targetMovieId) { _, newValue in
                 if newValue != nil {

@@ -52,6 +52,9 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
 
+      - name: Test clip playback policy
+        run: bash sloosh-iOS/Tests/run-clip-playback-tests.sh
+
       - name: Install XcodeGen
         run: |
           if ! which xcodegen > /dev/null 2>&1; then
