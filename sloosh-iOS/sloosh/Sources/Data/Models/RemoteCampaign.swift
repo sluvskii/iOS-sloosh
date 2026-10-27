@@ -74,11 +74,12 @@ struct RemoteCampaign: Codable, Equatable, Identifiable {
 
 struct CampaignCountdown: Equatable {
     enum Unit: CaseIterable {
-        case days, hours, minutes, seconds
+        case months, days, hours, minutes, seconds
 
         func label(for value: Int) -> String {
             let forms: (one: String, few: String, many: String)
             switch self {
+            case .months: forms = ("месяц", "месяца", "месяцев")
             case .days: forms = ("день", "дня", "дней")
             case .hours: forms = ("час", "часа", "часов")
             case .minutes: forms = ("минута", "минуты", "минут")
@@ -97,24 +98,37 @@ struct CampaignCountdown: Equatable {
     }
 
     var spokenDescription: String {
-        [(days, Unit.days), (hours, .hours), (minutes, .minutes), (seconds, .seconds)]
+        [(months, Unit.months), (days, .days), (hours, .hours), (minutes, .minutes), (seconds, .seconds)]
             .map { "\($0.0) \($0.1.label(for: $0.0))" }
             .joined(separator: ", ")
     }
 
+    let months: Int
     let days: Int
     let hours: Int
     let minutes: Int
     let seconds: Int
 
-    init(until target: Date, now: Date) {
-        // Round up, so the final second is not presented as zero prematurely.
-        let remaining = max(0, min(315_576_000, ceil(target.timeIntervalSince(now))))
-        let total = Int(remaining)
-        days = total / 86_400
-        hours = (total % 86_400) / 3_600
-        minutes = (total % 3_600) / 60
-        seconds = total % 60
+    init(until target: Date, now: Date, timeZone: TimeZone = .gmt) {
+        // Months and residual days are calendar units, not fixed 30-day buckets.
+        // Fix the Gregorian calendar and event zone, independent of device settings.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        guard target > now else {
+            months = 0; days = 0; hours = 0; minutes = 0; seconds = 0
+            return
+        }
+        // Work at whole-second precision: the last fraction of a second still
+        // shows 01, and calendar boundaries never inherit subsecond noise.
+        let start = Date(timeIntervalSinceReferenceDate: floor(now.timeIntervalSinceReferenceDate))
+        let remaining = min(315_576_000, ceil(target.timeIntervalSince(start)))
+        let end = start.addingTimeInterval(remaining)
+        let parts = calendar.dateComponents([.month, .day, .hour, .minute, .second], from: start, to: end)
+        months = max(0, parts.month ?? 0)
+        days = max(0, parts.day ?? 0)
+        hours = max(0, parts.hour ?? 0)
+        minutes = max(0, parts.minute ?? 0)
+        seconds = max(0, parts.second ?? 0)
     }
 }
 

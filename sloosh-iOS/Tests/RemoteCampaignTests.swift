@@ -76,6 +76,7 @@ struct RemoteCampaignTests {
         precondition(!completedCampaign.isActive(at: date("2026-12-20T05:00:00Z")))
 
         let unitForms: [(CampaignCountdown.Unit, [String])] = [
+            (.months, ["месяц", "месяца", "месяцев"]),
             (.days, ["день", "дня", "дней"]),
             (.hours, ["час", "часа", "часов"]),
             (.minutes, ["минута", "минуты", "минут"]),
@@ -99,15 +100,37 @@ struct RemoteCampaignTests {
         precondition(CampaignCountdown.Unit.days.label(for: 22) == "дня")
         precondition(CampaignCountdown.Unit.days.label(for: 111) == "дней")
 
+        let monthCases: [(String, String, Int, Int)] = [
+            ("2026-10-27T05:00:00Z", "2026-12-18T05:00:00Z", 1, 21),
+            ("2026-01-15T00:00:00Z", "2026-03-15T00:00:00Z", 2, 0),
+            ("2026-01-31T00:00:00Z", "2026-02-28T00:00:00Z", 1, 0),
+            ("2028-01-31T00:00:00Z", "2028-02-29T00:00:00Z", 1, 0),
+            ("2026-11-15T00:00:00Z", "2027-02-15T00:00:00Z", 3, 0),
+            ("2026-12-01T00:00:00Z", "2026-12-18T00:00:00Z", 0, 17)
+        ]
+        for (start, end, months, days) in monthCases {
+            let result = CampaignCountdown(until: date(end), now: date(start))
+            precondition(result.months == months && result.days == days, "Wrong calendar split: \(start) → \(end)")
+            precondition(result.hours == 0 && result.minutes == 0 && result.seconds == 0)
+        }
+        let newYork = TimeZone(identifier: "America/New_York")!
+        for (start, end) in [
+            ("2026-03-08T05:00:00Z", "2026-04-08T04:00:00Z"),
+            ("2026-10-08T04:00:00Z", "2026-11-08T05:00:00Z")
+        ] {
+            let result = CampaignCountdown(until: date(end), now: date(start), timeZone: newYork)
+            precondition(result.months == 1 && result.days == 0 && result.hours == 0)
+        }
+
         let target = date("2026-12-18T05:00:00Z")
         let value = CampaignCountdown(until: target, now: target.addingTimeInterval(-90_061))
         precondition(value == CampaignCountdown(until: target.addingTimeInterval(123), now: target.addingTimeInterval(-89_938)))
         precondition(value.days == 1 && value.hours == 1 && value.minutes == 1 && value.seconds == 1)
-        precondition(value.spokenDescription == "1 день, 1 час, 1 минута, 1 секунда")
+        precondition(value.spokenDescription == "0 месяцев, 1 день, 1 час, 1 минута, 1 секунда")
         let last = CampaignCountdown(until: target, now: target.addingTimeInterval(-0.1))
         precondition(last.seconds == 1)
         let zero = CampaignCountdown(until: target, now: target.addingTimeInterval(1))
-        precondition(zero.days == 0 && zero.hours == 0 && zero.minutes == 0 && zero.seconds == 0)
+        precondition(zero.months == 0 && zero.days == 0 && zero.hours == 0 && zero.minutes == 0 && zero.seconds == 0)
         precondition(RemoteCampaignConfig.isCacheFresh(fetchedAt: now, now: now))
         precondition(!RemoteCampaignConfig.isCacheFresh(fetchedAt: now, now: now.addingTimeInterval(259_201)))
         precondition(!RemoteCampaignConfig.isCacheFresh(fetchedAt: now.addingTimeInterval(10), now: now))

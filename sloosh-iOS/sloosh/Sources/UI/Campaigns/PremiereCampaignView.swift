@@ -98,11 +98,16 @@ private struct PremiereCampaignView: View {
     }
 
     private func countdown(until target: Date) -> some View {
-        let value = CampaignCountdown(until: target, now: now)
+        let value = CampaignCountdown(until: target, now: now, timeZone: TimeZone(identifier: campaign.timeZone) ?? .gmt)
         return HStack(alignment: .top, spacing: 0) {
+            unit(value.months, kind: .months)
+            separator
             unit(value.days, kind: .days)
+            separator
             unit(value.hours, kind: .hours)
+            separator
             unit(value.minutes, kind: .minutes)
+            separator
             unit(value.seconds, kind: .seconds)
         }
         .accessibilityElement(children: .ignore)
@@ -110,6 +115,14 @@ private struct PremiereCampaignView: View {
         // Stable columns prevent shifting at 10→09 and when labels change.
         // No live announcements every second; Reduce Motion disables rolling.
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: value.seconds)
+    }
+
+    private var separator: some View {
+        Text(":")
+            .font(.system(size: min(digitSize, 50) * 0.65, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.45))
+            .frame(width: 8, height: min(digitSize, 50) * 1.2)
+            .accessibilityHidden(true)
     }
 
     private func unit(_ value: Int, kind: CampaignCountdown.Unit) -> some View {
@@ -121,6 +134,7 @@ private struct PremiereCampaignView: View {
                 .contentTransition(.numericText(countsDown: true))
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
+                .frame(height: min(digitSize, 50) * 1.2)
             Text(kind.label(for: value))
                 .font(.system(size: min(labelSize, 16), weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
