@@ -996,6 +996,7 @@ struct DetailsView: View {
             }
             .task {
                 await viewModel.loadDetails(id: movieId, type: mediaType, studio: initialStudio)
+                await MoviesApi.shared.loadRemoteConfigIfNeeded()
             }
             .task(id: viewModel.details?.id) {
                 guard let details = viewModel.details else { return }
@@ -1337,7 +1338,9 @@ struct DetailsView: View {
     @ViewBuilder
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
         if details.isUnreleased {
-            unreleasedButton(for: details)
+            PremiereCampaignSlot(details: details, mediaType: mediaType) {
+                unreleasedButton(for: details)
+            }
         } else {
             HStack(spacing: 8) {
                 playButton(for: details)

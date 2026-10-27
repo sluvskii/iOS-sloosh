@@ -9,5 +9,30 @@
   "apiKey": "",
   "notice": null,
   "mediaOverrides": {},
-  "updatedAt": "2026-10-07T14:45:00Z"
+  "updatedAt": "2026-10-27T00:00:00Z",
+  "campaigns": {
+    "version": 1,
+    "enabled": true,
+    "items": [
+      {
+        "id": "doomsday-cinema-2026",
+        "enabled": true,
+        "kind": "countdown",
+        "title": "Дум приближается",
+        "subtitle": "До дня мировой премьеры",
+        "mediaId": "movie_1003596",
+        "theme": "emerald",
+        "startsAt": "2026-10-27T00:00:00Z",
+        "expiresAt": "2026-12-18T05:00:00Z",
+        "countdownTo": "2026-12-18T05:00:00Z",
+        "timeZone": "America/New_York",
+        "afterCountdown": "hide",
+        "completedText": null,
+        "disclaimer": "Отсчёт до 00:00 в Нью-Йорке. Не дата появления в sloosh.",
+        "artworkURL": null,
+        "bundledArtwork": "doomsday",
+        "priority": 100
+      }
+    ]
+  }
 }
