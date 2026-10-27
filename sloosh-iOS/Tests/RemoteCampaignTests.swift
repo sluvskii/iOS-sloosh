@@ -12,11 +12,12 @@ struct RemoteCampaignTests {
     static func main() throws {
         let endpoint = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
         let root = try JSONSerialization.jsonObject(with: endpoint) as! [String: Any]
-        let configuration = root["campaigns"] as! [String: Any]
-        // Validate the checked-in remote payload without pinning editable copy
-        // or release dates. Behavioral tests use a deterministic fixture below.
-        let productionItems = configuration["items"] as! [[String: Any]]
-        if configuration["enabled"] as? Bool == true {
+        // Validate existing content without requiring it: removing the entire
+        // section is a supported kill switch, not a reason to fail CI.
+        // Behavioral tests use a deterministic fixture, independent of live copy.
+        if let configuration = root["campaigns"] as? [String: Any],
+           configuration["enabled"] as? Bool == true {
+            let productionItems = configuration["items"] as! [[String: Any]]
             precondition(RemoteCampaignConfig.decode(encode(configuration)).count == productionItems.count)
         }
         let entries: [[String: Any]] = [[
