@@ -43,7 +43,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var activePlayer: AVPlayer?
     @Published var isVideoReady: Bool = false
     @Published var isResolving: Bool = false
-    @Published var isPlaying: Bool = true
+    @Published var isPlaying: Bool = false
     let progressObserver = ClipProgressObserver()
     var clipProgress: Double {
         get { progressObserver.progress }
@@ -84,9 +84,24 @@ final class ClipPlaybackCoordinator: ObservableObject {
     // Background Prewarming Task for Next Clips Stream Resolution
     private var prewarmTask: Task<Void, Never>?
 
+    private var session = ClipPlaybackSession()
+    private var canPlay: Bool {
+        session.isEnabled && PlaybackFocus.shared.ownsMoment(self)
+    }
+
+    func setPlaybackEnabled(_ enabled: Bool) {
+        if enabled {
+            guard PlaybackFocus.shared.claimMoment(self) else { return }
+            session.setEnabled(true)
+        } else {
+            session.setEnabled(false)
+            cleanup()
+            onClipEnded = nil
+            PlaybackFocus.shared.releaseMoment(self)
+        }
+    }
+
     init() {
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        try? AVAudioSession.sharedInstance().setActive(true)
         let savedQuality = UserDefaults.standard.string(forKey: "sloosh_moments_quality") ?? "Авто"
         // Сохранённое когда-то качество выше 1080p сбрасываем — iPhone его не воспроизводит
         let savedHeight = Int(savedQuality.replacingOccurrences(of: "p", with: "")) ?? 0
@@ -97,9 +112,11 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
-    func setupPlayer(for clip: MovieClip, allClips: [MovieClip] = [], isRetry: Bool = false) {
+    func setupPlayer(for clip: MovieClip, allClips: [MovieClip] = [], isRetry: Bool = false, preserveUserPause: Bool = false) {
 
+        guard canPlay else { return }
         cleanup()
+        let generation = session.generation
         currentClip = clip
         currentClipId = clip.id
         isResolving = true
@@ -110,9 +127,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
         didPerformInitialSeek = false
         if !isRetry {
             retryCount = 0
-            wasUserPaused = false
+            if !preserveUserPause { wasUserPaused = false }
         }
-        isPlaying = true
+        isPlaying = !wasUserPaused
 
         // Restore in-session playback position if user returned to this clip
         let savedSec = ClipSessionProgressStore.shared.getPosition(for: clip.id)
@@ -132,18 +149,15 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
         resolvePlaybackTask = Task { [weak self] in
             guard let self else { return }
-            guard let playbackInfo = await ClipStreamResolver.shared.resolveClip(for: clip) else {
+            let playbackInfo = await ClipStreamResolver.shared.resolveClip(for: clip)
+            guard !Task.isCancelled, self.canPlay, self.session.accepts(generation) else { return }
+            guard let playbackInfo else {
                 self.isResolving = false
                 self.hasError = true
                 AppDiagnostics.shared.log("[ClipPlayback] Failed to resolve clip=\(clip.id)")
                 return
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
-            guard self.isPlaying else {
-                self.isResolving = false
-                return
-            }
-
             self.currentQualityUrls = playbackInfo.qualityUrls
             self.currentHeaders = playbackInfo.headers
             self.currentPlayingUrl = playbackInfo.url
@@ -174,6 +188,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 }
             }
 
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try? AVAudioSession.sharedInstance().setActive(true)
 
             let player = AVPlayer(playerItem: item)
@@ -191,10 +206,11 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
     private func attachPlayerObservers(player: AVPlayer, item: AVPlayerItem?, clip: MovieClip) {
         guard let item else { return }
+        let generation = session.generation
         playerStatusObserver?.invalidate()
         playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
             Task { @MainActor [weak self] in
-                guard let self, self.currentClipId == clip.id, let player else { return }
+                guard let self, let player, self.isCurrent(player, item: observedItem, generation: generation) else { return }
                 if observedItem.status == .readyToPlay {
                     self.isResolving = false
                     self.hasError = false
@@ -205,11 +221,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
                         let seekSec = self.targetStartSec
                         if seekSec > 0.5 {
                             let sTime = CMTime(seconds: seekSec, preferredTimescale: 600)
-                            player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                                guard let self else { return }
-                                self.isVideoReady = true
-                                guard self.isPlaying, !self.wasUserPaused else { return }
-                                self.playWithCurrentSpeed()
+                            player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] finished in
+                                Task { @MainActor in
+                                    guard let self, let player, finished,
+                                          self.isCurrent(player, item: item, generation: generation) else { return }
+                                    self.isVideoReady = true
+                                    guard self.isPlaying, !self.wasUserPaused else { return }
+                                    self.playWithCurrentSpeed()
+                                }
                             }
                         } else {
                             self.isVideoReady = true
@@ -249,7 +268,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         playerTimeStatusObserver?.invalidate()
         playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
             Task { @MainActor [weak self] in
-                guard let self, self.currentClipId == clip.id else { return }
+                guard let self, self.canPlay, self.session.accepts(generation), self.activePlayer === observedPlayer else { return }
                 if observedPlayer.timeControlStatus == .playing {
                     self.isVideoReady = true
                     self.isResolving = false
@@ -264,7 +283,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
         self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-            guard let self, let player, !self.isScrubbing else { return }
+            guard let self, let player, self.canPlay, self.session.accepts(generation), self.activePlayer === player, self.isPlaying, !self.isScrubbing else { return }
             let currentSec = CMTimeGetSeconds(time)
             guard currentSec.isFinite else { return }
 
@@ -324,26 +343,33 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
-    func seekToStart(for clip: MovieClip) {
-        ClipSessionProgressStore.shared.clearPosition(for: clip.id)
-        targetStartSec = clip.startTime
-        guard let player = activePlayer else { return }
-        let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-        player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self else { return }
-            if self.isPlaying {
-                self.playWithCurrentSpeed()
+    private func isCurrent(_ player: AVPlayer, item: AVPlayerItem?, generation: UUID) -> Bool {
+        canPlay && session.accepts(generation) && activePlayer === player && player.currentItem === item
+    }
+
+    private func seekAndResume(player: AVPlayer, to time: CMTime, completesScrubbing: Bool = false) {
+        let generation = session.generation
+        let item = player.currentItem
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] finished in
+            Task { @MainActor in
+                guard let self, let player, finished,
+                      self.isCurrent(player, item: item, generation: generation) else { return }
+                if completesScrubbing { self.isScrubbing = false }
+                if self.isPlaying && !self.wasUserPaused { self.playWithCurrentSpeed() }
             }
         }
     }
 
+    func seekToStart(for clip: MovieClip) {
+        guard canPlay, let player = activePlayer else { return }
+        ClipSessionProgressStore.shared.clearPosition(for: clip.id)
+        targetStartSec = clip.startTime
+        seekAndResume(player: player, to: CMTime(seconds: clip.startTime, preferredTimescale: 600))
+    }
+
     func playWithCurrentSpeed() {
-        guard let player = activePlayer else { return }
-        if isFastForwarding {
-            player.rate = 2.0
-        } else {
-            player.rate = playbackSpeed
-        }
+        guard canPlay, !wasUserPaused, let player = activePlayer else { return }
+        player.rate = isFastForwarding ? 2.0 : playbackSpeed
         isPlaying = true
     }
 
@@ -366,9 +392,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     private func switchStream(to newUrl: URL, qualityKey: String) {
-        guard let player = activePlayer, let clip = currentClip else { return }
+        guard canPlay, let player = activePlayer, let clip = currentClip else { return }
         let currentTime = player.currentTime()
-        let isCurrentlyPlaying = isPlaying
+        let generation = session.generation
 
         currentPlayingUrl = newUrl
         let asset = AVURLAsset(url: newUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": currentHeaders])
@@ -379,14 +405,11 @@ final class ClipPlaybackCoordinator: ObservableObject {
         playerStatusObserver?.invalidate()
         playerStatusObserver = item.observe(\.status, options: [.new]) { [weak self, weak player] observedItem, _ in
             Task { @MainActor [weak self] in
-                guard let self, let player, self.currentClipId == clip.id else { return }
+                guard let self, let player, self.currentClipId == clip.id,
+                      self.isCurrent(player, item: observedItem, generation: generation) else { return }
                 if observedItem.status == .readyToPlay {
                     self.isVideoReady = true
-                    player.seek(to: currentTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                        if isCurrentlyPlaying {
-                            self?.playWithCurrentSpeed()
-                        }
-                    }
+                    self.seekAndResume(player: player, to: currentTime)
                 } else if observedItem.status == .failed {
                     AppDiagnostics.shared.log("[ClipPlayback] Quality switch failed for quality=\(qualityKey): \(String(describing: observedItem.error))")
                 }
@@ -431,7 +454,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
     func setSpeed(_ speed: Float) {
         playbackSpeed = speed
-        if isPlaying && !isFastForwarding {
+        if canPlay && isPlaying && !isFastForwarding {
             activePlayer?.rate = speed
         }
         let label = speed == 1.0 ? "1.0x (Обычная)" : (speed == Float(Int(speed)) ? "\(Int(speed)).0x" : String(format: "%.2gx", speed))
@@ -439,6 +462,8 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func fetchMasterPlaylistQualities(url: URL, headers: [String: String]) async {
+        guard canPlay else { return }
+        let generation = session.generation
         guard url.path.hasSuffix(".m3u8") || url.absoluteString.contains(".m3u8") else { return }
         var request = URLRequest(url: url)
         for (k, v) in headers {
@@ -449,6 +474,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
               let text = String(data: data, encoding: .utf8) else {
             return
         }
+        guard canPlay, session.accepts(generation), !Task.isCancelled else { return }
         let regex = try? NSRegularExpression(pattern: "RESOLUTION=\\d+x(\\d+)", options: [])
         let matches = regex?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? []
         var heights: Set<Int> = []
@@ -499,13 +525,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         if targetSec > (clip.startTime + 0.5) && targetSec < (clip.endTime - 0.75) {
             ClipSessionProgressStore.shared.savePosition(targetSec, for: clip.id)
         }
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
-            guard let self, let player else { return }
-            self.isScrubbing = false
-            if self.isPlaying {
-                self.playWithCurrentSpeed()
-            }
-        }
+        seekAndResume(player: player, to: time, completesScrubbing: true)
     }
 
     func seekToProgress(_ progress: Double, for clip: MovieClip) {
@@ -513,6 +533,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func togglePlayPause() {
+        guard canPlay else { return }
         guard let player = activePlayer else { return }
         if isPlaying {
             player.pause()
@@ -520,12 +541,13 @@ final class ClipPlaybackCoordinator: ObservableObject {
             wasUserPaused = true
         } else {
             wasUserPaused = false
-            playWithCurrentSpeed()
+            isPlaying = true
+            if isVideoReady { playWithCurrentSpeed() }
         }
     }
 
     func startFastForward() {
-        guard let player = activePlayer, isPlaying else { return }
+        guard canPlay, let player = activePlayer, isPlaying else { return }
         isFastForwarding = true
         player.rate = 2.0
     }
@@ -536,7 +558,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
             return
         }
         isFastForwarding = false
-        if isPlaying {
+        if canPlay && isPlaying {
             player.rate = playbackSpeed
         } else {
             player.pause()
@@ -567,21 +589,31 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func resume(for clip: MovieClip?, allClips: [MovieClip] = []) {
-        guard let clip else { return }
+        guard canPlay, let clip else { return }
         wasUserPaused = false
         if activePlayer == nil || currentClipId != clip.id {
             setupPlayer(for: clip, allClips: allClips)
         } else {
-            playWithCurrentSpeed()
+            isPlaying = true
+            if isVideoReady { playWithCurrentSpeed() }
         }
     }
 
     func resumeIfAppropriate(for clip: MovieClip?, allClips: [MovieClip] = []) {
-        guard !wasUserPaused else { return }
-        resume(for: clip, allClips: allClips)
+        guard canPlay, let clip else { return }
+        // onAppear, .task and eligibility changes can all arrive in one frame.
+        // Do not cancel/restart an in-flight resolution of this same moment.
+        if currentClipId == clip.id && isResolving { return }
+        if activePlayer == nil || currentClipId != clip.id {
+            setupPlayer(for: clip, allClips: allClips, preserveUserPause: true)
+        } else if !wasUserPaused {
+            resume(for: clip, allClips: allClips)
+        }
     }
 
     func cleanupActivePlayerOnly() {
+        session.invalidate()
+        isPlaying = false
         saveCurrentSessionPosition()
         resolvePlaybackTask?.cancel()
         resolvePlaybackTask = nil
@@ -595,6 +627,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
             timeObserver = nil
         }
         activePlayer?.pause()
+        activePlayer?.cancelPendingPrerolls()
+        activePlayer?.currentItem?.cancelPendingSeeks()
+        activePlayer?.replaceCurrentItem(with: nil)
         activePlayer = nil
     }
 
@@ -649,6 +684,29 @@ public struct ClipsFeedView: View {
     public let customClips: [MovieClip]?
     public let initialClipId: String?
     public let isModal: Bool
+    public let isSelected: Bool
+    @State private var isScreenVisible = false
+    @ObservedObject private var playbackFocus = PlaybackFocus.shared
+
+    private var allowsPlayback: Bool {
+        ClipPlaybackEligibility(
+            isVisible: isScreenVisible,
+            isSelected: isSelected,
+            isSceneActive: scenePhase == .active,
+            isCovered: showsMessenger || selectedDetailsMedia != nil || selectedAuthorUser != nil
+                || fullPlayerConfig != nil || showCommentsForClip != nil || sharingClip != nil
+                || showDeleteConfirmation,
+            hasMainPlayer: playbackFocus.hasMainPlayer
+        ).allowsPlayback
+    }
+
+    private func updatePlaybackEligibility() {
+        playback.setPlaybackEnabled(allowsPlayback)
+        if allowsPlayback {
+            setupPlaybackCallbacks()
+            ensurePlaybackStarted()
+        }
+    }
 
     @StateObject private var clipsRepo = ClipsRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
@@ -702,10 +760,13 @@ public struct ClipsFeedView: View {
         return activeClips.first
     }
 
-    public init(customClips: [MovieClip]? = nil, initialClipId: String? = nil, isModal: Bool = false) {
+    public init(customClips: [MovieClip]? = nil, initialClipId: String? = nil, isModal: Bool = false, isSelected: Bool? = nil) {
         self.customClips = customClips
         self.initialClipId = initialClipId
         self.isModal = isModal
+        // Non-modal callers must explicitly supply selection. A modal owns its
+        // own visible screen, independent of the tab behind it.
+        self.isSelected = isSelected ?? isModal
         let startingId = initialClipId ?? customClips?.first?.id ?? ClipsRepository.shared.clips.first?.id
         _currentClipId = State(initialValue: startingId)
         _settledClipId = State(initialValue: startingId)
@@ -745,6 +806,11 @@ public struct ClipsFeedView: View {
                     }
                 }
                 .ignoresSafeArea()
+            }
+            .onAppear { isScreenVisible = true; updatePlaybackEligibility() }
+            .onDisappear {
+                isScreenVisible = false
+                playback.setPlaybackEnabled(false)
             }
             .toolbarVisibility(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showsMessenger) {
@@ -791,76 +857,20 @@ public struct ClipsFeedView: View {
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
-            ensurePlaybackStarted()
+            updatePlaybackEligibility()
         }) { config in
             PlayerView(config: config)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
-        .onChange(of: fullPlayerConfig != nil) { _, isOpened in
-            if isOpened {
-                playback.pause(userInitiated: true)
-            }
-        }
-        .onChange(of: showsMessenger) { _, isPresented in
-            if isPresented {
-                playback.pause(userInitiated: true)
-            } else {
-                ensurePlaybackStarted()
-            }
-        }
-        .onChange(of: selectedDetailsMedia != nil) { _, isOpened in
-            if isOpened {
-                playback.pause(userInitiated: true)
-            } else {
-                ensurePlaybackStarted()
-            }
-        }
-        .onChange(of: selectedAuthorUser != nil) { _, isOpened in
-            if isOpened {
-                playback.pause(userInitiated: true)
-            } else {
-                ensurePlaybackStarted()
-            }
-        }
-        .onChange(of: sharingClip != nil) { _, isOpened in
-            if isOpened {
-                playback.pause(userInitiated: true)
-            } else {
-                ensurePlaybackStarted()
-            }
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase != .active {
-                playback.pause(userInitiated: false)
-            } else {
-                if !showsMessenger && selectedDetailsMedia == nil && selectedAuthorUser == nil && fullPlayerConfig == nil && showCommentsForClip == nil && sharingClip == nil {
-                    let targetId = settledClipId ?? currentClipId
-                    if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
-                        playback.resumeIfAppropriate(for: clip)
-                    }
-                }
-            }
+        .onChange(of: allowsPlayback) { _, _ in
+            updatePlaybackEligibility()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
-            playback.pause(userInitiated: false)
+            playback.setPlaybackEnabled(false)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            playback.pause(userInitiated: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshPauseClipsPlayback"))) { _ in
-            playback.pause(userInitiated: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshMainPlayerWillStart"))) { _ in
-            playback.pause(userInitiated: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshResumeClipsPlayback"))) { _ in
-            let targetId = settledClipId ?? currentClipId
-            if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
-                playback.resumeIfAppropriate(for: clip, allClips: activeClips)
-            } else {
-                ensurePlaybackStarted()
-            }
+            playback.setPlaybackEnabled(false)
         }
         .alert("Удалить момент?", isPresented: $showDeleteConfirmation, presenting: clipToDelete) { clip in
             Button("Отмена", role: .cancel) {
@@ -873,11 +883,8 @@ public struct ClipsFeedView: View {
             Text("Вы уверены, что хотите удалить этот момент? Это действие нельзя отменить.")
         }
         .onDisappear {
-            playback.pause(userInitiated: false)
-        }
-        .onAppear {
-            setupPlaybackCallbacks()
-            ensurePlaybackStarted()
+            isScreenVisible = false
+            playback.setPlaybackEnabled(false)
         }
         .onChange(of: autoScrollNext) { _, _ in
             setupPlaybackCallbacks()
@@ -1353,6 +1360,7 @@ public struct ClipsFeedView: View {
     }
 
     private func handleClipSettled() {
+        guard allowsPlayback else { return }
         guard let targetId = currentClipId,
               let clip = activeClips.first(where: { $0.id == targetId }) else { return }
 
@@ -1376,7 +1384,12 @@ public struct ClipsFeedView: View {
     }
 
     private func setupPlaybackCallbacks() {
+        guard allowsPlayback else {
+            playback.onClipEnded = nil
+            return
+        }
         playback.onClipEnded = {
+            guard allowsPlayback else { return }
             if autoScrollNext {
                 advanceToNextClip()
             } else if let clip = currentVisibleClip {
@@ -2332,18 +2345,19 @@ private struct ClipGestureSurfaceRepresentable: UIViewRepresentable {
 extension ClipsFeedView {
 
     private func ensurePlaybackStarted() {
+        guard allowsPlayback else { return }
         let targetId = settledClipId ?? currentClipId
         if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
             settledClipId = clip.id
             currentClipId = clip.id
-            playback.resume(for: clip, allClips: activeClips)
+            playback.resumeIfAppropriate(for: clip, allClips: activeClips)
             Task {
                 await clipsRepo.registerView(for: clip.id)
             }
         } else if let first = activeClips.first {
             currentClipId = first.id
             settledClipId = first.id
-            playback.setupPlayer(for: first, allClips: activeClips)
+            playback.resumeIfAppropriate(for: first, allClips: activeClips)
             Task {
                 await clipsRepo.registerView(for: first.id)
             }
