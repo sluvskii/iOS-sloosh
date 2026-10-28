@@ -3346,6 +3346,10 @@ class PlayerViewModel: ObservableObject {
             let title = (variant["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty else { return nil }
             let cleanTitle = normalizedAllohaTranslationName(title).isEmpty ? title : normalizedAllohaTranslationName(title)
+            let lower = cleanTitle.lowercased()
+            if lower.contains("субтитр") || lower.contains("subtitle") {
+                return nil
+            }
             return seen.insert(cleanTitle).inserted ? cleanTitle : nil
         }
     }

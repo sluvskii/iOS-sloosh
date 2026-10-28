@@ -43,6 +43,10 @@ extension AllohaApiResult {
             for season in seasons {
                 for episode in season.episodes {
                     for t in episode.translations {
+                        let lower = t.name.lowercased()
+                        if lower.contains("субтитр") || lower.contains("subtitle") {
+                            continue
+                        }
                         if seen.insert(t.name).inserted {
                             names.append(t.name)
                         }
@@ -51,7 +55,10 @@ extension AllohaApiResult {
             }
             return names
         } else if let movie = movie {
-            return movie.translations.map { $0.name }
+            return movie.translations.map { $0.name }.filter { name in
+                let lower = name.lowercased()
+                return !lower.contains("субтитр") && !lower.contains("subtitle")
+            }
         }
         return []
     }
@@ -997,6 +1004,7 @@ final class AllohaRepository: @unchecked Sendable {
                           let eDict = eValue as? [String: Any] else { continue }
 
                     var parsedTrans: [AllohaTranslation] = []
+                    var fallbackSubTrans: [AllohaTranslation] = []
                     if let transObj = eDict["translation"] as? [String: Any] {
                         for (tKey, tValue) in transObj {
                             guard let tDict = tValue as? [String: Any],
@@ -1009,7 +1017,12 @@ final class AllohaRepository: @unchecked Sendable {
                             let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                            parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                            let lower = finalTitle.lowercased()
+                            if lower.contains("субтитр") || lower.contains("subtitle") {
+                                fallbackSubTrans.append(AllohaTranslation(id: tKey, name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                            } else {
+                                parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                            }
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
@@ -1029,8 +1042,17 @@ final class AllohaRepository: @unchecked Sendable {
 
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                            parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                            let lower = finalTitle.lowercased()
+                            if lower.contains("субтитр") || lower.contains("subtitle") {
+                                fallbackSubTrans.append(AllohaTranslation(id: translationId, name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                            } else {
+                                parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                            }
                         }
+                    }
+
+                    if parsedTrans.isEmpty && !fallbackSubTrans.isEmpty {
+                        parsedTrans = fallbackSubTrans
                     }
 
                     // Порядок озвучек: сортируем так, чтобы русский дубляж был первым
@@ -1051,6 +1073,7 @@ final class AllohaRepository: @unchecked Sendable {
             return AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
         } else {
             var parsedTrans: [AllohaTranslation] = []
+            var fallbackSubTrans: [AllohaTranslation] = []
 
             // 1. Проверяем translation_iframe (основной формат Alloha для фильмов)
             if let transIframeDict = dataObj["translation_iframe"] as? [String: Any] {
@@ -1078,7 +1101,12 @@ final class AllohaRepository: @unchecked Sendable {
                     }
                     let cleanTitle = normalizedAllohaTranslationName(transName.isEmpty ? "Озвучка \(tKey)" : transName)
                     let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                    parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                    let lower = finalTitle.lowercased()
+                    if lower.contains("субтитр") || lower.contains("subtitle") {
+                        fallbackSubTrans.append(AllohaTranslation(id: tKey, name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                    } else {
+                        parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                    }
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             } else if let transIframeArray = dataObj["translation_iframe"] as? [[String: Any]] {
@@ -1093,13 +1121,18 @@ final class AllohaRepository: @unchecked Sendable {
                     let transName = tDict["name"] as? String ?? tDict["translation"] as? String ?? tDict["title"] as? String ?? "Озвучка \(index + 1)"
                     let cleanTitle = normalizedAllohaTranslationName(transName)
                     let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                    parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                    let lower = finalTitle.lowercased()
+                    if lower.contains("субтитр") || lower.contains("subtitle") {
+                        fallbackSubTrans.append(AllohaTranslation(id: translationId, name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                    } else {
+                        parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                    }
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             }
 
             // 2. Если translation_iframe не дал результатов, проверяем translation и translations
-            if parsedTrans.isEmpty {
+            if parsedTrans.isEmpty && fallbackSubTrans.isEmpty {
                 let transSource = dataObj["translation"] ?? dataObj["translations"]
                 if let transObj = transSource as? [String: Any] {
                     for (tKey, tValue) in transObj {
@@ -1110,7 +1143,12 @@ final class AllohaRepository: @unchecked Sendable {
                         let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                         let cleanTitle = normalizedAllohaTranslationName(transName)
                         let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                        parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                        let lower = finalTitle.lowercased()
+                        if lower.contains("субтитр") || lower.contains("subtitle") {
+                            fallbackSubTrans.append(AllohaTranslation(id: tKey, name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                        } else {
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                        }
                     }
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transArray = transSource as? [[String: Any]] {
@@ -1125,7 +1163,12 @@ final class AllohaRepository: @unchecked Sendable {
                         let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                         let cleanTitle = normalizedAllohaTranslationName(transName)
                         let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                        parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                        let lower = finalTitle.lowercased()
+                        if lower.contains("субтитр") || lower.contains("subtitle") {
+                            fallbackSubTrans.append(AllohaTranslation(id: translationId, name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                        } else {
+                            parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
+                        }
                     }
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transStr = transSource as? String {
@@ -1134,9 +1177,18 @@ final class AllohaRepository: @unchecked Sendable {
                     if !iframe.isEmpty {
                         let cleanTitle = normalizedAllohaTranslationName(transStr)
                         let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
-                        parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+                        let lower = finalName.lowercased()
+                        if lower.contains("субтитр") || lower.contains("subtitle") {
+                            fallbackSubTrans.append(AllohaTranslation(id: "default", name: "Оригинал", iframeUrl: iframe, streamUrl: nil))
+                        } else {
+                            parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+                        }
                     }
                 }
+            }
+
+            if parsedTrans.isEmpty && !fallbackSubTrans.isEmpty {
+                parsedTrans = fallbackSubTrans
             }
 
             // 3. Финальный фолбэк — если ничего не найдено, ставим дефолтную дорожку "Основной"

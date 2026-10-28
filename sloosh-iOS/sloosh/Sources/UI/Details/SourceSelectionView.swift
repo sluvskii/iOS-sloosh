@@ -689,7 +689,16 @@ struct SingleSourceContentView: View {
                 }
             }
 
-            let sortedNames = Array(allNames).sorted()
+            // Exclude subtitles from voiceovers list (subtitles belong in player subtitles menu)
+            let nonSubNames = allNames.filter { name in
+                let lower = name.lowercased()
+                return !lower.contains("субтитр") && !lower.contains("subtitle")
+            }
+            let effectiveNames = nonSubNames.isEmpty ? allNames.map { name -> String in
+                let lower = name.lowercased()
+                return (lower.contains("субтитр") || lower.contains("subtitle")) ? "Оригинал" : name
+            } : Array(nonSubNames)
+            let sortedNames = Array(Set(effectiveNames)).sorted()
             transItems = sortedNames.enumerated().map { idx, name in
                 let displayName = displayTranslationName(name, at: idx, in: sortedNames)
                 return TranslationChipItem(
@@ -707,7 +716,10 @@ struct SingleSourceContentView: View {
             for season in result.seasons {
                 var seasonMatchedNames = Set<String>()
                 for ep in season.episodes {
-                    let rawEpNames = Set(ep.translations.map { $0.name })
+                    let rawEpNames = Set(ep.translations.map { t in
+                        let lower = t.name.lowercased()
+                        return (nonSubNames.isEmpty && (lower.contains("субтитр") || lower.contains("subtitle"))) ? "Оригинал" : t.name
+                    })
                     var availableForEp = Set<String>()
                     for name in sortedNames {
                         if rawEpNames.contains(name) || rawEpNames.contains(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) }) {
@@ -720,7 +732,16 @@ struct SingleSourceContentView: View {
                 sTransMap[season.season] = seasonMatchedNames
             }
         } else if let movie = result.movie {
-            let sortedNames = movie.translations.map { $0.name }.sorted()
+            let allMovieNames = movie.translations.map { $0.name }
+            let nonSubNames = allMovieNames.filter { name in
+                let lower = name.lowercased()
+                return !lower.contains("субтитр") && !lower.contains("subtitle")
+            }
+            let effectiveNames = nonSubNames.isEmpty ? allMovieNames.map { name -> String in
+                let lower = name.lowercased()
+                return (lower.contains("субтитр") || lower.contains("subtitle")) ? "Оригинал" : name
+            } : allMovieNames
+            let sortedNames = Array(Set(effectiveNames)).sorted()
             movieNames = Set(sortedNames)
             transItems = sortedNames.enumerated().map { idx, name in
                 let displayName = displayTranslationName(name, at: idx, in: sortedNames)
@@ -769,22 +790,24 @@ struct SingleSourceContentView: View {
         }
     }
 
+    func seasonHasTranslation(season: Int, name: String) -> Bool {
+        guard let names = seasonTranslationsMap[season] else { return false }
+        return names.contains(name) || names.contains(where: { allohaTranslationNamesMatch($0, name) })
+    }
+
+    func episodeHasTranslation(season: Int, episode: Int, name: String) -> Bool {
+        guard let names = episodeTranslationsMap[EpisodeKey(season: season, episode: episode)] else { return false }
+        return names.contains(name) || names.contains(where: { allohaTranslationNamesMatch($0, name) })
+    }
+
     func isSeasonAvailable(_ seasonNum: Int) -> Bool {
         guard let tName = selectedTranslationName else { return true }
-        return seasonTranslationsMap[seasonNum]?.contains(tName) ?? false
+        return seasonHasTranslation(season: seasonNum, name: tName)
     }
 
     func isEpisodeAvailable(_ episodeNum: Int) -> Bool {
         guard let s = selectedSeason, let tName = selectedTranslationName else { return true }
-        return episodeTranslationsMap[EpisodeKey(season: s, episode: episodeNum)]?.contains(tName) ?? false
-    }
-
-    func seasonHasTranslation(season: Int, name: String) -> Bool {
-        seasonTranslationsMap[season]?.contains(name) ?? false
-    }
-
-    func episodeHasTranslation(season: Int, episode: Int, name: String) -> Bool {
-        episodeTranslationsMap[EpisodeKey(season: season, episode: episode)]?.contains(name) ?? false
+        return episodeHasTranslation(season: s, episode: episodeNum, name: tName)
     }
 
     func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
@@ -1040,26 +1063,8 @@ struct SingleSourceContentView: View {
         }
     }
 
-    var displayedTranslations: [TranslationChipItem] {
-        if result.isSerial {
-            guard let s = selectedSeason, let e = selectedEpisode,
-                  let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)],
-                  !epNames.isEmpty else {
-                return allTranslations
-            }
-            return allTranslations.filter { item in
-                epNames.contains(item.name) || epNames.contains(where: { allohaTranslationNamesMatch($0, item.name) })
-            }
-        } else {
-            guard !movieTranslationNames.isEmpty else { return allTranslations }
-            return allTranslations.filter { item in
-                movieTranslationNames.contains(item.name) || movieTranslationNames.contains(where: { allohaTranslationNamesMatch($0, item.name) })
-            }
-        }
-    }
-
     private func translationBadge(for name: String) -> String? {
-        guard displayedTranslations.count > 1,
+        guard allTranslations.count > 1,
               let stats = mediaStats,
               let top = stats.topTranslation,
               top.count >= 2,
@@ -1071,15 +1076,14 @@ struct SingleSourceContentView: View {
 
     @ViewBuilder
     private var translationsSection: some View {
-        let items = displayedTranslations
-        if !items.isEmpty {
+        if !allTranslations.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Озвучка")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.primary)
 
                 FlowLayout(spacing: 8) {
-                    ForEach(items) { item in
+                    ForEach(allTranslations) { item in
                         WatchSelectorChip(
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
