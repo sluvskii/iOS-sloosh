@@ -433,6 +433,16 @@ class PlayerViewModel: ObservableObject {
     var streamSource: MediaStreamSource = .source1
     var episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
 
+    public var isCollapsStream: Bool {
+        streamSource == .source2 ||
+        (originalStreamURL?.host?.contains("interkh") == true) ||
+        (currentPlaybackSourceURL?.host?.contains("interkh") == true) ||
+        (targetDirectStreamUrl?.contains("interkh") == true) ||
+        (currentPlaybackSourceURL?.absoluteString.contains("interkh") == true)
+    }
+
+    private var lastSeekTimestamp: Date = .distantPast
+
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
     private var currentHeaders: [String: String] = [:]
@@ -594,7 +604,7 @@ class PlayerViewModel: ObservableObject {
         // Сохраняем текущую позицию, чтобы после переподключения продолжить с неё
         saveCurrentProgress()
 
-        if streamSource == .source2 {
+        if isCollapsStream {
             CollapsRepository.shared.invalidateCache()
             originalStreamURL = nil
             masterStreamURL = nil
@@ -816,6 +826,9 @@ class PlayerViewModel: ObservableObject {
         }
         self._currentTranslationName = selectedVoiceover
         self.targetDirectStreamUrl = directStreamUrl
+        if isCollapsStream && self.streamSource != .source2 {
+            self.streamSource = .source2
+        }
         self.isAdvancingToNextEpisode = false
         self.playbackRetryCount = 0
         self.wasPlayingBeforeReload = true
@@ -829,11 +842,21 @@ class PlayerViewModel: ObservableObject {
                 self.isInitialSeekPending = true
                 self.currentTime = saved
                 logDebug("beginLoad: initialized with saved progress \(saved)s for \(mediaId)")
+            } else if isCollapsStream {
+                self.pendingSeekPosition = 3.5
+                self.isInitialSeekPending = true
+                self.currentTime = 3.5
+                logDebug("beginLoad: Collaps stream initialized with 3.5s offset")
             } else {
                 self.pendingSeekPosition = nil
                 self.isInitialSeekPending = false
                 self.currentTime = 0
             }
+        } else if isCollapsStream {
+            self.pendingSeekPosition = 3.5
+            self.isInitialSeekPending = true
+            self.currentTime = 3.5
+            logDebug("beginLoad: Collaps stream initialized with 3.5s offset")
         } else {
             self.pendingSeekPosition = nil
             self.isInitialSeekPending = false
@@ -1389,7 +1412,7 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let current = player.currentTime().seconds
         let validCurrent = (current.isFinite && !current.isNaN && current >= 0) ? current : currentTime
-        let minTime: Double = (streamSource == .source2) ? 3.5 : 0.0
+        let minTime: Double = isCollapsStream ? 3.5 : 0.0
         let target: Double
         if currentDuration > 0 {
             target = max(minTime, min(currentDuration, validCurrent + seconds))
@@ -1404,13 +1427,15 @@ class PlayerViewModel: ObservableObject {
 
     func seek(to seconds: Double) {
         guard let player else { return }
-        let minTime: Double = (streamSource == .source2) ? 3.5 : 0.0
+        let minTime: Double = isCollapsStream ? 3.5 : 0.0
         let effectiveSeconds = max(minTime, seconds)
         let time = CMTime(seconds: effectiveSeconds, preferredTimescale: 600)
+        let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
         isUserSeeking = true
+        lastSeekTimestamp = Date()
         currentTime = effectiveSeconds
         updateSubtitleCue(at: effectiveSeconds)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+        player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.isUserSeeking = false
@@ -1844,6 +1869,7 @@ class PlayerViewModel: ObservableObject {
             _currentTranslationName = matchedCanonical
             targetVoiceover = matchedCanonical
             persistVoiceoverSelection(matchedCanonical)
+            HlsProxyServer.shared.updatePreferredVoice(matchedCanonical)
             saveCurrentProgress()
 
             // 2a. Если уже есть прямой pre-resolved стрим
@@ -1975,6 +2001,7 @@ class PlayerViewModel: ObservableObject {
         _currentTranslationName = canonicalName
         targetVoiceover = canonicalName
         persistVoiceoverSelection(canonicalName)
+        HlsProxyServer.shared.updatePreferredVoice(canonicalName)
         saveCurrentProgress()
         selectAudioTrackInPlayer(named: name, at: index)
     }
@@ -2516,15 +2543,22 @@ class PlayerViewModel: ObservableObject {
                 self.logDebug("setupPlayerItemObservers: playback stalled, marking buffering")
                 self.isBuffering = true
                 Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 12_000_000_000)
                     guard let self, !self.isPreparedForDismiss, !self.isCleaningUp else { return }
                     if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate,
                        !self.isUserSeeking,
                        !self.isInitialSeekPending,
+                       Date().timeIntervalSince(self.lastSeekTimestamp) >= 10.0,
                        NetworkMonitor.shared.isConnected,
                        self.player?.currentItem === playerItem {
-                        self.logDebug("setupPlayerItemObservers: stall persisted > 3s while connected, auto-recovering stream")
-                        self.retryPlayback()
+                        self.logDebug("setupPlayerItemObservers: stall persisted > 12s while connected, attempting play before reload")
+                        self.player?.play()
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate,
+                           self.player?.currentItem === playerItem {
+                            self.logDebug("setupPlayerItemObservers: still stalled after 14s, auto-recovering stream via retryPlayback()")
+                            self.retryPlayback()
+                        }
                     }
                 }
             }
@@ -2691,7 +2725,7 @@ class PlayerViewModel: ObservableObject {
         guard let player = self.player else { return }
         guard item === player.currentItem else { return }
 
-        let minStartTime: Double = (streamSource == .source2) ? 3.5 : 0.0
+        let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
         let targetSeek: Double = {
             if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
                 return pending
@@ -2728,10 +2762,11 @@ class PlayerViewModel: ObservableObject {
         self.isInitialSeekPending = true
         self.pendingSeekPosition = targetSeek
         self.logDebug("applySeekIfNeeded: seeking to \(targetSeek)s for \(self.currentMediaId ?? "")")
+        let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
         player.seek(
             to: CMTime(seconds: targetSeek, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
+            toleranceBefore: tolerance,
+            toleranceAfter: tolerance
         ) { [weak self] finished in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -3189,7 +3224,7 @@ class PlayerViewModel: ObservableObject {
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
         var pref = targetVoiceover ?? _currentTranslationName
-        let sourceKey = streamSource == .source2 ? "collaps" : "alloha"
+        let sourceKey = isCollapsStream ? "collaps" : "alloha"
         if pref == nil, let root = rootMediaKey {
             pref = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: root, source: sourceKey)
         }
@@ -3385,42 +3420,66 @@ class PlayerViewModel: ObservableObject {
             ?? cleanTranslationName(name)
         
         let options = group.options
-        logDebug("selectAudioTrackInPlayer: target='\(name)', index=\(index ?? -1), options=\(options.map { $0.displayName })")
+        logDebug("selectAudioTrackInPlayer: target='\(name)', index=\(index ?? -1), options=\(options.map { "\($0.displayName) [title: \(self.extractTrackTitle(from: $0))]" })")
         
-        // Exact match
+        func applySelection(_ option: AVMediaSelectionOption, reason: String) {
+            item.select(option, in: group)
+            persistVoiceoverSelection(canonicalName)
+            HlsProxyServer.shared.updatePreferredVoice(canonicalName)
+            saveCurrentProgress()
+            logDebug("selectAudioTrackInPlayer: \(reason) option='\(option.displayName)' title='\(self.extractTrackTitle(from: option))'")
+        }
+
+        // 1. Exact match by authentic track title from HLS metadata
+        if let option = options.first(where: { 
+            let title = self.extractTrackTitle(from: $0)
+            return allohaTranslationNamesMatch(title, name, exactOnly: true)
+        }) {
+            applySelection(option, reason: "selected exact title match")
+            return
+        }
+        
+        // 2. Fuzzy match by authentic track title from HLS metadata
+        if let option = options.first(where: { 
+            let title = self.extractTrackTitle(from: $0)
+            return allohaTranslationNamesMatch(title, name, exactOnly: false)
+        }) {
+            applySelection(option, reason: "selected fuzzy title match")
+            return
+        }
+
+        // 3. Exact match by displayName
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
-            item.select(option, in: group)
-            persistVoiceoverSelection(canonicalName)
-            saveCurrentProgress()
-            logDebug("selectAudioTrackInPlayer: selected exact match option='\(option.displayName)'")
+            applySelection(option, reason: "selected exact displayName match")
             return
         }
         
-        // Fuzzy match
+        // 4. Fuzzy match by displayName
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
-            item.select(option, in: group)
-            persistVoiceoverSelection(canonicalName)
-            saveCurrentProgress()
-            logDebug("selectAudioTrackInPlayer: selected fuzzy match option='\(option.displayName)'")
+            applySelection(option, reason: "selected fuzzy displayName match")
             return
         }
         
-        // Match by track index (crucial for Collaps / Source 2 where rus0, rus1 map to availableVoiceovers[0], availableVoiceovers[1])
-        if streamSource == .source2 {
-            let trackIndex = index
-                ?? self.availableVoiceovers.firstIndex(of: name)
-                ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
-                ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) })
-            if let trackIndex, trackIndex >= 0, trackIndex < options.count {
-                item.select(options[trackIndex], in: group)
-                persistVoiceoverSelection(canonicalName)
-                saveCurrentProgress()
-                logDebug("selectAudioTrackInPlayer: selected by trackIndex \(trackIndex), option='\(options[trackIndex].displayName)'")
-                return
+        // 5. Match by track index (crucial for Collaps / Source 2 and multi-audio manifests where audio0..audioN map to availableVoiceovers)
+        let resolvedTrackIndex: Int? = {
+            if let index, index >= 0, index < options.count {
+                return index
             }
+            if let idx = self.availableVoiceovers.firstIndex(of: name) ??
+                         self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) }) ??
+                         self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) }),
+               idx >= 0 && idx < options.count {
+                return idx
+            }
+            return nil
+        }()
+
+        if let resolvedTrackIndex {
+            applySelection(options[resolvedTrackIndex], reason: "selected by trackIndex \(resolvedTrackIndex)")
+            return
         }
         
-        // Match by index or language tag if name represents a standard language
+        // 6. Match by language tag ONLY if unambiguous (e.g. single English or single Ukrainian track)
         let lowerName = name.lowercased()
         let isLookingForEnglish = lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ori")
         let isLookingForRussian = lowerName.contains("rus") || lowerName.contains("рус") || lowerName.contains("дуб") || !isLookingForEnglish
@@ -3432,84 +3491,65 @@ class PlayerViewModel: ObservableObject {
         }()
         
         if let targetLang {
-            // First check extendedLanguageTag and locale
-            if let option = options.first(where: { 
+            let matchingLangOptions = options.filter {
                 $0.extendedLanguageTag?.lowercased().hasPrefix(targetLang) == true ||
                 $0.locale?.identifier.lowercased().hasPrefix(targetLang) == true ||
                 ($0.extendedLanguageTag?.lowercased() == "rus" && targetLang == "ru") ||
                 ($0.locale?.identifier.lowercased().contains("ru") == true && targetLang == "ru")
-            }) {
-                item.select(option, in: group)
-                persistVoiceoverSelection(canonicalName)
-                saveCurrentProgress()
-                logDebug("selectAudioTrackInPlayer: selected by language tag '\(targetLang)', option='\(option.displayName)'")
-                return
             }
-
-            // Also check displayName for language keywords (crucial when HLS manifest omits LANGUAGE tag!)
-            if targetLang == "ru" {
-                if let option = options.first(where: {
-                    let d = $0.displayName.lowercased()
-                    return d.contains("rus") || d.contains("рус") || d.contains("дуб") || d.contains("russian")
-                }) {
-                    item.select(option, in: group)
-                    persistVoiceoverSelection(canonicalName)
-                    saveCurrentProgress()
-                    logDebug("selectAudioTrackInPlayer: selected Russian by displayName '\(option.displayName)'")
-                    return
-                }
-            } else if targetLang == "en" {
-                if let option = options.first(where: {
-                    let d = $0.displayName.lowercased()
-                    return d.contains("eng") || d.contains("англ") || d.contains("ori") || d.contains("original")
-                }) {
-                    item.select(option, in: group)
-                    persistVoiceoverSelection(canonicalName)
-                    saveCurrentProgress()
-                    logDebug("selectAudioTrackInPlayer: selected English by displayName '\(option.displayName)'")
-                    return
-                }
+            // If only one option matches the language, safe to select it
+            if matchingLangOptions.count == 1, let option = matchingLangOptions.first {
+                applySelection(option, reason: "selected single language tag match '\(targetLang)'")
+                return
             }
         }
         
         if let targetIndex = extractAudioIndex(from: name), targetIndex < options.count {
-            item.select(options[targetIndex], in: group)
-            persistVoiceoverSelection(canonicalName)
-            saveCurrentProgress()
-            logDebug("selectAudioTrackInPlayer: selected by index \(targetIndex), option='\(options[targetIndex].displayName)'")
+            applySelection(options[targetIndex], reason: "selected by index \(targetIndex)")
             return
         }
 
-        // Fallback for Russian target: if there are multiple options and option 0 is English,
-        // select option 1 (the dubbed track)
+        // 7. Fallback for Russian target: if there are multiple options and option 0 is English, select option 1
         if isLookingForRussian && options.count > 1 {
             let opt0Name = options[0].displayName.lowercased()
             let opt0Tag = options[0].extendedLanguageTag?.lowercased() ?? ""
             if opt0Name.contains("eng") || opt0Name.contains("ori") || opt0Tag.hasPrefix("en") {
-                item.select(options[1], in: group)
-                persistVoiceoverSelection(canonicalName)
-                saveCurrentProgress()
-                logDebug("selectAudioTrackInPlayer: selected non-English fallback option='\(options[1].displayName)'")
+                applySelection(options[1], reason: "selected non-English fallback option")
                 return
             }
         }
 
         // Guaranteed fallback: ensure an audio track IS ALWAYS SELECTED so playback doesn't stay silent
         if let defaultOpt = group.defaultOption {
-            item.select(defaultOpt, in: group)
-            persistVoiceoverSelection(canonicalName)
-            saveCurrentProgress()
-            logDebug("selectAudioTrackInPlayer: fallback selected group.defaultOption '\(defaultOpt.displayName)'")
+            applySelection(defaultOpt, reason: "fallback selected group.defaultOption")
             return
         } else if let firstOpt = options.first {
-            item.select(firstOpt, in: group)
-            persistVoiceoverSelection(canonicalName)
-            saveCurrentProgress()
-            logDebug("selectAudioTrackInPlayer: fallback selected first available option '\(firstOpt.displayName)'")
+            applySelection(firstOpt, reason: "fallback selected first available option")
             return
         }
 
         logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
+    }
+
+    private func extractTrackTitle(from option: AVMediaSelectionOption) -> String {
+        if let title = AVMetadataItem.metadataItems(from: option.commonMetadata, withKey: AVMetadataKey.commonKeyTitle, keySpace: .common).first?.stringValue,
+           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return title.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        for item in option.commonMetadata {
+            if let val = item.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty, val != option.displayName {
+                return val
+            }
+        }
+        for format in option.availableMetadataFormats {
+            let items = option.metadata(forFormat: format)
+            for item in items {
+                if let key = item.commonKey, key == .commonKeyTitle, let str = item.stringValue, !str.isEmpty {
+                    return str.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+        }
+        return option.displayName
     }
     
     private func syncNativeAudioTracks() {
@@ -3519,7 +3559,10 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        let nativeNames = group.options.map { $0.displayName }
+        let nativeNames = group.options.map { option in
+            let title = extractTrackTitle(from: option)
+            return title.isEmpty ? option.displayName : title
+        }
         logDebug("syncNativeAudioTracks: nativeNames=\(nativeNames)")
         guard nativeNames.count > 1 else { return }
         
@@ -3625,7 +3668,7 @@ class PlayerViewModel: ObservableObject {
     private func persistVoiceoverSelection(_ name: String?) {
         let normalized = normalizedAllohaTranslationName(name)
         let finalName = normalized.isEmpty ? name : normalized
-        let sourceKey = streamSource == .source2 ? "collaps" : "alloha"
+        let sourceKey = isCollapsStream ? "collaps" : "alloha"
         if let root = rootMediaKey {
             PlaybackProgressStore.shared.saveLastVoiceover(
                 mediaKey: root,

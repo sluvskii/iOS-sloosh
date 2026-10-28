@@ -36,6 +36,15 @@ struct PlayerContainerView: View {
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
+            // Маскировка промо-врезки Collaps (Lift-баннер в начале seg-1) и начального сика
+            if vm.isCollapsStream && (vm.currentTime < 3.5 || vm.isInitialSeekPending || (vm.isBuffering && vm.currentTime < 4.0)) {
+                Color.black
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+
             // 3. (Буферизация перенесена в саму кнопку Play)
 
             // 4. Ошибка (показываем поверх видео, скрываем всё остальное)

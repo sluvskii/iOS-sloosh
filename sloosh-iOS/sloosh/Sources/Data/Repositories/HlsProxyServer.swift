@@ -178,6 +178,12 @@ class HlsProxyServer {
             currentMasterUrl = URL(string: urlString)
         }
     }
+
+    func updatePreferredVoice(_ voiceName: String?) {
+        stateLock.withLock {
+            self.preferredVoiceName = voiceName
+        }
+    }
     
     func stop() {
         endBackgroundTaskIfNeeded()
