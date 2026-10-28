@@ -654,7 +654,6 @@ struct DetailsView: View {
     @State private var playerCustomHeaders: [String: String]? = nil
     @State private var playerStreamSource: MediaStreamSource = .source1
     @State private var playerEpisodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
-    @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
     @State private var showShareToFriendSheet = false
@@ -913,7 +912,7 @@ struct DetailsView: View {
                             isTopBar: true
                         )
                         .frame(height: 32)
-                        .padding(.horizontal, 68)
+                        .padding(.horizontal, details.isUnreleased ? 112 : 68)
                         .opacity(isLogoAtTop ? 1.0 : 0.0)
                         .scaleEffect(isLogoAtTop ? 1.0 : 0.85, anchor: .center)
                         .blur(radius: isLogoAtTop ? 0 : 8)
@@ -928,60 +927,21 @@ struct DetailsView: View {
                         
                         Spacer()
                         
-                        HStack(spacing: 0) {
-                            // Кнопка «Избранное» (слева, как было изначально)
-                            Button {
-                                guard viewModel.details != nil else { return }
-                                withAnimation(.spring(response: 0.26, dampingFraction: 0.48)) {
-                                    favoriteBounce = true
-                                    viewModel.toggleFavorite()
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
-                                        favoriteBounce = false
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                    .font(.system(size: 21, weight: .medium))
-                                    .foregroundStyle(Color.primary)
-                                    .symbolEffect(.bounce, value: viewModel.isFavorite)
-                                    .scaleEffect(favoriteBounce ? 1.25 : 1.0)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
+                        HStack(spacing: 8) {
+                            // Upcoming titles keep their premiere/countdown slot,
+                            // so their favorite action remains in the navigation bar.
+                            if viewModel.details?.isUnreleased == true {
+                                favoriteButton
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-                            .frame(width: 44, height: 44)
 
-                            // Кнопка «Поделиться» (справа, растворяется с блюром)
-                            Button {
-                                guard viewModel.details != nil, !isLogoAtTop else { return }
-                                let generator = UIImpactFeedbackGenerator(style: .medium)
-                                generator.prepare()
-                                generator.impactOccurred()
+                            TelegramGlassIconButton(systemName: "square.and.arrow.up", iconSize: 20) {
+                                guard viewModel.details != nil else { return }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 showShareToFriendSheet = true
-                            } label: {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundStyle(Color.primary)
-                                    .frame(width: 44, height: 44)
-                                    .blur(radius: isLogoAtTop ? 12 : 0)
-                                    .opacity(isLogoAtTop ? 0 : 1)
-                                    .scaleEffect(isLogoAtTop ? 0.4 : 1.0)
-                                    .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
                             .accessibilityLabel("Поделиться фильмом")
-                            .frame(width: isLogoAtTop ? 0 : 44, height: 44)
-                            .clipped()
-                            .allowsHitTesting(!isLogoAtTop)
+                            .accessibilityIdentifier("details.share")
                         }
-                        .padding(.horizontal, isLogoAtTop ? 0 : 2)
-                        .frame(width: isLogoAtTop ? 44 : 92, height: 44)
-                        .clipShape(Capsule())
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                     }
 
                 }
@@ -1352,11 +1312,16 @@ struct DetailsView: View {
                 unreleasedButton(for: details)
             }
         } else {
-            HStack(spacing: 8) {
+            HStack(spacing: DetailsHeroActionMetrics.spacing) {
+                DetailsHeroDownloadButton(details: details) { item in
+                    handleDownloadAction(details: details, item: item)
+                }
                 playButton(for: details)
                     .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
-                downloadButton(for: details)
+                favoriteButton
             }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -1391,65 +1356,33 @@ struct DetailsView: View {
     }
 
     private func playButton(for details: MediaDetailsDto) -> some View {
-        Button {
+        DetailsHeroButton(isPrimary: true) {
             handlePlayAction(details: details)
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 18, weight: .black))
-                Text("Смотреть")
-                    .font(.system(size: 19, weight: .heavy))
-            }
-            .foregroundStyle(Color.black)
-            .padding(.horizontal, 26)
-            .frame(height: 50)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.94))
-            )
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 4)
+            Image(systemName: "play.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.black.opacity(0.9))
+                .offset(x: 2) // Optical centering of the triangle, as in AVKit.
         }
-        .buttonStyle(.glassPress)
+        .accessibilityLabel("Смотреть")
+        .accessibilityHint("Выбрать озвучку и качество")
+        .accessibilityIdentifier("details.play")
     }
 
-    @ViewBuilder
-    private func downloadButton(for details: MediaDetailsDto) -> some View {
-        let kpId = details.ids?.kp ?? 0
-        let item = DownloadManager.shared.getDownloadItem(kpId: kpId, season: nil, episode: nil)
-        
-        Button {
-            handleDownloadAction(details: details, item: item)
-        } label: {
-            Group {
-                if let item = item, item.status == .downloading {
-                    ZStack {
-                        Circle()
-                            .stroke(Color.primary.opacity(0.15), lineWidth: 2)
-                            .frame(width: 20, height: 20)
-                        Circle()
-                            .trim(from: 0.0, to: item.progress)
-                            .stroke(Color.slooshAccent, lineWidth: 2)
-                            .frame(width: 20, height: 20)
-                            .rotationEffect(Angle(degrees: -90))
-                        Image(systemName: "square.fill")
-                            .font(.system(size: 6))
-                    }
-                } else if let item = item, item.status == .pending {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 22))
-                        .foregroundColor(.primary)
-                }
+    private var favoriteButton: some View {
+        DetailsHeroButton {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                viewModel.toggleFavorite()
             }
-            .foregroundStyle(.white)
-            .frame(width: 50, height: 50)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        } label: {
+            Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.white)
+                .symbolEffect(.bounce, value: viewModel.isFavorite)
         }
-        .buttonStyle(.glassPress)
+        .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+        .accessibilityValue(viewModel.isFavorite ? "В избранном" : "Не в избранном")
+        .accessibilityIdentifier("details.favorite")
     }
 
     private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
@@ -1465,7 +1398,10 @@ struct DetailsView: View {
                 DownloadManager.shared.pauseDownload(id: item.id)
             case .paused:
                 DownloadManager.shared.resumeDownload(id: item.id)
-            default:
+            case .completed:
+                movieToDelete = item
+                showDeleteMovieAlert = true
+            case .failed:
                 startDownloadWithPreferredTranslation(details: details, season: nil, episode: nil)
             }
         } else {
@@ -2025,21 +1961,22 @@ private struct DetailsSkeletonView: View {
                 }
                 .shimmer()
                 
-                // Play Button & Download Button placeholder
-                HStack(spacing: 8) {
-                    // Capsule sized like real "Смотреть" button: padding(.horizontal, 26) + height 50
-                    Capsule()
-                        .fill(Color.white.opacity(0.16))
-                        .frame(width: 160, height: 50)
-
+                // Same circular action layout as the loaded hero.
+                HStack(spacing: DetailsHeroActionMetrics.spacing) {
                     Circle()
                         .fill(Color.white.opacity(0.1))
-                        .frame(width: 50, height: 50)
+                        .frame(width: DetailsHeroActionMetrics.secondaryDiameter, height: DetailsHeroActionMetrics.secondaryDiameter)
+                    Circle()
+                        .fill(Color.white.opacity(0.16))
+                        .frame(width: DetailsHeroActionMetrics.primaryDiameter, height: DetailsHeroActionMetrics.primaryDiameter)
+                    Circle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: DetailsHeroActionMetrics.secondaryDiameter, height: DetailsHeroActionMetrics.secondaryDiameter)
                 }
                 .shimmer()
                 .padding(.top, 8)
                 .padding(.bottom, -4)
-                
+
                 // Info Section placeholder
                 VStack(alignment: .leading, spacing: 18) {
                     // Genres
