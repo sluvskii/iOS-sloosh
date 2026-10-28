@@ -25,7 +25,7 @@
         "startsAt": "2026-10-27T00:00:00Z",
         "expiresAt": "2026-12-18T05:00:00Z",
         "countdownTo": "2026-12-18T05:00:00Z",
-        "timeZone": "America/New_York",
+        "timeZone": "UTC",
         "afterCountdown": "hide",
         "completedText": null,
         "disclaimer": "Отсчёт до 00:00 в Нью-Йорке. Не дата появления в sloosh.",
