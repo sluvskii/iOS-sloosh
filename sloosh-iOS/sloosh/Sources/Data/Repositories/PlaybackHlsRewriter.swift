@@ -210,6 +210,18 @@ class PlaybackHlsRewriter {
             return scoreA > scoreB
         }
 
+        // Deduplicate variants so each resolution tier appears at most once (highest bitrate kept)
+        var uniqueVariants: [ParsedVariant] = []
+        var seenResolutions = Set<String>()
+        for v in parsedVariants {
+            let key = v.resolutionLabel.lowercased()
+            if !seenResolutions.contains(key) {
+                seenResolutions.insert(key)
+                uniqueVariants.append(v)
+            }
+        }
+        parsedVariants = uniqueVariants
+
         // Apply quality filter if requested (e.g. "1080p", "720p", "360p")
         var finalVariants = parsedVariants
         if let targetQuality, !targetQuality.isEmpty, targetQuality != "Авто", targetQuality.lowercased() != "auto" {

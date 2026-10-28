@@ -26,15 +26,21 @@ class HlsProxyServer {
     /// Публичное свойство для проверки живости прокси из PlayerView
     var isAlive: Bool { stateLock.withLock { isListenerAlive && listener != nil } }
 
+    private let sessionDelegate = ProxyTrustAllSessionDelegate()
+    private var playlistCache: [String: (content: String, timestamp: Date)] = [:]
+    private let playlistCacheLock = NSLock()
+
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
-        config.httpMaximumConnectionsPerHost = 20
-        config.timeoutIntervalForRequest = 30  // Увеличен с 15 до 30 с
-        config.timeoutIntervalForResource = 90 // Общий таймаут ресурса 90 с
+        config.httpMaximumConnectionsPerHost = 32
+        config.timeoutIntervalForRequest = 25
+        config.timeoutIntervalForResource = 90
         config.waitsForConnectivity = true
-        let delegate = ProxyTrustAllSessionDelegate()
-        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        config.httpShouldUsePipelining = true
+        config.urlCache = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 0, diskPath: nil)
+        config.requestCachePolicy = .useProtocolCachePolicy
+        return URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
     }()
 
     private init() {
@@ -94,6 +100,9 @@ class HlsProxyServer {
     // MARK: - Lifecycle
 
     func start(headers: [String: String] = [:], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
+        playlistCacheLock.withLock {
+            self.playlistCache.removeAll()
+        }
         let isAlreadyRunning = stateLock.withLock {
             self.headers = headers
             self.voices = voices
@@ -196,6 +205,9 @@ class HlsProxyServer {
             self.subtitles = []
             self.mediaId = ""
             self.headers = [:]
+        }
+        playlistCacheLock.withLock {
+            self.playlistCache.removeAll()
         }
     }
     
@@ -391,6 +403,18 @@ class HlsProxyServer {
 
         do {
             if isPlaylist {
+                let cacheKey = "\(realUrl.absoluteString)_\(targetQuality ?? "")_\(currentPreferredVoice ?? "")"
+                if let cached = playlistCacheLock.withLock({ () -> String? in
+                    if let entry = self.playlistCache[cacheKey], Date().timeIntervalSince(entry.timestamp) < 30.0 {
+                        return entry.content
+                    }
+                    return nil
+                }) {
+                    let cachedData = cached.data(using: .utf8) ?? Data()
+                    self.sendResponse(data: cachedData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
+                    return
+                }
+
                 let (data, response): (Data, URLResponse) = try await {
                     do {
                         return try await self.session.data(for: request)
@@ -403,17 +427,16 @@ class HlsProxyServer {
                 }()
                 guard !Task.isCancelled else { return }
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
-                    // 503 вместо 404: плеер повторит запрос позже, а не убьёт поток
+                    AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl.path)")
                     self.send503(on: connection)
                     return
                 }
 
                 let statusCode = httpResponse.statusCode
-                AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
+                AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl.path) returned \(statusCode)")
 
                 guard statusCode >= 200 && statusCode < 300 else {
-                    AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: HTTP error \(statusCode) for \(realUrl)")
+                    AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: HTTP error \(statusCode) for \(realUrl.path)")
                     self.sendResponse(data: data, statusCode: statusCode, contentType: httpResponse.mimeType ?? "text/plain", contentRange: nil, connection: connection)
                     return
                 }
@@ -432,12 +455,15 @@ class HlsProxyServer {
                             port: Int(self.port.rawValue)
                         )
 
-                        AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
-
+                        AppDiagnostics.shared.log("HlsProxyServer: master playlist rewritten (\(playlistRewritten.count) bytes)")
                         rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                     } else {
-                        AppDiagnostics.shared.log("HlsProxyServer: playlist fallback:\n\(content)")
+                        AppDiagnostics.shared.log("HlsProxyServer: media playlist served for \(realUrl.lastPathComponent) (\(content.count) bytes)")
                         rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
+                    }
+
+                    playlistCacheLock.withLock {
+                        self.playlistCache[cacheKey] = (content: rewritten, timestamp: Date())
                     }
 
                     let rewrittenData = rewritten.data(using: .utf8) ?? Data()
@@ -448,48 +474,60 @@ class HlsProxyServer {
                     self.sendResponse(data: data, statusCode: statusCode, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
                 }
             } else {
-                // Для медиа-сегментов (.m4s/.ts/.mp4): один автоматический ретрай при сетевой ошибке
-                let (data, response): (Data, URLResponse) = await {
-                    do {
-                        return try await self.session.data(for: request)
-                    } catch {
-                        guard !Task.isCancelled else { return (Data(), HTTPURLResponse()) }
-                        AppDiagnostics.shared.log("HlsProxyServer segment fetch attempt 1 failed: \(error), retrying...")
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 500 мс
-                        guard !Task.isCancelled else { return (Data(), HTTPURLResponse()) }
-                        if let result = try? await self.session.data(for: request) {
-                            return result
-                        }
-                        return (Data(), HTTPURLResponse())
-                    }
-                }()
-                guard !Task.isCancelled else { return }
-                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode > 0 else {
-                    AppDiagnostics.shared.log("HlsProxyServer segment fetch failed completely for \(realUrl)")
-                    // 503 вместо 404: AVPlayer получит сигнал "временно недоступно" и повторит запрос
-                    self.send503(on: connection)
-                    return
-                }
-
-                let statusCode = httpResponse.statusCode
-                var finalData = data
-                var contentType = resolveContentType(for: realUrl, httpResponse: httpResponse)
-                let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
-
-                let isSub = contentType == "text/vtt" || contentType == "application/x-subrip" || realUrl.pathExtension.lowercased() == "vtt" || realUrl.pathExtension.lowercased() == "srt"
+                let isSub = realUrl.pathExtension.lowercased() == "vtt" || realUrl.pathExtension.lowercased() == "srt"
                 if isSub {
-                    contentType = "text/vtt"
-                    finalData = self.normalizeSubtitleData(data)
-                }
+                    let (data, response): (Data, URLResponse) = await {
+                        do {
+                            return try await self.session.data(for: request)
+                        } catch {
+                            guard !Task.isCancelled else { return (Data(), HTTPURLResponse()) }
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            if let result = try? await self.session.data(for: request) {
+                                return result
+                            }
+                            return (Data(), HTTPURLResponse())
+                        }
+                    }()
+                    guard !Task.isCancelled else { return }
+                    guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode > 0 else {
+                        self.send503(on: connection)
+                        return
+                    }
 
-                self.sendResponse(data: finalData, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
+                    let statusCode = httpResponse.statusCode
+                    let normalized = self.normalizeSubtitleData(data)
+                    self.sendResponse(data: normalized, statusCode: statusCode, contentType: "text/vtt", contentRange: nil, connection: connection)
+                } else {
+                    // Direct chunk-by-chunk streaming for media segments (.ts, .m4s, .mp4, etc.)
+                    self.streamMediaSegment(request: request, realUrl: realUrl, connection: connection)
+                }
             }
         } catch {
             if Task.isCancelled { return }
             AppDiagnostics.shared.log("HlsProxyServer fetch failed: \(error)")
-            // 503 вместо 404: даём AVPlayer шанс повторить запрос через 1 секунду
             self.send503(on: connection)
         }
+    }
+
+    private func streamMediaSegment(request: URLRequest, realUrl: URL, connection: NWConnection) {
+        let streamContext = ProxyStreamContext(connection: connection, realUrl: realUrl) { [weak self] taskId in
+            self?.sessionDelegate.unregister(taskId: taskId)
+        }
+
+        let task = self.session.dataTask(with: request)
+        sessionDelegate.register(taskId: task.taskIdentifier, context: streamContext)
+
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .cancelled, .failed:
+                streamContext.cancel()
+                task.cancel()
+            default:
+                break
+            }
+        }
+
+        task.resume()
     }
     
     private func rewriteM3u8(content: String, baseUrl: URL) -> String {
@@ -659,12 +697,16 @@ class HlsProxyServer {
     /// Возвращает 503 Service Unavailable с Retry-After: 1.
     /// AVPlayer по стандарту HLS при получении 5xx повторяет запрос через указанное время,
     /// что позволяет сегменту загрузиться после восстановления прокси — без прерывания потока.
-    private func send503(on connection: NWConnection) {
+    static func send503(on connection: NWConnection) {
         let response = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n"
         guard let data = response.data(using: .utf8) else { connection.cancel(); return }
         connection.send(content: data, completion: .contentProcessed({ _ in
             connection.cancel()
         }))
+    }
+
+    func send503(on connection: NWConnection) {
+        Self.send503(on: connection)
     }
 
     private func normalizeSubtitleData(_ rawData: Data) -> Data {
@@ -696,7 +738,7 @@ class HlsProxyServer {
         return text.data(using: .utf8) ?? rawData
     }
 
-    private func resolveContentType(for url: URL, httpResponse: HTTPURLResponse?) -> String {
+    static func resolveContentType(for url: URL, httpResponse: HTTPURLResponse?) -> String {
         let ext = url.pathExtension.lowercased()
         switch ext {
         case "mp4", "m4s", "m4v":
@@ -720,9 +762,161 @@ class HlsProxyServer {
             return "video/mp4"
         }
     }
+
+    func resolveContentType(for url: URL, httpResponse: HTTPURLResponse?) -> String {
+        Self.resolveContentType(for: url, httpResponse: httpResponse)
+    }
 }
 
-final class ProxyTrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
+// MARK: - Streaming Segment Context
+
+final class ProxyStreamContext: @unchecked Sendable {
+    let connection: NWConnection
+    let realUrl: URL
+    let onComplete: (Int) -> Void
+    private var hasSentHeaders = false
+    private let lock = NSLock()
+    private var isCancelled = false
+
+    init(connection: NWConnection, realUrl: URL, onComplete: @escaping (Int) -> Void) {
+        self.connection = connection
+        self.realUrl = realUrl
+        self.onComplete = onComplete
+    }
+
+    func cancel() {
+        lock.withLock {
+            isCancelled = true
+        }
+    }
+
+    func didReceiveResponse(_ response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        let isAlreadyCancelled = lock.withLock { isCancelled }
+        guard !isAlreadyCancelled else {
+            completionHandler(.cancel)
+            return
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            completionHandler(.cancel)
+            return
+        }
+
+        let statusCode = httpResponse.statusCode
+        guard statusCode >= 200 && statusCode < 400 else {
+            lock.withLock { isCancelled = true }
+            HlsProxyServer.send503(on: connection)
+            completionHandler(.cancel)
+            return
+        }
+
+        let reason = statusCode == 206 ? "Partial Content" : (statusCode == 200 ? "OK" : "Error")
+        let contentType = HlsProxyServer.resolveContentType(for: realUrl, httpResponse: httpResponse)
+
+        var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\n"
+        if let cl = httpResponse.value(forHTTPHeaderField: "Content-Length") {
+            header += "Content-Length: \(cl)\r\n"
+        }
+        if let cr = httpResponse.value(forHTTPHeaderField: "Content-Range") {
+            header += "Content-Range: \(cr)\r\n"
+        }
+        header += "Accept-Ranges: bytes\r\nConnection: close\r\n\r\n"
+
+        guard let headerData = header.data(using: .utf8) else {
+            completionHandler(.cancel)
+            return
+        }
+
+        lock.withLock { hasSentHeaders = true }
+
+        connection.send(content: headerData, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { [weak self] error in
+            if error != nil {
+                self?.cancel()
+            }
+        })
+
+        completionHandler(.allow)
+    }
+
+    func didReceiveData(_ data: Data) {
+        let isAlreadyCancelled = lock.withLock { isCancelled }
+        guard !isAlreadyCancelled else { return }
+
+        connection.send(content: data, contentContext: .defaultMessage, isComplete: false, completion: .contentProcessed { [weak self] error in
+            if error != nil {
+                self?.cancel()
+            }
+        })
+    }
+
+    func didComplete(taskId: Int, error: Error?) {
+        defer { onComplete(taskId) }
+
+        let headersSent = lock.withLock { hasSentHeaders }
+        if let error = error {
+            if !headersSent {
+                HlsProxyServer.send503(on: connection)
+            } else {
+                connection.cancel()
+            }
+        } else {
+            connection.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
+                self?.connection.cancel()
+            })
+        }
+    }
+}
+
+// MARK: - Trust-All Session & Data Delegate
+
+final class ProxyTrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
+    private let contextsLock = NSLock()
+    private var streamContexts: [Int: ProxyStreamContext] = [:]
+
+    func register(taskId: Int, context: ProxyStreamContext) {
+        contextsLock.withLock {
+            streamContexts[taskId] = context
+        }
+    }
+
+    func unregister(taskId: Int) {
+        contextsLock.withLock {
+            _ = streamContexts.removeValue(forKey: taskId)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
+    ) {
+        let context = contextsLock.withLock { streamContexts[dataTask.taskIdentifier] }
+        if let context = context {
+            context.didReceiveResponse(response, completionHandler: completionHandler)
+        } else {
+            completionHandler(.allow)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive data: Data
+    ) {
+        let context = contextsLock.withLock { streamContexts[dataTask.taskIdentifier] }
+        context?.didReceiveData(data)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        let context = contextsLock.withLock { streamContexts.removeValue(forKey: task.taskIdentifier) }
+        context?.didComplete(taskId: task.taskIdentifier, error: error)
+    }
+
     nonisolated func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,

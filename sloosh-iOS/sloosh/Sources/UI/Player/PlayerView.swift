@@ -256,6 +256,7 @@ class PlayerViewModel: ObservableObject {
     @Published var error: String?
     
     var isUserSeeking = false
+    var isPausedByUser = false
 
     var isMovie: Bool {
         return seriesResult?.isSerial == false || seriesResult?.movie != nil
@@ -1400,8 +1401,10 @@ class PlayerViewModel: ObservableObject {
             player.pause()
             isPlaying = false
             isBuffering = false
+            isPausedByUser = true
             saveCurrentProgress()
         } else {
+            isPausedByUser = false
             player.play()
             isPlaying = true
         }
@@ -1440,6 +1443,9 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 self.isUserSeeking = false
                 self.saveCurrentProgress()
+                if !self.isPausedByUser {
+                    self.player?.play()
+                }
             }
         }
         updateNowPlaying()
@@ -1496,6 +1502,7 @@ class PlayerViewModel: ObservableObject {
 
     /// Пауза на время взаимодействия с ручками (нативно: обрезка всегда на паузе).
     func pauseForTrim() {
+        isPausedByUser = true
         player?.pause()
     }
 
@@ -1545,6 +1552,7 @@ class PlayerViewModel: ObservableObject {
     /// Останавливает превью выделения.
     func pauseClipPreview() {
         isClipPreviewRequested = false
+        isPausedByUser = true
         player?.pause()
         isPlaying = false
     }
@@ -2137,12 +2145,32 @@ class PlayerViewModel: ObservableObject {
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
         playerItem.preferredMaximumResolution = preferredMaximumResolution
-        playerItem.preferredForwardBufferDuration = 30.0
+        playerItem.preferredForwardBufferDuration = 0.0
 
         self.isLoading = true
 
         self.player?.replaceCurrentItem(with: playerItem)
         setupPlayerItemObservers(for: playerItem)
+
+        if self.currentTime > 2 {
+            self.isInitialSeekPending = true
+            self.pendingSeekPosition = self.currentTime
+            let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
+            self.player?.seek(
+                to: CMTime(seconds: self.currentTime, preferredTimescale: 600),
+                toleranceBefore: tolerance,
+                toleranceAfter: tolerance
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isInitialSeekPending = false
+                    self.pendingSeekPosition = nil
+                    if !self.isPausedByUser {
+                        self.player?.play()
+                    }
+                }
+            }
+        }
     }
 
     private func proxiedPlaybackURL(for sourceURL: URL, quality: String? = nil) -> URL? {
@@ -2406,7 +2434,7 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
-        playerItem.preferredForwardBufferDuration = 30.0
+        playerItem.preferredForwardBufferDuration = 0.0
         if let currentKey = currentQualityKey, currentKey != "Авто" {
             let res = targetResolution(for: currentKey)
             if res != .zero {
@@ -2424,6 +2452,49 @@ class PlayerViewModel: ObservableObject {
 
         self.player?.automaticallyWaitsToMinimizeStalling = true
         self.player?.rate = playbackRate
+        self.isPausedByUser = false
+
+        let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
+        let targetSeek: Double = {
+            if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
+                return pending
+            }
+            if self.currentTime > 2 {
+                return self.currentTime
+            }
+            if let mediaId = self.currentMediaId {
+                let s = PlaybackProgressStore.shared.load(mediaId: mediaId)
+                if s > 2 { return s }
+            }
+            return minStartTime
+        }()
+
+        if targetSeek > 2 {
+            self.isInitialSeekPending = true
+            self.pendingSeekPosition = targetSeek
+            self.logDebug("setupPlayer: pre-queuing initial seek to \(targetSeek)s for \(self.currentMediaId ?? "")")
+            let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
+            self.player?.seek(
+                to: CMTime(seconds: targetSeek, preferredTimescale: 600),
+                toleranceBefore: tolerance,
+                toleranceAfter: tolerance
+            ) { [weak self] finished in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isInitialSeekPending = false
+                    self.pendingSeekPosition = nil
+                    if finished {
+                        self.currentTime = targetSeek
+                        self.updateSubtitleCue(at: targetSeek)
+                        self.logDebug("setupPlayer: pre-queued seek to \(targetSeek)s completed")
+                    }
+                    if !self.isPausedByUser {
+                        self.player?.play()
+                    }
+                    self.updateNowPlaying()
+                }
+            }
+        }
 
         setupPlayerItemObservers(for: playerItem)
 
@@ -2548,6 +2619,7 @@ class PlayerViewModel: ObservableObject {
                     if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate,
                        !self.isUserSeeking,
                        !self.isInitialSeekPending,
+                       !self.isPausedByUser,
                        Date().timeIntervalSince(self.lastSeekTimestamp) >= 10.0,
                        NetworkMonitor.shared.isConnected,
                        self.player?.currentItem === playerItem {
@@ -2743,7 +2815,7 @@ class PlayerViewModel: ObservableObject {
         guard targetSeek > 2 else {
             self.isInitialSeekPending = false
             self.pendingSeekPosition = nil
-            if self.wasPlayingBeforeReload || self.isPlaying {
+            if !self.isPausedByUser {
                 self.player?.play()
             }
             return
@@ -2753,7 +2825,7 @@ class PlayerViewModel: ObservableObject {
         if currentPos.isFinite && abs(currentPos - targetSeek) < 1.0 {
             self.isInitialSeekPending = false
             self.pendingSeekPosition = nil
-            if self.wasPlayingBeforeReload || self.isPlaying {
+            if !self.isPausedByUser {
                 self.player?.play()
             }
             return
@@ -2777,7 +2849,7 @@ class PlayerViewModel: ObservableObject {
                     self.updateSubtitleCue(at: targetSeek)
                     self.logDebug("applySeekIfNeeded: seek to \(targetSeek)s completed successfully")
                 }
-                if self.wasPlayingBeforeReload || self.isPlaying {
+                if !self.isPausedByUser {
                     self.player?.play()
                 }
                 self.updateNowPlaying()
@@ -3004,11 +3076,15 @@ class PlayerViewModel: ObservableObject {
         
         cc.playCommand.isEnabled = true
         cc.playCommand.addTarget { [weak self] _ in
-            self?.player?.play(); return .success
+            self?.isPausedByUser = false
+            self?.player?.play()
+            return .success
         }
         cc.pauseCommand.isEnabled = true
         cc.pauseCommand.addTarget { [weak self] _ in
-            self?.player?.pause(); return .success
+            self?.isPausedByUser = true
+            self?.player?.pause()
+            return .success
         }
         cc.togglePlayPauseCommand.isEnabled = true
         cc.togglePlayPauseCommand.addTarget { [weak self] _ in
