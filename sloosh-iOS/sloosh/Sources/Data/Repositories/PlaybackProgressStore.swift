@@ -338,7 +338,7 @@ public final class PlaybackProgressStore: ObservableObject {
     }
 
     // MARK: - Stream Source Persistence
-    public func saveLastStreamSource(mediaKey: String, source: MediaStreamSource) {
+    func saveLastStreamSource(mediaKey: String, source: MediaStreamSource) {
         guard !mediaKey.isEmpty else { return }
         let activeUserId = currentUserId
         let root = mediaKey.components(separatedBy: "_s")[0]
@@ -346,7 +346,7 @@ public final class PlaybackProgressStore: ObservableObject {
         UserDefaults.standard.set(source.rawValue, forKey: key)
     }
 
-    public func loadLastStreamSource(mediaKey: String) -> MediaStreamSource? {
+    func loadLastStreamSource(mediaKey: String) -> MediaStreamSource? {
         guard !mediaKey.isEmpty else { return nil }
         let activeUserId = currentUserId
         let root = mediaKey.components(separatedBy: "_s")[0]
