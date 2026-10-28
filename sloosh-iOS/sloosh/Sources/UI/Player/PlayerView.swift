@@ -503,11 +503,11 @@ class PlayerViewModel: ObservableObject {
     }
 
     var rootMediaKey: String? {
-        if let key = mediaKey, !key.isEmpty {
-            return key
-        }
         if let kpId = currentKpId, kpId > 0 {
             return "kp_\(kpId)"
+        }
+        if let key = mediaKey, !key.isEmpty {
+            return key
         }
         if let tmdbId = tmdbId, tmdbId > 0 {
             return "tmdb_\(tmdbId)"
@@ -830,6 +830,12 @@ class PlayerViewModel: ObservableObject {
         if isCollapsStream && self.streamSource != .source2 {
             self.streamSource = .source2
         }
+        if let root = self.rootMediaKey {
+            PlaybackProgressStore.shared.saveLastStreamSource(mediaKey: root, source: self.streamSource)
+            if let kp = self.currentKpId, kp > 0 {
+                PlaybackProgressStore.shared.saveLastStreamSource(mediaKey: "kp_\(kp)", source: self.streamSource)
+            }
+        }
         self.isAdvancingToNextEpisode = false
         self.playbackRetryCount = 0
         self.wasPlayingBeforeReload = true
@@ -837,7 +843,19 @@ class PlayerViewModel: ObservableObject {
             self.currentTime = initSeek
             logDebug("beginLoad: preserved explicit initial seek to \(initSeek)s")
         } else if let mediaId = self.currentMediaId {
-            let saved = PlaybackProgressStore.shared.load(mediaId: mediaId)
+            var saved = PlaybackProgressStore.shared.load(mediaId: mediaId)
+            if saved <= 2, let root = self.rootMediaKey {
+                if let tmdb = self.tmdbId, tmdb > 0 {
+                    let altMediaId = (self.currentSeason != nil && self.currentEpisode != nil) ? "tmdb_\(tmdb)_s\(self.currentSeason!)_e\(self.currentEpisode!)" : "tmdb_\(tmdb)"
+                    let altSaved = PlaybackProgressStore.shared.load(mediaId: altMediaId)
+                    if altSaved > 2 { saved = altSaved }
+                }
+                if saved <= 2, let origKey = self.mediaKey, origKey != root {
+                    let altMediaId = (self.currentSeason != nil && self.currentEpisode != nil) ? "\(origKey)_s\(self.currentSeason!)_e\(self.currentEpisode!)" : origKey
+                    let altSaved = PlaybackProgressStore.shared.load(mediaId: altMediaId)
+                    if altSaved > 2 { saved = altSaved }
+                }
+            }
             if saved > 2 {
                 self.pendingSeekPosition = saved
                 self.isInitialSeekPending = true
@@ -1376,6 +1394,10 @@ class PlayerViewModel: ObservableObject {
             if !finalIsSeekPending, let finalMediaId, finalPos > 1 {
                 PlaybackProgressStore.shared.save(
                     mediaId: finalMediaId,
+                    kpId: self?.currentKpId,
+                    tmdbId: self?.tmdbId,
+                    season: self?.currentSeason,
+                    episode: self?.currentEpisode,
                     positionSec: finalPos,
                     durationSec: finalDur,
                     voiceover: finalVoiceover,
@@ -2028,6 +2050,10 @@ class PlayerViewModel: ObservableObject {
         let dur = (rawDur.isFinite && !rawDur.isNaN && rawDur >= 120) ? rawDur : nil
         PlaybackProgressStore.shared.save(
             mediaId: mediaId,
+            kpId: currentKpId,
+            tmdbId: tmdbId,
+            season: currentSeason,
+            episode: currentEpisode,
             positionSec: pos,
             durationSec: dur,
             voiceover: _currentTranslationName,
@@ -2048,6 +2074,10 @@ class PlayerViewModel: ObservableObject {
         let dur = (rawDur.isFinite && !rawDur.isNaN && rawDur >= 120) ? rawDur : nil
         PlaybackProgressStore.shared.save(
             mediaId: mediaId,
+            kpId: currentKpId,
+            tmdbId: tmdbId,
+            season: currentSeason,
+            episode: currentEpisode,
             positionSec: pos,
             durationSec: dur,
             voiceover: _currentTranslationName,
@@ -2937,6 +2967,10 @@ class PlayerViewModel: ObservableObject {
                     let dur = self.currentDuration >= 120 ? self.currentDuration : nil
                     PlaybackProgressStore.shared.save(
                         mediaId: mediaId,
+                        kpId: self.currentKpId,
+                        tmdbId: self.tmdbId,
+                        season: self.currentSeason,
+                        episode: self.currentEpisode,
                         positionSec: t,
                         durationSec: dur,
                         voiceover: self._currentTranslationName

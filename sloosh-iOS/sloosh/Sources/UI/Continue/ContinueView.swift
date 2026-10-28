@@ -25,13 +25,26 @@ struct ContinueView: View {
                                 .disabled(viewModel.isLaunching)
                                 .contextMenu {
                                     Group {
-                                        NavigationLink(destination: DetailsView(movieId: item.metadata?.detailsId ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.id), mediaType: item.metadata?.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                        NavigationLink(destination: DetailsView(movieId: item.metadata?.detailsId ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.rootMediaKey), mediaType: item.metadata?.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                                             Label("Подробнее", systemImage: "info.circle")
                                         }
-                                        Button {
-                                            viewModel.markAsWatched(item)
-                                        } label: {
-                                            Label("Отметить просмотренным", systemImage: "eye")
+                                        if item.record.isEpisode {
+                                            Button {
+                                                viewModel.markCurrentEpisodeWatched(item)
+                                            } label: {
+                                                Label("Серия просмотрена", systemImage: "checkmark.circle")
+                                            }
+                                            Button {
+                                                viewModel.markEntireSeriesWatched(item)
+                                            } label: {
+                                                Label("Весь сериал просмотрен", systemImage: "eye")
+                                            }
+                                        } else {
+                                            Button {
+                                                viewModel.markAsWatched(item)
+                                            } label: {
+                                                Label("Отметить просмотренным", systemImage: "eye")
+                                            }
                                         }
                                         Button(role: .destructive) {
                                             viewModel.removeFromHistory(item)
@@ -94,14 +107,17 @@ struct ContinueView: View {
                         selectedVoiceover: playback.voiceover,
                         directStreamUrl: playback.streamUrl,
                         voices: playback.voices,
-                        subtitles: [],
+                        subtitles: playback.subtitles,
                         initialQuality: playback.initialQuality,
                         seriesResult: playback.seriesResult,
+                        customHeaders: playback.customHeaders,
                         mediaKey: playback.mediaKey,
                         tmdbId: playback.tmdbId,
                         posterUrl: playback.posterUrl,
                         backdropUrl: playback.backdropUrl,
-                        logoUrl: playback.logoUrl
+                        logoUrl: playback.logoUrl,
+                        streamSource: playback.streamSource,
+                        episodeSubtitles: playback.episodeSubtitles
                     )
                     .preferredColorScheme(.dark)
                     .environment(\.colorScheme, .dark)
@@ -293,22 +309,98 @@ private final class ContinueViewModel: ObservableObject {
             .sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
+    private func groupRecordsByEntity(_ records: [PlaybackProgressRecord]) -> [[PlaybackProgressRecord]] {
+        var groups: [[PlaybackProgressRecord]] = []
+
+        for record in records {
+            let root = record.rootMediaKey
+            let kp = record.kpId
+            let tmdb = record.tmdbId
+            let meta = store.loadMetadata(mediaKey: root) ?? (kp > 0 ? store.loadMetadata(kpId: kp) : nil)
+            let effectiveKp = kp > 0 ? kp : (meta?.kpId ?? 0)
+            let effectiveTmdb = tmdb ?? meta?.tmdbId
+            let detailsId = meta?.detailsId
+
+            let matchIndex = groups.firstIndex { group in
+                group.contains { existing in
+                    // 1. Literal root media key match
+                    if existing.rootMediaKey == root { return true }
+
+                    // 2. Kinopoisk ID match
+                    if effectiveKp > 0 {
+                        if existing.kpId > 0 && existing.kpId == effectiveKp { return true }
+                        if let existMeta = store.loadMetadata(mediaKey: existing.rootMediaKey),
+                           existMeta.kpId > 0 && existMeta.kpId == effectiveKp {
+                            return true
+                        }
+                    }
+
+                    // 3. TMDB ID match
+                    if let effTmdb = effectiveTmdb, effTmdb > 0 {
+                        if let existTmdb = existing.tmdbId, existTmdb == effTmdb { return true }
+                        if let existMeta = store.loadMetadata(mediaKey: existing.rootMediaKey),
+                           let emTmdb = existMeta.tmdbId, emTmdb == effTmdb {
+                            return true
+                        }
+                    }
+
+                    // 4. Details ID match
+                    if let dId = detailsId, !dId.isEmpty {
+                        if let existMeta = store.loadMetadata(mediaKey: existing.rootMediaKey),
+                           existMeta.detailsId == dId {
+                            return true
+                        }
+                    }
+
+                    return false
+                }
+            }
+
+            if let idx = matchIndex {
+                groups[idx].append(record)
+            } else {
+                groups.append([record])
+            }
+        }
+
+        return groups
+    }
+
     private func makeItems(from records: [PlaybackProgressRecord]) -> ([ContinueWatchingItem], Set<String>) {
-        let grouped = Dictionary(grouping: records, by: \.rootMediaKey)
+        let entityGroups = groupRecordsByEntity(records)
         var missingMetadataKeys = Set<String>()
 
-        let items = grouped.values.compactMap { group -> ContinueWatchingItem? in
-            // Берём запись, которую нужно показать пользователю.
-            // Для сериалов: если последний просмотренный эпизод досмотрен (watched),
-            // ищем следующий эпизод по номеру сезона/серии.
-            guard let latestRecord = group.max(by: { $0.updatedAtMs < $1.updatedAtMs }) else { return nil }
+        let items = entityGroups.compactMap { group -> ContinueWatchingItem? in
+            // Deduplicate multiple records for the exact same episode or movie
+            var dedupedByEpisode: [String: PlaybackProgressRecord] = [:]
+            for r in group {
+                let epKey = "\(r.season ?? 0)_\(r.episode ?? 0)"
+                if let existing = dedupedByEpisode[epKey] {
+                    if (r.watched && !existing.watched) || r.updatedAtMs > existing.updatedAtMs {
+                        dedupedByEpisode[epKey] = r
+                    }
+                } else {
+                    dedupedByEpisode[epKey] = r
+                }
+            }
+            let dedupedGroup = Array(dedupedByEpisode.values)
+
+            guard let latestRecord = dedupedGroup.max(by: { $0.updatedAtMs < $1.updatedAtMs }) else { return nil }
+
+            // If the series has been explicitly marked as fully watched, do not display it
+            if latestRecord.isEpisode && store.isSeriesMarkedWatched(mediaKey: latestRecord.rootMediaKey, kpId: latestRecord.kpId, tmdbId: latestRecord.tmdbId) {
+                return nil
+            }
 
             let displayRecord: PlaybackProgressRecord
-            if latestRecord.watched, let nextRecord = nextEpisodeRecord(after: latestRecord, in: group, allRecords: records) {
+            if latestRecord.watched, let nextRecord = nextEpisodeRecord(after: latestRecord, in: dedupedGroup, allRecords: records) {
                 displayRecord = nextRecord
             } else if latestRecord.watched && latestRecord.isEpisode {
-                // Досмотрен и следующего эпизода в истории нет — создаём виртуальную запись для следующего
-                displayRecord = virtualNextEpisodeRecord(after: latestRecord) ?? latestRecord
+                if let virtualNext = virtualNextEpisodeRecord(after: latestRecord) {
+                    displayRecord = virtualNext
+                } else {
+                    return nil
+                }
             } else if !latestRecord.watched && latestRecord.positionSec >= 5 {
                 displayRecord = latestRecord
             } else if latestRecord.watched {
@@ -319,7 +411,9 @@ private final class ContinueViewModel: ObservableObject {
                 return nil
             }
 
-            let metadata = store.loadMetadata(mediaKey: latestRecord.rootMediaKey) ?? (latestRecord.kpId > 0 ? store.loadMetadata(kpId: latestRecord.kpId) : nil)
+            let metadata = store.loadMetadata(mediaKey: latestRecord.rootMediaKey)
+                ?? (latestRecord.kpId > 0 ? store.loadMetadata(kpId: latestRecord.kpId) : nil)
+                ?? (latestRecord.tmdbId.flatMap { $0 > 0 ? store.loadMetadata(mediaKey: "tmdb_\($0)") : nil })
             if metadata == nil || (metadata?.posterUrl == nil && metadata?.backdropUrl == nil) {
                 missingMetadataKeys.insert(latestRecord.rootMediaKey)
             }
@@ -360,6 +454,9 @@ private final class ContinueViewModel: ObservableObject {
     /// Используется, чтобы показать кнопку «Смотреть следующую серию», даже если записи нет в истории.
     private func virtualNextEpisodeRecord(after current: PlaybackProgressRecord) -> PlaybackProgressRecord? {
         guard let season = current.season, let episode = current.episode else { return nil }
+        if store.isSeriesMarkedWatched(mediaKey: current.rootMediaKey, kpId: current.kpId, tmdbId: current.tmdbId) {
+            return nil
+        }
         let nextEpisode = episode + 1
         let nextMediaId = "\(current.rootMediaKey)_s\(season)_e\(nextEpisode)"
         return PlaybackProgressRecord(
@@ -412,29 +509,95 @@ private final class ContinueViewModel: ObservableObject {
             launchingTitle = nil
         }
 
+        // Determine which source to try first:
+        // 1. Last used source for this specific item (from store)
+        // 2. User's preferred stream source setting from Settings
+        let lastSource = store.loadLastStreamSource(mediaKey: item.rootMediaKey)
+            ?? (item.kpId > 0 ? store.loadLastStreamSource(mediaKey: "kp_\(item.kpId)") : nil)
+        let preferredSourceSetting = UserDefaults.standard.string(forKey: "preferredStreamSource") ?? MediaStreamSource.source1.rawValue
+        let initialSource: MediaStreamSource = lastSource ?? (preferredSourceSetting == MediaStreamSource.source2.rawValue ? .source2 : .source1)
+
+        var route: ContinuePlaybackRoute? = nil
+
+        if initialSource == .source2 {
+            // Try Backup (Collaps) first, fall back to Primary (Alloha)
+            route = await resolveCollaps(for: item)
+            if route == nil {
+                route = await resolveAlloha(for: item)
+            }
+        } else {
+            // Try Primary (Alloha) first, fall back to Backup (Collaps)
+            route = await resolveAlloha(for: item)
+            if route == nil {
+                route = await resolveCollaps(for: item)
+            }
+        }
+
+        guard let finalRoute = route else {
+            activePresentation = nil
+            launchErrorMessage = "Не удалось подобрать источник для продолжения просмотра."
+            return
+        }
+
+        // Обновляем презентацию In-Place (ID тот же, поэтому SwiftUI просто обновит содержимое модального окна)
+        activePresentation = ContinuePresentation(id: presId, isReady: true, title: item.title, route: finalRoute)
+    }
+
+    private func resolveAlloha(for item: ContinueWatchingItem) async -> ContinuePlaybackRoute? {
         do {
             let result = try await AllohaRepository.shared.fetchMedia(
                 kpId: item.kpId > 0 ? item.kpId : nil,
                 tmdbId: item.tmdbId,
                 title: item.title
             )
-            guard let route = makePlaybackRoute(for: item, result: result) else {
-                activePresentation = nil
-                launchErrorMessage = "Не удалось подобрать источник для продолжения просмотра."
-                return
-            }
-
-            // Обновляем презентацию In-Place (ID тот же, поэтому SwiftUI просто обновит содержимое модального окна)
-            activePresentation = ContinuePresentation(id: presId, isReady: true, title: item.title, route: route)
+            return makePlaybackRoute(
+                for: item,
+                result: result,
+                source: .source1,
+                customHeaders: nil,
+                movieSubtitles: [],
+                episodeSubtitles: [:]
+            )
         } catch {
-            activePresentation = nil
-            launchErrorMessage = "Не удалось загрузить источник. Попробуй еще раз."
+            return nil
         }
     }
 
-    private func makePlaybackRoute(for item: ContinueWatchingItem, result: AllohaApiResult) -> ContinuePlaybackRoute? {
+    private func resolveCollaps(for item: ContinueWatchingItem) async -> ContinuePlaybackRoute? {
+        do {
+            guard let parseResult = try await CollapsRepository.shared.fetchMedia(
+                kpId: item.kpId > 0 ? item.kpId : nil,
+                imdbId: nil,
+                title: item.title
+            ) else {
+                return nil
+            }
+            return makePlaybackRoute(
+                for: item,
+                result: parseResult.apiResult,
+                source: .source2,
+                customHeaders: CollapsRepository.streamHeaders,
+                movieSubtitles: parseResult.movieSubtitles,
+                episodeSubtitles: parseResult.episodeSubtitles
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private func makePlaybackRoute(
+        for item: ContinueWatchingItem,
+        result: AllohaApiResult,
+        source: MediaStreamSource,
+        customHeaders: [String: String]?,
+        movieSubtitles: [PlaybackSubtitle],
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
+    ) -> ContinuePlaybackRoute? {
         let preferredQuality = preferredQualityForResume()
-        let savedVoiceover = item.voiceover
+        let sourceKey = source == .source2 ? "collaps" : "alloha"
+        let savedVoiceover = store.loadLastVoiceover(mediaKey: item.rootMediaKey, source: sourceKey)
+            ?? (item.kpId > 0 ? store.loadLastVoiceover(kpId: item.kpId, source: sourceKey) : nil)
+            ?? item.voiceover
 
         if result.isSerial {
             let targetSeason = item.record.season
@@ -497,20 +660,24 @@ private final class ContinueViewModel: ObservableObject {
             guard let translation else { return nil }
 
             store.saveLastPlayed(mediaKey: item.rootMediaKey, season: finalSeason.season, episode: finalEpisode.episode)
-            store.saveLastVoiceover(mediaKey: item.rootMediaKey, source: "alloha", voiceover: translation.name)
+            store.saveLastVoiceover(mediaKey: item.rootMediaKey, source: sourceKey, voiceover: translation.name)
+            store.saveLastStreamSource(mediaKey: item.rootMediaKey, source: source)
             if item.kpId > 0 {
                 store.saveLastPlayed(kpId: item.kpId, season: finalSeason.season, episode: finalEpisode.episode)
-                store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
+                store.saveLastVoiceover(kpId: item.kpId, source: sourceKey, voiceover: translation.name)
+                store.saveLastStreamSource(mediaKey: "kp_\(item.kpId)", source: source)
             }
 
+            let subs = episodeSubtitles[EpisodeKey(season: finalSeason.season, episode: finalEpisode.episode)] ?? []
+
             return ContinuePlaybackRoute(
-                iframeUrl: translation.iframeUrl,
+                iframeUrl: translation.iframeUrl.isEmpty ? nil : translation.iframeUrl,
                 title: item.title,
                 kpId: item.kpId,
                 season: finalSeason.season,
                 episode: finalEpisode.episode,
                 voiceover: translation.name,
-                streamUrl: translation.streamUrl,
+                streamUrl: (source == .source2 && translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil,
                 voices: result.allTranslationNames,
                 initialQuality: preferredQuality,
                 seriesResult: result,
@@ -518,7 +685,11 @@ private final class ContinueViewModel: ObservableObject {
                 tmdbId: item.tmdbId,
                 posterUrl: item.posterUrl,
                 backdropUrl: item.backdropUrl,
-                logoUrl: item.logoUrl
+                logoUrl: item.logoUrl,
+                streamSource: source,
+                customHeaders: customHeaders,
+                subtitles: subs,
+                episodeSubtitles: episodeSubtitles
             )
         }
 
@@ -531,20 +702,22 @@ private final class ContinueViewModel: ObservableObject {
         }
 
         store.saveLastPlayed(mediaKey: item.rootMediaKey, season: nil, episode: nil)
-        store.saveLastVoiceover(mediaKey: item.rootMediaKey, source: "alloha", voiceover: translation.name)
+        store.saveLastVoiceover(mediaKey: item.rootMediaKey, source: sourceKey, voiceover: translation.name)
+        store.saveLastStreamSource(mediaKey: item.rootMediaKey, source: source)
         if item.kpId > 0 {
             store.saveLastPlayed(kpId: item.kpId, season: nil, episode: nil)
-            store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
+            store.saveLastVoiceover(kpId: item.kpId, source: sourceKey, voiceover: translation.name)
+            store.saveLastStreamSource(mediaKey: "kp_\(item.kpId)", source: source)
         }
 
         return ContinuePlaybackRoute(
-            iframeUrl: translation.iframeUrl,
+            iframeUrl: translation.iframeUrl.isEmpty ? nil : translation.iframeUrl,
             title: item.title,
             kpId: item.kpId,
             season: nil,
             episode: nil,
             voiceover: translation.name,
-            streamUrl: translation.streamUrl,
+            streamUrl: (source == .source2 && translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil,
             voices: result.allTranslationNames,
             initialQuality: preferredQuality,
             seriesResult: result,
@@ -552,7 +725,11 @@ private final class ContinueViewModel: ObservableObject {
             tmdbId: item.tmdbId,
             posterUrl: item.posterUrl,
             backdropUrl: item.backdropUrl,
-            logoUrl: item.logoUrl
+            logoUrl: item.logoUrl,
+            streamSource: source,
+            customHeaders: customHeaders,
+            subtitles: movieSubtitles,
+            episodeSubtitles: [:]
         )
     }
 
@@ -561,8 +738,18 @@ private final class ContinueViewModel: ObservableObject {
         Task { await reload() }
     }
 
+    func markCurrentEpisodeWatched(_ item: ContinueWatchingItem) {
+        store.markAsWatched(mediaId: item.record.mediaId)
+        Task { await reload() }
+    }
+
+    func markEntireSeriesWatched(_ item: ContinueWatchingItem) {
+        store.markSeriesWatched(mediaKey: item.rootMediaKey, kpId: item.kpId > 0 ? item.kpId : nil, tmdbId: item.tmdbId)
+        Task { await reload() }
+    }
+
     func removeFromHistory(_ item: ContinueWatchingItem) {
-        store.removeHistory(for: item.rootMediaKey)
+        store.removeHistory(for: item.rootMediaKey, kpId: item.kpId > 0 ? item.kpId : nil, tmdbId: item.tmdbId)
         store.removeRecord(mediaId: item.record.mediaId)
         Task { await reload() }
     }
@@ -580,7 +767,7 @@ private final class ContinueViewModel: ObservableObject {
 
 private struct ContinuePlaybackRoute: Identifiable {
     let id = UUID()
-    let iframeUrl: String
+    let iframeUrl: String?
     let title: String
     let kpId: Int
     let season: Int?
@@ -595,6 +782,10 @@ private struct ContinuePlaybackRoute: Identifiable {
     let posterUrl: String?
     let backdropUrl: String?
     let logoUrl: String?
+    let streamSource: MediaStreamSource
+    let customHeaders: [String: String]?
+    let subtitles: [PlaybackSubtitle]
+    let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
 }
 
 private struct ContinuePresentation: Identifiable {

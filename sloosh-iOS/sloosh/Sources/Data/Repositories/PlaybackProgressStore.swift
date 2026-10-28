@@ -210,10 +210,216 @@ public final class PlaybackProgressStore: ObservableObject {
 
     private var lastDiskSaveDate: Date = .distantPast
 
-    private func mutateRecord(mediaId: String, forceDiskSave: Bool = false, mutate: @escaping (inout PlaybackProgressRecord) -> Void) {
+    // MARK: - Persistent Tombstones
+    private let tombstonesKey = "sloosh_deleted_progress_tombstones_v1"
+    private let tombstoneRetentionSeconds: TimeInterval = 14 * 86400 // 14 days
+
+    private func loadTombstones() -> [String: TimeInterval] {
+        guard let dict = UserDefaults.standard.dictionary(forKey: tombstonesKey) as? [String: TimeInterval] else {
+            return [:]
+        }
+        let now = Date().timeIntervalSince1970
+        let valid = dict.filter { now - $0.value < tombstoneRetentionSeconds }
+        if valid.count != dict.count {
+            UserDefaults.standard.set(valid, forKey: tombstonesKey)
+        }
+        return valid
+    }
+
+    private func addTombstones(_ keys: Set<String>) {
+        guard !keys.isEmpty else { return }
+        var current = loadTombstones()
+        let now = Date().timeIntervalSince1970
+        for k in keys where !k.isEmpty {
+            current[k] = now
+        }
+        UserDefaults.standard.set(current, forKey: tombstonesKey)
+    }
+
+    public func isTombstoned(mediaId: String, rootKey: String? = nil, kpId: Int? = nil, tmdbId: Int? = nil) -> Bool {
+        let tombstones = loadTombstones()
+        if tombstones[mediaId] != nil { return true }
+        if let root = rootKey, tombstones[root] != nil { return true }
+        let rootNoSeason = mediaId.components(separatedBy: "_s")[0]
+        if tombstones[rootNoSeason] != nil { return true }
+        if let kp = kpId, kp > 0, tombstones["kp_\(kp)"] != nil { return true }
+        if let tmdb = tmdbId, tmdb > 0 {
+            if tombstones["tmdb_\(tmdb)"] != nil || tombstones["\(tmdb)"] != nil { return true }
+        }
+        return false
+    }
+
+    private func removeTombstone(mediaId: String, rootKey: String? = nil, kpId: Int? = nil, tmdbId: Int? = nil) {
+        var current = loadTombstones()
+        var changed = false
+        if current.removeValue(forKey: mediaId) != nil { changed = true }
+        let rootNoSeason = mediaId.components(separatedBy: "_s")[0]
+        if current.removeValue(forKey: rootNoSeason) != nil { changed = true }
+        if let root = rootKey, current.removeValue(forKey: root) != nil { changed = true }
+        if let kp = kpId, kp > 0, current.removeValue(forKey: "kp_\(kp)") != nil { changed = true }
+        if let tmdb = tmdbId, tmdb > 0 {
+            if current.removeValue(forKey: "tmdb_\(tmdb)") != nil { changed = true }
+            if current.removeValue(forKey: "\(tmdb)") != nil { changed = true }
+        }
+        if changed {
+            UserDefaults.standard.set(current, forKey: tombstonesKey)
+        }
+    }
+
+    // MARK: - Watched Series Markers
+    private func watchedSeriesKey(mediaKey: String, kpId: Int? = nil, tmdbId: Int? = nil) -> String {
+        let activeUserId = currentUserId
+        let canonical: String
+        if let kp = kpId, kp > 0 {
+            canonical = "kp_\(kp)"
+        } else if let tmdb = tmdbId, tmdb > 0 {
+            canonical = "tmdb_\(tmdb)"
+        } else {
+            canonical = mediaKey.components(separatedBy: "_s")[0]
+        }
+        return "sloosh_watched_series_\(activeUserId)_\(canonical)"
+    }
+
+    public func markSeriesWatched(mediaKey: String, kpId: Int? = nil, tmdbId: Int? = nil) {
+        let key = watchedSeriesKey(mediaKey: mediaKey, kpId: kpId, tmdbId: tmdbId)
+        UserDefaults.standard.set(true, forKey: key)
+        if let kp = kpId, kp > 0 {
+            UserDefaults.standard.set(true, forKey: watchedSeriesKey(mediaKey: "kp_\(kp)", kpId: kp, tmdbId: nil))
+        }
+        if let tmdb = tmdbId, tmdb > 0 {
+            UserDefaults.standard.set(true, forKey: watchedSeriesKey(mediaKey: "tmdb_\(tmdb)", kpId: nil, tmdbId: tmdb))
+        }
+
+        ensureRecordCacheLoaded()
+        let root = mediaKey.components(separatedBy: "_s")[0]
+        for (k, mutRec) in recordMemoryCache {
+            let recRoot = mutRec.rootMediaKey
+            let matches = recRoot == root ||
+                          (kpId != nil && kpId! > 0 && mutRec.kpId == kpId!) ||
+                          (tmdbId != nil && tmdbId! > 0 && mutRec.tmdbId == tmdbId!)
+            if matches {
+                var rec = mutRec
+                rec.watched = true
+                recordMemoryCache[k] = rec
+                if let model = getRecordModel(mediaId: rec.mediaId) {
+                    model.watched = true
+                }
+            }
+        }
+        try? context.save()
+        scheduleCloudProgressPush(force: true)
+    }
+
+    public func isSeriesMarkedWatched(mediaKey: String, kpId: Int? = nil, tmdbId: Int? = nil) -> Bool {
+        let key = watchedSeriesKey(mediaKey: mediaKey, kpId: kpId, tmdbId: tmdbId)
+        if UserDefaults.standard.bool(forKey: key) { return true }
+        if let kp = kpId, kp > 0 {
+            let altKey = watchedSeriesKey(mediaKey: "kp_\(kp)", kpId: kp, tmdbId: nil)
+            if UserDefaults.standard.bool(forKey: altKey) { return true }
+        }
+        if let tmdb = tmdbId, tmdb > 0 {
+            let altKey = watchedSeriesKey(mediaKey: "tmdb_\(tmdb)", kpId: nil, tmdbId: tmdb)
+            if UserDefaults.standard.bool(forKey: altKey) { return true }
+        }
+        return false
+    }
+
+    public func unmarkSeriesWatched(mediaKey: String, kpId: Int? = nil, tmdbId: Int? = nil) {
+        let key = watchedSeriesKey(mediaKey: mediaKey, kpId: kpId, tmdbId: tmdbId)
+        UserDefaults.standard.removeObject(forKey: key)
+        if let kp = kpId, kp > 0 {
+            let altKey = watchedSeriesKey(mediaKey: "kp_\(kp)", kpId: kp, tmdbId: nil)
+            UserDefaults.standard.removeObject(forKey: altKey)
+        }
+        if let tmdb = tmdbId, tmdb > 0 {
+            let altKey = watchedSeriesKey(mediaKey: "tmdb_\(tmdb)", kpId: nil, tmdbId: tmdb)
+            UserDefaults.standard.removeObject(forKey: altKey)
+        }
+    }
+
+    // MARK: - Stream Source Persistence
+    public func saveLastStreamSource(mediaKey: String, source: MediaStreamSource) {
+        guard !mediaKey.isEmpty else { return }
+        let activeUserId = currentUserId
+        let root = mediaKey.components(separatedBy: "_s")[0]
+        let key = "sloosh_last_source_\(activeUserId)_\(root)"
+        UserDefaults.standard.set(source.rawValue, forKey: key)
+    }
+
+    public func loadLastStreamSource(mediaKey: String) -> MediaStreamSource? {
+        guard !mediaKey.isEmpty else { return nil }
+        let activeUserId = currentUserId
+        let root = mediaKey.components(separatedBy: "_s")[0]
+        let key = "sloosh_last_source_\(activeUserId)_\(root)"
+        if let raw = UserDefaults.standard.string(forKey: key), let src = MediaStreamSource(rawValue: raw) {
+            return src
+        }
+        return nil
+    }
+
+    private func mutateRecord(
+        mediaId: String,
+        kpId: Int? = nil,
+        tmdbId: Int? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        forceDiskSave: Bool = false,
+        mutate: @escaping (inout PlaybackProgressRecord) -> Void
+    ) {
         let activeUserId = currentUserId
         let compositeKey = "\(activeUserId)_\(mediaId)"
         var record = getRecord(mediaId: mediaId) ?? createDefaultRecord(mediaId: mediaId)
+
+        // Enrich IDs from parameters
+        if let kp = kpId, kp > 0 && record.kpId == 0 {
+            record = PlaybackProgressRecord(
+                mediaId: record.mediaId,
+                kpId: kp,
+                tmdbId: record.tmdbId ?? tmdbId,
+                season: record.season ?? season,
+                episode: record.episode ?? episode,
+                voiceover: record.voiceover,
+                positionSec: record.positionSec,
+                durationSec: record.durationSec,
+                watched: record.watched,
+                updatedAtMs: record.updatedAtMs
+            )
+        }
+        if let tmdb = tmdbId, tmdb > 0 && record.tmdbId == nil {
+            record.tmdbId = tmdb
+        }
+
+        // Enrich IDs from metadata
+        if record.kpId == 0 || record.tmdbId == nil {
+            let root = record.rootMediaKey
+            if let meta = loadMetadata(mediaKey: root) ?? (record.kpId > 0 ? loadMetadata(kpId: record.kpId) : nil) {
+                if record.kpId == 0 && meta.kpId > 0 {
+                    record = PlaybackProgressRecord(
+                        mediaId: record.mediaId,
+                        kpId: meta.kpId,
+                        tmdbId: record.tmdbId ?? meta.tmdbId,
+                        season: record.season ?? season,
+                        episode: record.episode ?? episode,
+                        voiceover: record.voiceover,
+                        positionSec: record.positionSec,
+                        durationSec: record.durationSec,
+                        watched: record.watched,
+                        updatedAtMs: record.updatedAtMs
+                    )
+                } else if record.tmdbId == nil, let t = meta.tmdbId, t > 0 {
+                    record.tmdbId = t
+                }
+            }
+        }
+
+        // Active watching clears any accidental deletion tombstone
+        removeTombstone(mediaId: mediaId, rootKey: record.rootMediaKey, kpId: record.kpId, tmdbId: record.tmdbId)
+
+        // If watching an episode, unmark series completed marker
+        if record.isEpisode {
+            unmarkSeriesWatched(mediaKey: record.rootMediaKey, kpId: record.kpId, tmdbId: record.tmdbId)
+        }
+
         mutate(&record)
         record.updatedAtMs = Int(Date().timeIntervalSince1970 * 1000)
         
@@ -225,6 +431,7 @@ public final class PlaybackProgressStore: ObservableObject {
             model.durationSec = record.durationSec
             model.watched = record.watched
             model.updatedAtMs = record.updatedAtMs
+            if record.kpId > 0 { model.kpId = record.kpId }
             if let v = record.voiceover { model.voiceover = v }
             if let t = record.tmdbId { model.tmdbId = t }
             if let s = record.season { model.season = s }
@@ -278,11 +485,12 @@ public final class PlaybackProgressStore: ObservableObject {
         var season: Int? = nil
         var episode: Int? = nil
 
+        var rootStr = mediaId
         if let match = Self.episodeRegex.firstMatch(in: mediaId, range: range) {
             if let rootRange = Range(match.range(at: 1), in: mediaId),
                let seasonRange = Range(match.range(at: 2), in: mediaId),
                let episodeRange = Range(match.range(at: 3), in: mediaId) {
-                let rootStr = String(mediaId[rootRange])
+                rootStr = String(mediaId[rootRange])
                 season = Int(mediaId[seasonRange])
                 episode = Int(mediaId[episodeRange])
                 if rootStr.hasPrefix("kp_") {
@@ -313,6 +521,13 @@ public final class PlaybackProgressStore: ObservableObject {
             tmdbId = intVal
         }
 
+        if kpId == 0 || tmdbId == nil {
+            if let meta = loadMetadata(mediaKey: rootStr) ?? (kpId > 0 ? loadMetadata(kpId: kpId) : nil) {
+                if kpId == 0 && meta.kpId > 0 { kpId = meta.kpId }
+                if tmdbId == nil && (meta.tmdbId ?? 0) > 0 { tmdbId = meta.tmdbId }
+            }
+        }
+
         return PlaybackProgressRecord(
             mediaId: mediaId,
             kpId: kpId,
@@ -329,13 +544,24 @@ public final class PlaybackProgressStore: ObservableObject {
 
     public func save(
         mediaId: String,
+        kpId: Int? = nil,
+        tmdbId: Int? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
         positionSec: Double,
         durationSec: Double? = nil,
         voiceover: String? = nil,
         forceDiskSave: Bool = false
     ) {
         guard !mediaId.isEmpty, positionSec.isFinite, positionSec >= 0 else { return }
-        mutateRecord(mediaId: mediaId, forceDiskSave: forceDiskSave) { record in
+        mutateRecord(
+            mediaId: mediaId,
+            kpId: kpId,
+            tmdbId: tmdbId,
+            season: season,
+            episode: episode,
+            forceDiskSave: forceDiskSave
+        ) { record in
             // Protect against zeroing out valid non-zero progress
             if positionSec > 1 || record.positionSec <= 1 {
                 record.positionSec = positionSec
@@ -354,8 +580,18 @@ public final class PlaybackProgressStore: ObservableObject {
         }
     }
 
+    public func save(
+        mediaId: String,
+        positionSec: Double,
+        durationSec: Double? = nil,
+        voiceover: String? = nil,
+        forceDiskSave: Bool = false
+    ) {
+        save(mediaId: mediaId, kpId: nil, tmdbId: nil, season: nil, episode: nil, positionSec: positionSec, durationSec: durationSec, voiceover: voiceover, forceDiskSave: forceDiskSave)
+    }
+
     public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil, forceDiskSave: Bool = false) {
-        save(mediaId: mediaId, positionSec: positionSec, durationSec: durationSec, voiceover: nil, forceDiskSave: forceDiskSave)
+        save(mediaId: mediaId, kpId: nil, tmdbId: nil, season: nil, episode: nil, positionSec: positionSec, durationSec: durationSec, voiceover: nil, forceDiskSave: forceDiskSave)
     }
 
     public func load(mediaId: String) -> Double {
@@ -406,8 +642,6 @@ public final class PlaybackProgressStore: ObservableObject {
         return getRecord(mediaId: mediaId)?.updatedAtMs ?? 0
     }
 
-    private var recentlyDeletedRootKeys = Set<String>()
-
     public func pushLocalProgressToCloud() async {
         guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
         let allRecords = self.listProgressRecords()
@@ -420,9 +654,8 @@ public final class PlaybackProgressStore: ObservableObject {
         let activeUserId = currentUserId
         let compositeKey = "\(activeUserId)_\(mediaId)"
         recordMemoryCache.removeValue(forKey: compositeKey)
-        recentlyDeletedRootKeys.insert(mediaId)
         let root = mediaId.components(separatedBy: "_s")[0]
-        recentlyDeletedRootKeys.insert(root)
+        addTombstones([mediaId, root])
         if let model = getRecordModel(mediaId: mediaId) {
             context.delete(model)
             try? context.save()
@@ -430,29 +663,92 @@ public final class PlaybackProgressStore: ObservableObject {
         }
     }
 
-    public func removeHistory(for rootKey: String) {
-        guard !rootKey.isEmpty else { return }
-        recentlyDeletedRootKeys.insert(rootKey)
+    public func removeHistory(for rootKey: String, kpId: Int? = nil, tmdbId: Int? = nil) {
+        guard !rootKey.isEmpty || (kpId ?? 0) > 0 || (tmdbId ?? 0) > 0 else { return }
         let activeUserId = currentUserId
         
+        var keysToTombstone = Set<String>()
+        if !rootKey.isEmpty {
+            keysToTombstone.insert(rootKey)
+            let rootNoSeason = rootKey.components(separatedBy: "_s")[0]
+            keysToTombstone.insert(rootNoSeason)
+        }
+        if let kp = kpId, kp > 0 {
+            keysToTombstone.insert("kp_\(kp)")
+        }
+        if let tmdb = tmdbId, tmdb > 0 {
+            keysToTombstone.insert("tmdb_\(tmdb)")
+            keysToTombstone.insert("\(tmdb)")
+        }
+
+        // Expand with metadata if available
+        if let meta = loadMetadata(mediaKey: rootKey) ?? (kpId.flatMap { $0 > 0 ? loadMetadata(kpId: $0) : nil }) {
+            if meta.kpId > 0 { keysToTombstone.insert("kp_\(meta.kpId)") }
+            if let t = meta.tmdbId, t > 0 {
+                keysToTombstone.insert("tmdb_\(t)")
+                keysToTombstone.insert("\(t)")
+            }
+            if !meta.detailsId.isEmpty { keysToTombstone.insert(meta.detailsId) }
+            if let mk = meta.mediaKey, !mk.isEmpty { keysToTombstone.insert(mk) }
+        }
+
+        // Add to persistent tombstones
+        addTombstones(keysToTombstone)
+        
+        // Remove from memory cache
         ensureRecordCacheLoaded()
         for (key, rec) in recordMemoryCache {
-            let recRoot = (rec.season != nil && rec.episode != nil) ? rec.mediaId.components(separatedBy: "_s")[0] : rec.mediaId
-            if recRoot == rootKey || rec.mediaId == rootKey {
+            let recRoot = rec.rootMediaKey
+            let matches = keysToTombstone.contains(recRoot) ||
+                          keysToTombstone.contains(rec.mediaId) ||
+                          (rec.kpId > 0 && keysToTombstone.contains("kp_\(rec.kpId)")) ||
+                          (rec.tmdbId.map { keysToTombstone.contains("tmdb_\($0)") || keysToTombstone.contains("\($0)") } ?? false)
+            if matches {
                 recordMemoryCache.removeValue(forKey: key)
+                keysToTombstone.insert(rec.mediaId)
+                addTombstones([rec.mediaId])
             }
         }
 
+        // Remove from SwiftData context
         let predicate = #Predicate<ProgressRecordModel> { $0.userId == activeUserId }
         let allModels = (try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate))) ?? []
         
         var didDelete = false
         for model in allModels {
             let modelRoot = (model.season != nil && model.episode != nil) ? model.mediaId.components(separatedBy: "_s")[0] : model.mediaId
-            if modelRoot == rootKey || model.mediaId == rootKey {
-                recentlyDeletedRootKeys.insert(model.mediaId)
+            let matches = keysToTombstone.contains(modelRoot) ||
+                          keysToTombstone.contains(model.mediaId) ||
+                          (model.kpId > 0 && keysToTombstone.contains("kp_\(model.kpId)")) ||
+                          (model.tmdbId.map { keysToTombstone.contains("tmdb_\($0)") || keysToTombstone.contains("\($0)") } ?? false)
+            if matches {
+                keysToTombstone.insert(model.mediaId)
+                addTombstones([model.mediaId])
                 context.delete(model)
                 didDelete = true
+            }
+        }
+
+        // Clean up last played episode & voiceover models
+        let lpDesc = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userId == activeUserId })
+        if let lpModels = try? context.fetch(lpDesc) {
+            for lp in lpModels {
+                let matches = (lp.mediaKey.map { keysToTombstone.contains($0) } ?? false) ||
+                              (lp.kpId > 0 && keysToTombstone.contains("kp_\(lp.kpId)"))
+                if matches {
+                    context.delete(lp)
+                    didDelete = true
+                }
+            }
+        }
+
+        let voDesc = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userId == activeUserId })
+        if let voModels = try? context.fetch(voDesc) {
+            for vo in voModels {
+                if keysToTombstone.contains(where: { vo.key.contains($0) }) {
+                    context.delete(vo)
+                    didDelete = true
+                }
             }
         }
         
@@ -460,6 +756,10 @@ public final class PlaybackProgressStore: ObservableObject {
             try? context.save()
             scheduleCloudProgressPush(force: true)
         }
+    }
+
+    public func removeHistory(for rootKey: String) {
+        removeHistory(for: rootKey, kpId: nil, tmdbId: nil)
     }
 
     private func ensureMetadataCacheLoaded() {
@@ -690,23 +990,75 @@ public final class PlaybackProgressStore: ObservableObject {
         let sortedRecords = allRecords.sorted { $0.updatedAtMs > $1.updatedAtMs }
         
         // Episodes first
-        for rec in sortedRecords {
+        for var rec in sortedRecords {
             if rec.isEpisode {
-                if let filterKpId = kpId, rec.kpId != filterKpId { continue }
                 let rootKey = rec.rootMediaKey
+                if isTombstoned(mediaId: rec.mediaId, rootKey: rootKey, kpId: rec.kpId, tmdbId: rec.tmdbId) {
+                    continue
+                }
+                if let filterKpId = kpId, rec.kpId != filterKpId { continue }
                 if let filterKey = mediaKey, rootKey != filterKey { continue }
+                
+                // Auto-enrich IDs from metadata if missing
+                if rec.kpId == 0 || rec.tmdbId == nil {
+                    if let meta = loadMetadata(mediaKey: rootKey) ?? (rec.kpId > 0 ? loadMetadata(kpId: rec.kpId) : nil) {
+                        if rec.kpId == 0 && meta.kpId > 0 {
+                            rec = PlaybackProgressRecord(
+                                mediaId: rec.mediaId,
+                                kpId: meta.kpId,
+                                tmdbId: rec.tmdbId ?? meta.tmdbId,
+                                season: rec.season,
+                                episode: rec.episode,
+                                voiceover: rec.voiceover,
+                                positionSec: rec.positionSec,
+                                durationSec: rec.durationSec,
+                                watched: rec.watched,
+                                updatedAtMs: rec.updatedAtMs
+                            )
+                        } else if rec.tmdbId == nil, let t = meta.tmdbId, t > 0 {
+                            rec.tmdbId = t
+                        }
+                    }
+                }
+                
                 seriesRootKeys.insert(rootKey)
                 results.append(rec)
             }
         }
         
         // Movies
-        for rec in sortedRecords {
+        for var rec in sortedRecords {
             if !rec.isEpisode {
-                if let filterKpId = kpId, rec.kpId != filterKpId { continue }
                 let rootKey = rec.mediaId
+                if isTombstoned(mediaId: rec.mediaId, rootKey: rootKey, kpId: rec.kpId, tmdbId: rec.tmdbId) {
+                    continue
+                }
+                if let filterKpId = kpId, rec.kpId != filterKpId { continue }
                 if let filterKey = mediaKey, rootKey != filterKey { continue }
                 if seriesRootKeys.contains(rootKey) { continue }
+                
+                // Auto-enrich IDs from metadata if missing
+                if rec.kpId == 0 || rec.tmdbId == nil {
+                    if let meta = loadMetadata(mediaKey: rootKey) ?? (rec.kpId > 0 ? loadMetadata(kpId: rec.kpId) : nil) {
+                        if rec.kpId == 0 && meta.kpId > 0 {
+                            rec = PlaybackProgressRecord(
+                                mediaId: rec.mediaId,
+                                kpId: meta.kpId,
+                                tmdbId: rec.tmdbId ?? meta.tmdbId,
+                                season: rec.season,
+                                episode: rec.episode,
+                                voiceover: rec.voiceover,
+                                positionSec: rec.positionSec,
+                                durationSec: rec.durationSec,
+                                watched: rec.watched,
+                                updatedAtMs: rec.updatedAtMs
+                            )
+                        } else if rec.tmdbId == nil, let t = meta.tmdbId, t > 0 {
+                            rec.tmdbId = t
+                        }
+                    }
+                }
+                
                 results.append(rec)
             }
         }
@@ -892,7 +1244,7 @@ public final class PlaybackProgressStore: ObservableObject {
         // 1. Проверяем локальные записи, которых нет в облаке
         for model in existing {
             let root = model.mediaId.components(separatedBy: "_s")[0]
-            if recentlyDeletedRootKeys.contains(model.mediaId) || recentlyDeletedRootKeys.contains(root) {
+            if isTombstoned(mediaId: model.mediaId, rootKey: root, kpId: model.kpId, tmdbId: model.tmdbId) {
                 context.delete(model)
                 hasLocalNewerOrOffline = true
             } else if !remoteMediaIds.contains(model.mediaId) {
@@ -909,7 +1261,7 @@ public final class PlaybackProgressStore: ObservableObject {
         // 2. Вставляем или обновляем записи из облака
         for remote in remoteRecords {
             let root = remote.rootMediaKey
-            if recentlyDeletedRootKeys.contains(remote.mediaId) || recentlyDeletedRootKeys.contains(root) {
+            if isTombstoned(mediaId: remote.mediaId, rootKey: root, kpId: remote.kpId, tmdbId: remote.tmdbId) {
                 hasLocalNewerOrOffline = true
                 continue
             }
@@ -924,6 +1276,7 @@ public final class PlaybackProgressStore: ObservableObject {
                     if let t = remote.tmdbId { local.tmdbId = t }
                     if let s = remote.season { local.season = s }
                     if let e = remote.episode { local.episode = e }
+                    if remote.kpId > 0 { local.kpId = remote.kpId }
                 } else {
                     // Локальная запись новее облачной (смотрели офлайн)!
                     hasLocalNewerOrOffline = true
