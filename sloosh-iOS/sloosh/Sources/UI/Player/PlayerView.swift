@@ -2,6 +2,7 @@ import SwiftUI
 import AVKit
 import AVFoundation
 import MediaPlayer
+import Combine
 
 // MARK: - UIViewControllerRepresentable: запускает PlayerHostingController
 // Это точка входа из SwiftUI fullScreenCover → UIKit-контроллер, который управляет landscape-ориентацией
