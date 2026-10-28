@@ -931,7 +931,7 @@ struct DetailsView: View {
                             // Upcoming titles keep their premiere/countdown slot,
                             // so their favorite action remains in the navigation bar.
                             if viewModel.details?.isUnreleased == true {
-                                favoriteButton
+                                favoriteButton(inNavigationBar: true)
                             }
 
                             TelegramGlassIconButton(systemName: "square.and.arrow.up", iconSize: 20) {
@@ -1318,7 +1318,7 @@ struct DetailsView: View {
                 }
                 playButton(for: details)
                     .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
-                favoriteButton
+                favoriteButton()
             }
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
@@ -1360,23 +1360,23 @@ struct DetailsView: View {
             handlePlayAction(details: details)
         } label: {
             Image(systemName: "play.fill")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.black.opacity(0.9))
-                .offset(x: 2) // Optical centering of the triangle, as in AVKit.
+                .font(.system(size: 30, weight: .semibold))
+                // Centered rather than the previous +2pt rightward offset.
+                // DetailsHeroButton uses this symbol as an alpha cutout.
         }
         .accessibilityLabel("Смотреть")
         .accessibilityHint("Выбрать озвучку и качество")
         .accessibilityIdentifier("details.play")
     }
 
-    private var favoriteButton: some View {
-        DetailsHeroButton {
+    private func favoriteButton(inNavigationBar: Bool = false) -> some View {
+        DetailsHeroButton(size: inNavigationBar ? 44 : nil) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 viewModel.toggleFavorite()
             }
         } label: {
             Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: inNavigationBar ? 20 : 22, weight: .semibold))
                 .foregroundStyle(.white)
                 .symbolEffect(.bounce, value: viewModel.isFavorite)
         }

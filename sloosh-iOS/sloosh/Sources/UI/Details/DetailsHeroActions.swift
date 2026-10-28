@@ -3,8 +3,8 @@ import SwiftUI
 /// Shared by the real actions and loading skeleton so the hero does not jump
 /// when details arrive. Equal side controls keep Play optically centered.
 enum DetailsHeroActionMetrics {
-    static let primaryDiameter: CGFloat = 68
-    static let secondaryDiameter: CGFloat = 44
+    static let primaryDiameter: CGFloat = 72
+    static let secondaryDiameter: CGFloat = 52
     static let spacing: CGFloat = 22
 }
 
@@ -12,28 +12,47 @@ struct DetailsHeroButton<Label: View>: View {
     let isPrimary: Bool
     let action: () -> Void
     private let label: () -> Label
+    private let size: CGFloat?
 
-    init(isPrimary: Bool = false, action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+    init(isPrimary: Bool = false, size: CGFloat? = nil, action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
         self.isPrimary = isPrimary
+        self.size = size
         self.action = action
         self.label = label
     }
 
     private var diameter: CGFloat {
-        isPrimary ? DetailsHeroActionMetrics.primaryDiameter : DetailsHeroActionMetrics.secondaryDiameter
+        size ?? (isPrimary ? DetailsHeroActionMetrics.primaryDiameter : DetailsHeroActionMetrics.secondaryDiameter)
     }
 
     var body: some View {
-        Button(action: action) {
-            label()
-                .frame(width: diameter, height: diameter)
-                .contentShape(Circle())
-                .background {
-                    if isPrimary { Circle().fill(.white) }
-                }
-                .glassEffect(isPrimary ? .clear.interactive() : .regular.interactive(), in: .circle)
+        if isPrimary {
+            Button(action: action) {
+                Circle()
+                    .fill(.white)
+                    .overlay {
+                        label()
+                            .foregroundStyle(.white)
+                            .blendMode(.destinationOut)
+                    }
+                    // Flatten ONLY the circle and symbol: the triangle removes
+                    // alpha from the disc, revealing the actual screen beneath.
+                    .compositingGroup()
+                    .frame(width: diameter, height: diameter)
+                    // Keep the transparent triangle part of the tappable button.
+                    .contentShape(Circle())
+            }
+            // No glass behind the disc: it would fill the transparent cutout.
+            .buttonStyle(.plain)
+        } else {
+            Button(action: action) {
+                label()
+                    .frame(width: diameter, height: diameter)
+                    .contentShape(Circle())
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.glassPress)
         }
-        .buttonStyle(.glassPress)
     }
 }
 
@@ -96,17 +115,17 @@ struct DetailsHeroDownloadButton: View {
                     .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Image(systemName: item?.status == .paused ? "arrow.down" : "pause.fill")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
             }
-            .frame(width: 22, height: 22)
+            .frame(width: 24, height: 24)
         case .pending:
             ProgressView().controlSize(.small).tint(.white)
         case .completed:
-            Image(systemName: "checkmark").font(.system(size: 18, weight: .semibold))
+            Image(systemName: "checkmark").font(.system(size: 20, weight: .semibold))
         case .failed:
-            Image(systemName: "arrow.clockwise").font(.system(size: 18, weight: .semibold))
+            Image(systemName: "arrow.clockwise").font(.system(size: 20, weight: .semibold))
         case nil:
-            Image(systemName: "arrow.down").font(.system(size: 18, weight: .semibold))
+            Image(systemName: "arrow.down").font(.system(size: 20, weight: .semibold))
         }
     }
 }
