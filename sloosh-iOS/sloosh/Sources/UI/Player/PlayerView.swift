@@ -1660,7 +1660,7 @@ class PlayerViewModel: ObservableObject {
 
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200...299).contains(httpResponse.statusCode) else {
-                    self?.logDebug("loadExternalSubtitles: non-200 HTTP response")
+                    self.logDebug("loadExternalSubtitles: non-200 HTTP response")
                     return
                 }
 
@@ -1669,7 +1669,7 @@ class PlayerViewModel: ObservableObject {
                     ?? String(decoding: data, as: UTF8.self)
 
                 let cues = WebVTTParser.parse(text: text)
-                self?.logDebug("loadExternalSubtitles: parsed \(cues.count) cues from \(url.lastPathComponent)")
+                self.logDebug("loadExternalSubtitles: parsed \(cues.count) cues from \(url.lastPathComponent)")
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
@@ -1678,7 +1678,7 @@ class PlayerViewModel: ObservableObject {
                 }
             } catch {
                 if !Task.isCancelled {
-                    self?.logDebug("loadExternalSubtitles: failed to fetch: \(error.localizedDescription)")
+                    self.logDebug("loadExternalSubtitles: failed to fetch: \(error.localizedDescription)")
                 }
             }
         }
