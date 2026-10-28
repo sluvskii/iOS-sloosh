@@ -571,7 +571,7 @@ struct MoviePosterCard: View {
                 let genreStr = movie.genres?.first?.name?.capitalized
                 
                 if let y = yearStr, let g = genreStr {
-                    Text("\(y) • \(g)")
+                    Text("\(y), \(g)")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -626,7 +626,7 @@ struct MoviePosterCard: View {
                     let genreStr = movie.genres?.first?.name?.capitalized
                     
                     if let y = yearStr, let g = genreStr {
-                        Text("\(y) • \(g)")
+                        Text("\(y), \(g)")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.white.opacity(0.65))
                             .blendMode(.plusLighter)

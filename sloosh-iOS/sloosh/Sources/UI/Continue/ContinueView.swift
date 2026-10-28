@@ -203,7 +203,7 @@ private struct ContinueWatchingItem: Identifiable {
 
     var subtitle: String? {
         if let season = record.season, let episode = record.episode {
-            return "Сезон \(season) • Серия \(episode)"
+            return "Сезон \(season), серия \(episode)"
         }
         return nil
     }
@@ -831,37 +831,44 @@ private struct ContinueWatchingCard: View {
                     .background(.white, in: Capsule())
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .bottom, spacing: 10) {
                     if let logoStr = item.logoUrl, let logoUrl = URL(string: logoStr) {
                         AsyncCachedImage(url: logoUrl) {
                             Text(item.title)
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.white)
+                                .blendMode(.plusLighter)
                                 .lineLimit(2)
                         } content: { image in
                             Image(uiImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: 180, maxHeight: 44, alignment: .leading)
+                                .frame(maxWidth: 180, maxHeight: 42, alignment: .leading)
                                 .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
                         } fallback: {
                             Text(item.title)
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.white)
+                                .blendMode(.plusLighter)
                                 .lineLimit(2)
                         }
                     } else {
                         Text(item.title)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(.white)
+                            .blendMode(.plusLighter)
                             .lineLimit(2)
                     }
 
+                    Spacer(minLength: 8)
+
                     if let subtitle = item.subtitle {
                         Text(subtitle)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.74))
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .blendMode(.plusLighter)
                             .lineLimit(1)
+                            .layoutPriority(1)
                     }
                 }
 
@@ -873,16 +880,18 @@ private struct ContinueWatchingCard: View {
 
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(item.progressText)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12.5, weight: .semibold))
                             .monospacedDigit()
                             .foregroundStyle(.white.opacity(0.92))
+                            .blendMode(.plusLighter)
 
                         Spacer(minLength: 0)
 
                         if let remainingText = item.remainingText {
                             Text(remainingText)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.72))
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.70))
+                                .blendMode(.plusLighter)
                                 .lineLimit(1)
                         }
                     }
@@ -893,10 +902,6 @@ private struct ContinueWatchingCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: 190)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        }
         .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
     }
 }
@@ -951,14 +956,15 @@ private struct ContinueProgressBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(.white.opacity(0.18))
+                    .fill(.white.opacity(0.20))
 
                 Capsule()
-                    .fill(Color.slooshAccent)
+                    .fill(.white)
                     .frame(width: geometry.size.width * max(0, min(progress, 1)))
             }
         }
-        .frame(height: 5)
+        .frame(height: 4.5)
+        .blendMode(.plusLighter)
     }
 }
 

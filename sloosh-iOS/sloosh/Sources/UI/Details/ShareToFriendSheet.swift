@@ -232,16 +232,22 @@ struct ShareToFriendSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
 
-                    if let year = movie.year {
-                        Text(year.description)
+                    let yearStr = movie.year?.description
+                    let genreStr = movie.genres?.first
+                    if let y = yearStr, let g = genreStr, !g.isEmpty {
+                        Text("\(y), \(g)")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
-                    }
-
-                    if let genres = movie.genres, let firstGenre = genres.first, !firstGenre.isEmpty {
-                        Text("•  \(firstGenre)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    } else if let y = yearStr {
+                        Text(y)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else if let g = genreStr, !g.isEmpty {
+                        Text(g)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
