@@ -441,14 +441,25 @@ class PlayerViewModel: ObservableObject {
     private var bufferObserver: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
     private var failedToEndObserver: NSObjectProtocol?
+    private var playbackStalledObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
     private var foregroundObserver: NSObjectProtocol?
     private var audioInterruptionObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
     /// Оригинальный upstream URL стрима (без 127.0.0.1 прокси). Используется для перезапуска после фона.
     private var originalStreamURL: URL?
+    /// Исходный мастер-URL стрима (плейлист или основной поток до переключения на сублисты качества).
+    private var masterStreamURL: URL?
     /// Проксированный URL который дали в AVPlayer (может быть 127.0.0.1).
     private var currentPlaybackSourceURL: URL?
+    private lazy var trustedSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.waitsForConnectivity = true
+        let delegate = ProxyTrustAllSessionDelegate()
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    }()
 
     private(set) var currentKpId: Int?
     var mediaKey: String?
@@ -507,7 +518,9 @@ class PlayerViewModel: ObservableObject {
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
     private var hasStartedLoading = false
-    private var hasRetriedPlayback = false
+    private var playbackRetryCount = 0
+    private let maxPlaybackRetries = 3
+    private var networkCancellable: AnyCancellable?
 
     var displayLogoUrl: URL? {
         if let logo = logoUrl, let url = URL(string: logo) {
@@ -575,7 +588,7 @@ class PlayerViewModel: ObservableObject {
     func retryPlayback() {
         error = nil
         isLoading = true
-        hasRetriedPlayback = false
+        playbackRetryCount = 0
 
         // Сохраняем текущую позицию, чтобы после переподключения продолжить с неё
         saveCurrentProgress()
@@ -583,6 +596,7 @@ class PlayerViewModel: ObservableObject {
         if streamSource == .source2 {
             CollapsRepository.shared.invalidateCache()
             originalStreamURL = nil
+            masterStreamURL = nil
             currentPlaybackSourceURL = nil
             retryCollapsPlayback()
             return
@@ -594,6 +608,7 @@ class PlayerViewModel: ObservableObject {
         AllohaRepository.shared.invalidateCache()
 
         originalStreamURL = nil
+        masterStreamURL = nil
         currentPlaybackSourceURL = nil
 
         if let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty {
@@ -801,7 +816,7 @@ class PlayerViewModel: ObservableObject {
         self._currentTranslationName = selectedVoiceover
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
-        self.hasRetriedPlayback = false
+        self.playbackRetryCount = 0
         self.wasPlayingBeforeReload = true
         if self.isInitialSeekPending, let initSeek = self.pendingSeekPosition, initSeek > 0 {
             self.currentTime = initSeek
@@ -1296,6 +1311,10 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(failedToEndObserver)
             self.failedToEndObserver = nil
         }
+        if let playbackStalledObserver {
+            NotificationCenter.default.removeObserver(playbackStalledObserver)
+            self.playbackStalledObserver = nil
+        }
         if let resignActiveObserver {
             NotificationCenter.default.removeObserver(resignActiveObserver)
             self.resignActiveObserver = nil
@@ -1308,6 +1327,8 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(audioInterruptionObserver)
             self.audioInterruptionObserver = nil
         }
+        networkCancellable?.cancel()
+        networkCancellable = nil
 
         clearNowPlaying()
 
@@ -1622,6 +1643,7 @@ class PlayerViewModel: ObservableObject {
 
         let headers = customHeaders ?? currentHeaders
         subtitleFetchTask = Task { [weak self] in
+            guard let self else { return }
             do {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 10
@@ -1632,7 +1654,7 @@ class PlayerViewModel: ObservableObject {
                     request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)", forHTTPHeaderField: "User-Agent")
                 }
 
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await self.trustedSession.data(for: request)
                 if Task.isCancelled { return }
 
                 guard let httpResponse = response as? HTTPURLResponse,
@@ -1790,7 +1812,7 @@ class PlayerViewModel: ObservableObject {
                     targetTranslation = match
                 } else if let idx = index, idx < movie.translations.count {
                     let candidate = movie.translations[idx]
-                    if allohaTranslationNamesMatch(candidate.name, name) || self.availableVoiceovers.count == movie.translations.count {
+                    if allohaTranslationNamesMatch(candidate.name, name) {
                         targetTranslation = candidate
                     }
                 }
@@ -1805,7 +1827,7 @@ class PlayerViewModel: ObservableObject {
                     targetTranslation = match
                 } else if let idx = index, idx < epObj.translations.count {
                     let candidate = epObj.translations[idx]
-                    if allohaTranslationNamesMatch(candidate.name, name) || self.availableVoiceovers.count == epObj.translations.count {
+                    if allohaTranslationNamesMatch(candidate.name, name) {
                         targetTranslation = candidate
                     }
                 }
@@ -1881,6 +1903,11 @@ class PlayerViewModel: ObservableObject {
                         let headers = (resolved["headers"] as? [String: String]) ?? [:]
                         self.currentHeaders = headers
 
+                        let resolvedSubs = self.resolvedSubtitles(from: resolved)
+                        if !resolvedSubs.isEmpty {
+                            self.availableSubtitles = resolvedSubs
+                        }
+
                         if let intro = resolved["introRange"] as? [String: Double],
                            let start = intro["start"], let end = intro["end"] {
                             self.introRange = start...end
@@ -1905,7 +1932,7 @@ class PlayerViewModel: ObservableObject {
 
                         self.currentTime = savedTime
                         let (targetPlaybackUrl, activeBitrate) = self.selectPreservedPlaybackTarget(fallbackUrl: resolvedUrl)
-                        self.reloadPlayback(to: targetPlaybackUrl, preferredPeakBitRate: activeBitrate)
+                        self.reloadPlayback(to: targetPlaybackUrl, preferredPeakBitRate: activeBitrate, qualityKey: self.currentQualityKey)
                         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
                     } catch {
                         guard let self, !Task.isCancelled else { return }
@@ -2012,34 +2039,19 @@ class PlayerViewModel: ObservableObject {
         if quality.isAuto {
             player?.currentItem?.preferredPeakBitRate = 0
             player?.currentItem?.preferredMaximumResolution = .zero
-            if shouldReloadForAutoSelection(autoURL: quality.url) {
-                reloadPlayback(to: quality.url, preferredPeakBitRate: 0, preferredMaximumResolution: .zero)
-            }
+            let targetUrl = masterStreamURL ?? originalStreamURL ?? quality.url
+            reloadPlayback(to: targetUrl, preferredPeakBitRate: 0, preferredMaximumResolution: .zero, qualityKey: nil)
             return
         }
 
-        if !quality.shouldReloadOnSelect {
-            let isCurrentSourceMatch: Bool = {
-                guard let currentPlaybackSourceURL else { return false }
-                if currentPlaybackSourceURL.absoluteURL.absoluteString == quality.url.absoluteURL.absoluteString { return true }
-                if let orig = originalStreamURL, orig.absoluteURL.absoluteString == quality.url.absoluteURL.absoluteString { return true }
-                return false
-            }()
-
-            if isCurrentSourceMatch {
-                logDebug("changeQuality: quality='\(key)' has shouldReloadOnSelect=false and matches current source, setting preferredPeakBitRate=\(targetBitrate), preferredMaximumResolution=\(targetRes)")
-                player?.currentItem?.preferredPeakBitRate = targetBitrate
-                player?.currentItem?.preferredMaximumResolution = targetRes
-                return
-            }
-        }
-
-        // Вызываем reloadPlayback для мгновенного переключения качества с сохранением позиции
-        reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate, preferredMaximumResolution: targetRes)
+        // Перезапускаем поток с передачей qualityKey в прокси, чтобы PlaybackHlsRewriter
+        // зафиксировал плейлист на выбранном качестве (1080p, 720p и т.д.)
+        let targetUrl = quality.shouldReloadOnSelect ? quality.url : (masterStreamURL ?? originalStreamURL ?? quality.url)
+        reloadPlayback(to: targetUrl, preferredPeakBitRate: targetBitrate, preferredMaximumResolution: targetRes, qualityKey: key)
     }
 
-    private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?, preferredMaximumResolution: CGSize = .zero) {
-        logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1)")
+    private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?, preferredMaximumResolution: CGSize = .zero, qualityKey: String? = nil) {
+        logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1), qualityKey=\(qualityKey ?? "none")")
         let savedTime: Double = {
             if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
                 return pending
@@ -2066,6 +2078,9 @@ class PlayerViewModel: ObservableObject {
         // Обновляем originalStreamURL если пришёл не прокси-URL
         if !isLocalProxyUrl(sourceURL) {
             originalStreamURL = sourceURL.absoluteURL
+            if masterStreamURL == nil {
+                masterStreamURL = sourceURL.absoluteURL
+            }
         }
 
         let asset: AVURLAsset
@@ -2084,7 +2099,8 @@ class PlayerViewModel: ObservableObject {
             let options = ["AVURLAssetHTTPHeaderFieldsKey": currentHeaders]
             asset = AVURLAsset(url: sourceURL, options: options)
         } else {
-            guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
+            let effectiveQuality = qualityKey ?? (self.currentQualityKey != "Авто" ? self.currentQualityKey : nil)
+            guard let proxyUrl = proxiedPlaybackURL(for: sourceURL, quality: effectiveQuality) else { return }
             logDebug("reloadPlayback: Proxied HLS stream URL: \(proxyUrl.absoluteString)")
             currentPlaybackSourceURL = proxyUrl
             asset = AVURLAsset(url: proxyUrl)
@@ -2094,7 +2110,6 @@ class PlayerViewModel: ObservableObject {
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
         playerItem.preferredMaximumResolution = preferredMaximumResolution
         playerItem.preferredForwardBufferDuration = 30.0
-        hasRetriedPlayback = true
 
         self.isLoading = true
 
@@ -2139,9 +2154,20 @@ class PlayerViewModel: ObservableObject {
 
     private func normalizedQualityHeight(_ key: String) -> Int {
         let clean = key.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean == "4k" || clean == "2160p" || clean == "2160" { return 2160 }
-        if clean == "2k" || clean == "1440p" || clean == "1440" { return 1440 }
-        return Int(clean.replacingOccurrences(of: "p", with: "")) ?? 0
+        if clean.contains("4k") || clean.contains("2160") { return 2160 }
+        if clean.contains("2k") || clean.contains("1440") { return 1440 }
+        if clean.contains("1080") { return 1080 }
+        if clean.contains("720") { return 720 }
+        if clean.contains("480") { return 480 }
+        if clean.contains("360") { return 360 }
+        if clean.contains("240") { return 240 }
+        if let regex = try? NSRegularExpression(pattern: #"(\d{3,4})"#),
+           let match = regex.firstMatch(in: clean, range: NSRange(clean.startIndex..<clean.endIndex, in: clean)),
+           let r = Range(match.range(at: 1), in: clean),
+           let val = Int(clean[r]) {
+            return val
+        }
+        return 0
     }
 
     private func targetResolution(for qualityKey: String) -> CGSize {
@@ -2227,14 +2253,15 @@ class PlayerViewModel: ObservableObject {
         preferredAudioVariant: [String: Any]? = nil
     ) -> [PlaybackQualityOption] {
         let targetVoice = targetVoiceover ?? _currentTranslationName
+        let isDedicated = currentIframeUrl != nil
         let selectedAudioVariant: [String: Any]? = preferredAudioVariant
             ?? {
                 if let target = targetVoice, !target.isEmpty {
-                    return findMatchingAudioVariant(in: audioVariants, for: target, isDedicatedIframe: currentIframeUrl != nil)
+                    return findMatchingAudioVariant(in: audioVariants, for: target, isDedicatedIframe: isDedicated)
                 }
                 return nil
             }()
-            ?? audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })
+            ?? (isDedicated ? nil : audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false }))
 
         let activeUrl: URL = {
             if let variantUrlString = selectedAudioVariant?["url"] as? String,
@@ -2289,6 +2316,7 @@ class PlayerViewModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = true
         // Сохраняем оригинальный URL ДО проксирования — нужен для перезапуска после фона
         originalStreamURL = url.absoluteURL
+        masterStreamURL = url.absoluteURL
         currentHeaders = headers
 
         let asset: AVURLAsset
@@ -2315,7 +2343,20 @@ class PlayerViewModel: ObservableObject {
             let options = ["AVURLAssetHTTPHeaderFieldsKey": headers]
             asset = AVURLAsset(url: url, options: options)
         } else {
-            guard let proxyUrl = proxiedPlaybackURL(for: url) else {
+            let initialQuality: String? = {
+                if let current = self.currentQualityKey, !current.isEmpty, current != "Авто" {
+                    return current
+                }
+                if let pref = self.targetQualityPreference, pref != .ask && pref != .auto {
+                    return pref.rawValue
+                }
+                let saved = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? ""
+                if let prefEnum = VideoQualityPreference(rawValue: saved), prefEnum != .ask && prefEnum != .auto {
+                    return prefEnum.rawValue
+                }
+                return nil
+            }()
+            guard let proxyUrl = proxiedPlaybackURL(for: url, quality: initialQuality) else {
                 logDebug("playVideo error: failed to form proxy URL")
                 self.error = "Ошибка формирования URL"
                 self.isLoading = false
@@ -2439,14 +2480,52 @@ class PlayerViewModel: ObservableObject {
                     self.saveCurrentProgress()
                     return
                 }
-                if !self.hasRetriedPlayback {
-                    self.hasRetriedPlayback = true
-                    self.retryPlayback()
+                if self.playbackRetryCount < self.maxPlaybackRetries {
+                    self.playbackRetryCount += 1
+                    let attempt = self.playbackRetryCount
+                    self.logDebug("setupPlayerItemObservers: failedToPlayToEndTime auto-retry (\(attempt)/\(self.maxPlaybackRetries))")
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isPreparedForDismiss, !self.isCleaningUp else { return }
+                        let delay = Double(attempt) * 0.4
+                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        guard !self.isPreparedForDismiss, !self.isCleaningUp else { return }
+                        self.retryPlayback()
+                    }
                     return
                 }
                 self.error = "Воспроизведение было прервано. Нажмите «Попробовать снова»."
                 self.isLoading = false
                 self.isBuffering = false
+            }
+        }
+
+        if let playbackStalledObserver {
+            NotificationCenter.default.removeObserver(playbackStalledObserver)
+            self.playbackStalledObserver = nil
+        }
+
+        playbackStalledObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: playerItem,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard playerItem === self.player?.currentItem else { return }
+                self.logDebug("setupPlayerItemObservers: playback stalled, marking buffering")
+                self.isBuffering = true
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    guard let self, !self.isPreparedForDismiss, !self.isCleaningUp else { return }
+                    if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate,
+                       !self.isUserSeeking,
+                       !self.isInitialSeekPending,
+                       NetworkMonitor.shared.isConnected,
+                       self.player?.currentItem === playerItem {
+                        self.logDebug("setupPlayerItemObservers: stall persisted > 3s while connected, auto-recovering stream")
+                        self.retryPlayback()
+                    }
+                }
             }
         }
 
@@ -2509,42 +2588,45 @@ class PlayerViewModel: ObservableObject {
                                     mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
                                     preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
                                 )
-                                self.reloadPlayback(to: url, preferredPeakBitRate: nil)
+                                self.reloadPlayback(to: url, preferredPeakBitRate: nil, qualityKey: self.currentQualityKey)
                             }
                         }
                         return
                     } // end -11848
 
-                    // General retry for non-11848 errors: делаем максимум ОДИН тихий ретрай
-                    if !self.hasRetriedPlayback, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
-                        self.hasRetriedPlayback = true
-                        print("Auto-retrying playback after failure with originalStreamURL...")
-                        // Перезапускаем прокси перед retry, так как именно он мог упасть
-                        if let origUrl = self.originalStreamURL {
-                            HlsProxyServer.shared.start(
-                                headers: self.currentHeaders,
-                                voices: self.availableVoiceovers,
-                                subtitles: self.availableSubtitles,
-                                mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
-                                preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
-                            )
-                            self.reloadPlayback(to: origUrl, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
-                        } else {
-                            self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
+                    // General retry for non-11848 errors: используем умный лимит попыток
+                    if self.playbackRetryCount < self.maxPlaybackRetries, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
+                        self.playbackRetryCount += 1
+                        let attempt = self.playbackRetryCount
+                        print("Auto-retrying playback after failure (\(attempt)/\(self.maxPlaybackRetries)) with originalStreamURL...")
+                        self.saveCurrentProgress()
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.isPreparedForDismiss, !self.isCleaningUp else { return }
+                            let delay = Double(attempt) * 0.4
+                            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                            guard !self.isPreparedForDismiss, !self.isCleaningUp else { return }
+                            // Перезапускаем прокси перед retry, так как именно он мог упасть
+                            if let origUrl = self.originalStreamURL {
+                                HlsProxyServer.shared.start(
+                                    headers: self.currentHeaders,
+                                    voices: self.availableVoiceovers,
+                                    subtitles: self.availableSubtitles,
+                                    mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
+                                    preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
+                                )
+                                self.reloadPlayback(to: origUrl, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate, qualityKey: self.currentQualityKey)
+                            } else {
+                                self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate, qualityKey: self.currentQualityKey)
+                            }
                         }
                     } else {
-                        if let itemError = item.error as? URLError {
-                            self.error = "Нет подключения к интернету"
-                        } else if let localized = item.error as? LocalizedError, let desc = localized.errorDescription {
-                            self.error = desc
-                        } else {
-                            self.error = "Не удалось воспроизвести видео. Проверьте подключение к сети."
-                        }
-                        self.isLoading = false
-                        self.isBuffering = false
+                        self.logDebug("setupPlayerItemObservers: stream reload retries exhausted, initiating full re-resolve via retryPlayback()")
+                        self.playbackRetryCount = 0
+                        self.retryPlayback()
                     }
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
+                    self.playbackRetryCount = 0
                     self.logDebug("setupPlayerItemObservers: playerItem is readyToPlay")
                     self.applySeekIfNeeded(for: item)
                     Task {
@@ -2685,6 +2767,9 @@ class PlayerViewModel: ObservableObject {
                 if self.isUserSeeking || self.isInitialSeekPending { return }
                 let t = player.currentTime().seconds
                 if t.isFinite && !t.isNaN && t >= 0 {
+                    if t > 3.0 && self.playbackRetryCount > 0 {
+                        self.playbackRetryCount = 0
+                    }
                     if self.isClipMode && !self.isUserSeeking && player.rate > 0.01 {
                         // Зацикливание превью момента — только во время реального воспроизведения,
                         // чтобы не конфликтовать со scrub-превью триммера на паузе.
@@ -2768,7 +2853,7 @@ class PlayerViewModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.hasRetriedPlayback = false // Сбрасываем флаг ретрая, чтобы при возврате из фона авто-ретрай мог сработать
+                self.playbackRetryCount = 0 // Сбрасываем счетчик ретраев, чтобы при возврате из фона авто-ретрай мог сработать
                 let status = self.player?.timeControlStatus
                 let wasPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
                 UserDefaults.standard.set(wasPlaying, forKey: "sloosh_was_playing_before_bg")
@@ -2844,6 +2929,29 @@ class PlayerViewModel: ObservableObject {
                 }
             }
         }
+
+        // 5. Авто-восстановление воспроизведения при смене сети (Wi-Fi/LTE/VPN)
+        networkCancellable?.cancel()
+        networkCancellable = NetworkMonitor.shared.$isConnected
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                guard let self else { return }
+                if isConnected {
+                    if self.error != nil || self.player?.currentItem?.status == .failed || self.isBuffering {
+                        self.logDebug("Network restored: auto-recovering playback...")
+                        self.error = nil
+                        self.playbackRetryCount = 0
+                        self.retryPlayback()
+                    }
+                } else {
+                    let status = self.player?.timeControlStatus
+                    if status == .playing || status == .waitingToPlayAtSpecifiedRate {
+                        self.isBuffering = true
+                    }
+                }
+            }
     }
 
     // MARK: - Now Playing
@@ -3216,7 +3324,7 @@ class PlayerViewModel: ObservableObject {
             request.setValue("*/*", forHTTPHeaderField: "Accept")
         }
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await trustedSession.data(for: request),
               let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode),
               let content = String(data: data, encoding: .utf8),
@@ -3237,10 +3345,6 @@ class PlayerViewModel: ObservableObject {
             let title = (variant["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty else { return nil }
             let cleanTitle = normalizedAllohaTranslationName(title).isEmpty ? title : normalizedAllohaTranslationName(title)
-            let lower = cleanTitle.lowercased()
-            if lower.contains("субтитр") || lower.contains("subtitle") {
-                return nil
-            }
             return seen.insert(cleanTitle).inserted ? cleanTitle : nil
         }
     }
@@ -3297,16 +3401,18 @@ class PlayerViewModel: ObservableObject {
         }
         
         // Match by track index (crucial for Collaps / Source 2 where rus0, rus1 map to availableVoiceovers[0], availableVoiceovers[1])
-        let trackIndex = index
-            ?? self.availableVoiceovers.firstIndex(of: name)
-            ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
-            ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) })
-        if let trackIndex, trackIndex >= 0, trackIndex < options.count {
-            item.select(options[trackIndex], in: group)
-            persistVoiceoverSelection(canonicalName)
-            saveCurrentProgress()
-            logDebug("selectAudioTrackInPlayer: selected by trackIndex \(trackIndex), option='\(options[trackIndex].displayName)'")
-            return
+        if streamSource == .source2 {
+            let trackIndex = index
+                ?? self.availableVoiceovers.firstIndex(of: name)
+                ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
+                ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) })
+            if let trackIndex, trackIndex >= 0, trackIndex < options.count {
+                item.select(options[trackIndex], in: group)
+                persistVoiceoverSelection(canonicalName)
+                saveCurrentProgress()
+                logDebug("selectAudioTrackInPlayer: selected by trackIndex \(trackIndex), option='\(options[trackIndex].displayName)'")
+                return
+            }
         }
         
         // Match by index or language tag if name represents a standard language
@@ -3556,7 +3662,7 @@ class PlayerViewModel: ObservableObject {
             
             let isMp4 = lowerUrl.contains(".mp4") && !lowerUrl.contains(".m3u8")
             let qualityUrl = absoluteQualityURL(from: urlString)
-            let hasDistinctQualityUrl = qualityUrl != nil && qualityUrl?.absoluteString != masterUrl.absoluteString
+            let hasDistinctQualityUrl = qualityUrl != nil
             let targetUrl = qualityUrl ?? masterUrl
             let bitrate = bitrateValue(from: variant) ?? resolvedBitrate(forQualityKey: label)
             

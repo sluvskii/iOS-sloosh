@@ -31,6 +31,8 @@ struct SourceSelectionView: View {
     let kpId: Int?
     let details: MediaDetailsDto?
     let fallbackTitle: String?
+    let initialSeason: Int?
+    let initialEpisode: Int?
     let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -67,6 +69,8 @@ struct SourceSelectionView: View {
         self.kpId = kpId
         self.details = details
         self.fallbackTitle = fallbackTitle
+        self.initialSeason = nil
+        self.initialEpisode = nil
         self.onAction = { translation, season, episode, quality, _, _, _ in
             onAction(translation, season, episode, quality)
         }
@@ -86,6 +90,8 @@ struct SourceSelectionView: View {
         kpId: Int? = nil,
         details: MediaDetailsDto? = nil,
         fallbackTitle: String? = nil,
+        initialSeason: Int? = nil,
+        initialEpisode: Int? = nil,
         onAction: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
@@ -95,6 +101,8 @@ struct SourceSelectionView: View {
         self.kpId = kpId
         self.details = details
         self.fallbackTitle = fallbackTitle
+        self.initialSeason = initialSeason
+        self.initialEpisode = initialEpisode
         self.onAction = onAction
 
         let saved = UserDefaults.standard.string(forKey: "preferredStreamSource")
@@ -375,7 +383,9 @@ struct SourceSelectionView: View {
                     details: details,
                     episodeSubtitles: [:],
                     movieSubtitles: [],
-                    customHeaders: [:]
+                    customHeaders: [:],
+                    initialSeason: initialSeason,
+                    initialEpisode: initialEpisode
                 ) { translation, season, episode, subs, headers in
                     handleCommit(
                         translation: translation,
@@ -399,7 +409,9 @@ struct SourceSelectionView: View {
                     details: details,
                     episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
                     movieSubtitles: source2Result?.movieSubtitles ?? [],
-                    customHeaders: CollapsRepository.streamHeaders
+                    customHeaders: CollapsRepository.streamHeaders,
+                    initialSeason: initialSeason,
+                    initialEpisode: initialEpisode
                 ) { translation, season, episode, subs, headers in
                     handleCommit(
                         translation: translation,
@@ -630,6 +642,8 @@ struct SingleSourceContentView: View {
     let seasonTranslationsMap: [Int: Set<String>]
     let episodeTranslationsMap: [EpisodeKey: Set<String>]
     let movieTranslationNames: Set<String>
+    let initialSeason: Int?
+    let initialEpisode: Int?
 
     init(
         mode: SourceSelectionMode,
@@ -640,6 +654,8 @@ struct SingleSourceContentView: View {
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
         movieSubtitles: [PlaybackSubtitle],
         customHeaders: [String: String],
+        initialSeason: Int? = nil,
+        initialEpisode: Int? = nil,
         onCommit: @escaping (AllohaTranslation, Int?, Int?, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
@@ -650,6 +666,8 @@ struct SingleSourceContentView: View {
         self.episodeSubtitles = episodeSubtitles
         self.movieSubtitles = movieSubtitles
         self.customHeaders = customHeaders
+        self.initialSeason = initialSeason
+        self.initialEpisode = initialEpisode
         self.onCommit = onCommit
 
         var transItems: [TranslationChipItem] = []
@@ -727,7 +745,9 @@ struct SingleSourceContentView: View {
             result: result,
             kpId: kpId,
             details: details,
-            sourceKey: source == .source2 ? "collaps" : "alloha"
+            sourceKey: source == .source2 ? "collaps" : "alloha",
+            requestedSeason: initialSeason,
+            requestedEpisode: initialEpisode
         )
         _selectedSeason = State(initialValue: initial.season)
         _selectedEpisode = State(initialValue: initial.episode)
@@ -817,7 +837,8 @@ struct SingleSourceContentView: View {
         if let s = selectedSeason {
             let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)] ?? []
             if let currentT = selectedTranslationName {
-                if !epNames.contains(currentT) {
+                let matchesCurrent = epNames.contains(currentT) || epNames.contains(where: { allohaTranslationNamesMatch($0, currentT) })
+                if !matchesCurrent {
                     if let seasonObj = result.seasons.first(where: { $0.season == s }),
                        let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                        let bestT = bestTranslation(in: epObj.translations, preferredName: currentT) {
@@ -852,7 +873,9 @@ struct SingleSourceContentView: View {
         result: AllohaApiResult,
         kpId: Int?,
         details: MediaDetailsDto?,
-        sourceKey: String
+        sourceKey: String,
+        requestedSeason: Int? = nil,
+        requestedEpisode: Int? = nil
     ) -> (season: Int?, episode: Int?, translationName: String?) {
         let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
         let currentKey: String
@@ -877,19 +900,22 @@ struct SingleSourceContentView: View {
         }
 
         if result.isSerial {
-            var initialSeason = result.seasons.first?.season
-            var initialEpisode: Int? = nil
+            var initialSeason = requestedSeason ?? result.seasons.first?.season
+            var initialEpisode: Int? = requestedEpisode
 
-            if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
-               result.seasons.contains(where: { $0.season == lastSeason }) {
-                initialSeason = lastSeason
+            if requestedSeason == nil {
+                if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
+                   result.seasons.contains(where: { $0.season == lastSeason }) {
+                    initialSeason = lastSeason
+                }
             }
 
-            if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) : nil }) {
-                initialEpisode = lastEpisode
+            if requestedEpisode == nil {
+                if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) : nil }) {
+                    initialEpisode = lastEpisode
 
-                let sNum = initialSeason ?? 1
-                let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
+                    let sNum = initialSeason ?? 1
+                    let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
                 if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
                     let allEpisodes = result.seasons
                         .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
@@ -898,11 +924,12 @@ struct SingleSourceContentView: View {
                             return $0.1 < $1.1
                         }
 
-                    if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
-                       currentIdx + 1 < allEpisodes.count {
-                        let nextEp = allEpisodes[currentIdx + 1]
-                        initialSeason = nextEp.0
-                        initialEpisode = nextEp.1
+                        if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
+                           currentIdx + 1 < allEpisodes.count {
+                            let nextEp = allEpisodes[currentIdx + 1]
+                            initialSeason = nextEp.0
+                            initialEpisode = nextEp.1
+                        }
                     }
                 }
             }
@@ -941,7 +968,7 @@ struct SingleSourceContentView: View {
                   let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
                       ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
                       ?? epObj.translations.first(where: { $0.name == tName })
-                      ?? epObj.translations.first else { return }
+                      ?? bestTranslation(in: epObj.translations, preferredName: tName) else { return }
 
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: s, episode: e)
@@ -959,7 +986,7 @@ struct SingleSourceContentView: View {
                   let translation = movie.translations.first(where: { $0.name == tName })
                       ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
                       ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
-                      ?? movie.translations.first else { return }
+                      ?? bestTranslation(in: movie.translations, preferredName: tName) else { return }
 
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: nil, episode: nil)
@@ -1013,8 +1040,26 @@ struct SingleSourceContentView: View {
         }
     }
 
+    var displayedTranslations: [TranslationChipItem] {
+        if result.isSerial {
+            guard let s = selectedSeason, let e = selectedEpisode,
+                  let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)],
+                  !epNames.isEmpty else {
+                return allTranslations
+            }
+            return allTranslations.filter { item in
+                epNames.contains(item.name) || epNames.contains(where: { allohaTranslationNamesMatch($0, item.name) })
+            }
+        } else {
+            guard !movieTranslationNames.isEmpty else { return allTranslations }
+            return allTranslations.filter { item in
+                movieTranslationNames.contains(item.name) || movieTranslationNames.contains(where: { allohaTranslationNamesMatch($0, item.name) })
+            }
+        }
+    }
+
     private func translationBadge(for name: String) -> String? {
-        guard allTranslations.count > 1,
+        guard displayedTranslations.count > 1,
               let stats = mediaStats,
               let top = stats.topTranslation,
               top.count >= 2,
@@ -1026,18 +1071,19 @@ struct SingleSourceContentView: View {
 
     @ViewBuilder
     private var translationsSection: some View {
-        if !allTranslations.isEmpty {
+        let items = displayedTranslations
+        if !items.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Озвучка")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.primary)
 
                 FlowLayout(spacing: 8) {
-                    ForEach(allTranslations) { item in
+                    ForEach(items) { item in
                         WatchSelectorChip(
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
-                            isAvailable: isTranslationAvailable(item.name),
+                            isAvailable: true,
                             badge: translationBadge(for: item.name),
                             studio: item.studio,
                             flag: item.flag

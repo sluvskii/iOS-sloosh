@@ -160,6 +160,21 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
 
     private func resolveBestAvailablePayload(fallback: String) {
         guard let baseURL else { return }
+
+        // Собираем субтитры со ВСЕХ полученных payload (HTML, Playerjs, API)
+        var allSubtitles: [[String: Any]] = []
+        let allPayloadsToScan = (pendingPayloads + [bestHlsSourcePayload, bestMasterPayload, bestDirectPayload, fallback])
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        for p in allPayloadsToScan {
+            allSubtitles.append(contentsOf: AllohaRuntimeParser.subtitleTracks(in: p, baseURL: baseURL))
+        }
+        var seenSubUrls = Set<String>()
+        let uniqueSubtitles = allSubtitles.filter { sub in
+            guard let u = sub["url"] as? String, !u.isEmpty else { return false }
+            return seenSubUrls.insert(u).inserted
+        }
+
         let payloads = [bestHlsSourcePayload, bestMasterPayload, bestDirectPayload, fallback.isEmpty ? nil : fallback]
             .compactMap { $0 }
         var seen = Set<String>()
@@ -183,7 +198,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                     }
                     finish(with: [
                         "url": url,
-                        "subtitles": parsed["subtitles"] ?? [],
+                        "subtitles": uniqueSubtitles,
                         "audioVariants": mappedVariants,
                         "qualityVariants": parsed["qualityVariants"] ?? [],
                         "headers": headers,
@@ -196,7 +211,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
             if let url = parsed["videoURL"] as? String, !url.isEmpty {
                 finish(with: [
                     "url": url,
-                    "subtitles": parsed["subtitles"] ?? [],
+                    "subtitles": uniqueSubtitles,
                     "audioVariants": [],
                     "qualityVariants": parsed["qualityVariants"] ?? [],
                     "headers": headers,
@@ -211,7 +226,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
            masterUrl.contains("http"), masterUrl.contains(".m3u8") {
             finish(with: [
                 "url": masterUrl,
-                "subtitles": [],
+                "subtitles": uniqueSubtitles,
                 "audioVariants": [],
                 "qualityVariants": [],
                 "headers": headers
@@ -223,7 +238,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
            directUrl.contains("http"), isPlayableURL(directUrl) {
             finish(with: [
                 "url": directUrl,
-                "subtitles": [],
+                "subtitles": uniqueSubtitles,
                 "audioVariants": [],
                 "qualityVariants": [],
                 "headers": headers
@@ -369,7 +384,10 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
           text.indexOf('hlsSource') !== -1 ||
           text.indexOf('.m3u8') !== -1 ||
           text.indexOf('.mp4') !== -1 ||
-          text.indexOf('.vtt') !== -1
+          text.indexOf('.vtt') !== -1 ||
+          text.indexOf('.srt') !== -1 ||
+          text.indexOf('subtitles') !== -1 ||
+          text.indexOf('subtitle') !== -1
         );
       }
 
@@ -395,6 +413,37 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
           if (win.hlsSource) {
             try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
           }
+          try {
+            var tracks = win.document ? win.document.querySelectorAll('track') : [];
+            var extractedTracks = [];
+            for (var t = 0; t < tracks.length; t++) {
+              var tr = tracks[t];
+              var src = tr.src || tr.getAttribute('src');
+              if (src) {
+                var label = tr.label || tr.getAttribute('label') || tr.srclang || 'Субтитры';
+                extractedTracks.push({ name: label, url: src });
+              }
+            }
+            if (extractedTracks.length > 0) {
+              chunks.push(JSON.stringify({ subtitles: extractedTracks }));
+            }
+            if (win.playerjs_subtitle || win.pjssubtitle) {
+              chunks.push(JSON.stringify({ subtitles: win.playerjs_subtitle || win.pjssubtitle }));
+            }
+            if (win.player && (win.player.subtitle || win.player.subtitles || win.player.tracks)) {
+              chunks.push(JSON.stringify({ subtitles: win.player.subtitle || win.player.subtitles || win.player.tracks }));
+            }
+            if (win.alloha && (win.alloha.subtitles || win.alloha.subtitle)) {
+              chunks.push(JSON.stringify({ subtitles: win.alloha.subtitles || win.alloha.subtitle }));
+            }
+            var scripts = win.document ? win.document.querySelectorAll('script') : [];
+            for (var s = 0; s < scripts.length; s++) {
+              var st = scripts[s].textContent || '';
+              if (looksPlayable(st)) {
+                chunks.push(st);
+              }
+            }
+          } catch(e) {}
           report(chunks.join('\\n'));
         } catch(e) {}
       }
@@ -404,6 +453,24 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
           if (!win || win.__neoAllohaHooksInstalled) return;
           win.__neoAllohaHooksInstalled = true;
           defaultHeaders(win);
+
+          try {
+            var _pjs = win.Playerjs;
+            if (_pjs && !win.__neoPlayerjsHooked) {
+              win.__neoPlayerjsHooked = true;
+              win.Playerjs = function(cfg) {
+                try {
+                  if (cfg) {
+                    if (cfg.file) report(cfg.file);
+                    if (cfg.subtitle) report(JSON.stringify({ subtitles: cfg.subtitle }));
+                    if (cfg.subtitles) report(JSON.stringify({ subtitles: cfg.subtitles }));
+                  }
+                } catch(e) {}
+                return new _pjs(cfg);
+              };
+              win.Playerjs.prototype = _pjs.prototype;
+            }
+          } catch(e) {}
 
           var OriginalWS = win.WebSocket;
           if (OriginalWS && !win.__neoAllohaWsCtorHooked) {

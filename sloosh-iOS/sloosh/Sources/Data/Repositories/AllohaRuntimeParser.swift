@@ -272,18 +272,33 @@ enum AllohaRuntimeParser {
             .filter(isPlayable)
     }
 
-    private static func normalizedQualityLabel(_ label: String) -> String {
+    static func normalizedQualityLabel(_ label: String) -> String {
         let clean = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let height = qualityHeight(clean)
+        if height > 0 {
+            if height >= 2160 { return "4K" }
+            return "\(height)p"
+        }
         if clean.lowercased().hasSuffix("p") { return clean }
-        if Int(clean) != nil { return "\(clean)p" }
         return clean.isEmpty ? "Поток" : clean
     }
 
-    private static func qualityHeight(_ label: String) -> Int {
+    static func qualityHeight(_ label: String) -> Int {
         let clean = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean == "4k" || clean == "2160p" || clean == "2160" { return 2160 }
-        if clean == "2k" || clean == "1440p" || clean == "1440" { return 1440 }
-        return Int(clean.replacingOccurrences(of: "p", with: "")) ?? 0
+        if clean.contains("4k") || clean.contains("2160") { return 2160 }
+        if clean.contains("2k") || clean.contains("1440") { return 1440 }
+        if clean.contains("1080") { return 1080 }
+        if clean.contains("720") { return 720 }
+        if clean.contains("480") { return 480 }
+        if clean.contains("360") { return 360 }
+        if clean.contains("240") { return 240 }
+        if let regex = try? NSRegularExpression(pattern: #"(\d{3,4})"#),
+           let match = regex.firstMatch(in: clean, range: NSRange(clean.startIndex..<clean.endIndex, in: clean)),
+           let r = Range(match.range(at: 1), in: clean),
+           let val = Int(clean[r]) {
+            return val
+        }
+        return 0
     }
 
     private static func preferredAdaptiveURL(in urls: [URL]) -> URL? {
@@ -323,27 +338,51 @@ enum AllohaRuntimeParser {
             ?? firstEscapedURL(in: payload, matchingExtensions: ["m3u8", "mp4", "mpd"], baseURL: baseURL)
     }
 
-    private static func subtitleTracks(in payload: String, baseURL: URL) -> [[String: Any]] {
+    static func subtitleTracks(in payload: String, baseURL: URL) -> [[String: Any]] {
         let patterns = [
             #"\{\s*"url"\s*:\s*"([^"]+\.(?:vtt|srt)(?:\?[^"]*)?)"\s*,\s*"name"\s*:\s*"([^"]+)""#,
             #"\{\s*url\s*:\s*"([^"]+\.(?:vtt|srt)(?:\?[^"]*)?)"\s*,\s*name\s*:\s*"([^"]+)""#,
             #"\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"url"\s*:\s*"([^"]+\.(?:vtt|srt)(?:\?[^"]*)?)""#,
             #"\{\s*"(?:title|label)"\s*:\s*"([^"]+)"\s*,\s*"url"\s*:\s*"([^"]+\.(?:vtt|srt)(?:\?[^"]*)?)""#,
             #"\{\s*"url"\s*:\s*"([^"]+\.(?:vtt|srt)(?:\?[^"]*)?)"\s*,\s*"(?:title|label)"\s*:\s*"([^"]+)""#,
-            #"\[([^\]]+)\]\s*([^\s,;\"'\[\]]+\.(?:vtt|srt)(?:\?[^\s,;\"'\[\]]*)?)"#
+            #"\[([^\]]+)\]\s*([^\s,;\"'\[\]]+\.(?:vtt|srt)(?:\?[^\s,;\"'\[\]]*)?)"#,
+            #"<track\b[^>]*\bsrc=["']([^"']+\.(?:vtt|srt)[^"']*)["'][^>]*\blabel=["']([^"']+)["']"#,
+            #"<track\b[^>]*\blabel=["']([^"']+)["'][^>]*\bsrc=["']([^"']+\.(?:vtt|srt)[^"']*)["']"#,
+            #"["']?subtitle["']?\s*:\s*["']([^"']+\.(?:vtt|srt)(?:\?[^"']*)?)["']"#,
+            #"["']?subtitles["']?\s*:\s*["']([^"']+\.(?:vtt|srt)(?:\?[^"']*)?)["']"#
         ]
 
         var tracks: [[String: Any]] = []
         for pattern in patterns {
             tracks.append(contentsOf: subtitleTracks(in: payload, pattern: pattern, baseURL: baseURL))
         }
+
+        // Direct JSON object array decoding if payload is JSON
+        if let data = payload.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let subList = (obj["subtitles"] as? [[String: Any]]) ?? (obj["tracks"] as? [[String: Any]]) {
+                for item in subList {
+                    let urlStr = (item["url"] as? String) ?? (item["src"] as? String) ?? (item["file"] as? String) ?? ""
+                    let nameStr = (item["name"] as? String) ?? (item["label"] as? String) ?? (item["title"] as? String) ?? "Субтитры"
+                    if let u = makeURL(from: urlStr, baseURL: baseURL) {
+                        tracks.append(["name": nameStr, "url": u.absoluteString])
+                    }
+                }
+            } else if let subStr = (obj["subtitles"] as? String) ?? (obj["subtitle"] as? String) {
+                let subPatterns = [#"\[([^\]]+)\]\s*([^\s,;\"'\[\]]+\.(?:vtt|srt)(?:\?[^\s,;\"'\[\]]*)?)"#]
+                for p in subPatterns {
+                    tracks.append(contentsOf: subtitleTracks(in: subStr, pattern: p, baseURL: baseURL))
+                }
+            }
+        }
+
         if tracks.isEmpty, let url = firstURL(in: payload, matchingExtensions: ["vtt", "srt"], baseURL: baseURL) {
             tracks.append(["name": "Субтитры", "url": url.absoluteString])
         }
         var seen = Set<String>()
         return tracks.filter { track in
             let key = track["url"] as? String ?? ""
-            return seen.insert(key).inserted
+            return !key.isEmpty && seen.insert(key).inserted
         }
     }
 
@@ -483,17 +522,22 @@ enum AllohaRuntimeParser {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.matches(in: text, range: range).compactMap { match in
-            guard match.numberOfRanges >= 3,
-                  let firstRange = Range(match.range(at: 1), in: text),
-                  let secondRange = Range(match.range(at: 2), in: text) else {
-                return nil
+            if match.numberOfRanges >= 3,
+               let firstRange = Range(match.range(at: 1), in: text),
+               let secondRange = Range(match.range(at: 2), in: text) {
+                let first = String(text[firstRange])
+                let second = String(text[secondRange])
+                let urlCandidate = first.contains(".vtt") || first.contains(".srt") ? first : second
+                let nameCandidate = urlCandidate == first ? second : first
+                guard let url = makeURL(from: urlCandidate, baseURL: baseURL) else { return nil }
+                return ["name": decodeJavaScriptString(nameCandidate), "url": url.absoluteString]
+            } else if match.numberOfRanges >= 2,
+                      let urlRange = Range(match.range(at: 1), in: text) {
+                let urlCandidate = String(text[urlRange])
+                guard let url = makeURL(from: urlCandidate, baseURL: baseURL) else { return nil }
+                return ["name": "Субтитры", "url": url.absoluteString]
             }
-            let first = String(text[firstRange])
-            let second = String(text[secondRange])
-            let urlCandidate = first.contains(".vtt") || first.contains(".srt") ? first : second
-            let nameCandidate = urlCandidate == first ? second : first
-            guard let url = makeURL(from: urlCandidate, baseURL: baseURL) else { return nil }
-            return ["name": decodeJavaScriptString(nameCandidate), "url": url.absoluteString]
+            return nil
         }
     }
 

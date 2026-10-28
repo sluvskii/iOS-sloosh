@@ -144,8 +144,6 @@ class PlaybackHlsRewriter {
                     bandwidth = Double(bwStr) ?? 0
                 }
 
-                let resLabel = normalizeResolutionLabel(width: width, height: height)
-
                 var uri = ""
                 var nextIdx = idx + 1
                 while nextIdx < filteredLines.count {
@@ -157,6 +155,37 @@ class PlaybackHlsRewriter {
                     }
                     nextIdx += 1
                 }
+
+                if height == 0 {
+                    let lowerUri = uri.lowercased()
+                    if lowerUri.contains("2160") || lowerUri.contains("4k") {
+                        height = 2160; width = 3840
+                    } else if lowerUri.contains("1440") || lowerUri.contains("2k") {
+                        height = 1440; width = 2560
+                    } else if lowerUri.contains("1080") {
+                        height = 1080; width = 1920
+                    } else if lowerUri.contains("720") {
+                        height = 720; width = 1280
+                    } else if lowerUri.contains("480") {
+                        height = 480; width = 854
+                    } else if lowerUri.contains("360") {
+                        height = 360; width = 640
+                    } else if bandwidth >= 3_500_000 {
+                        height = 1080; width = 1920
+                    } else if bandwidth >= 1_800_000 {
+                        height = 720; width = 1280
+                    } else if bandwidth >= 800_000 {
+                        height = 480; width = 854
+                    } else if bandwidth > 0 {
+                        height = 360; width = 640
+                    }
+                }
+
+                if !modifiedLine.contains("RESOLUTION="), width > 0, height > 0 {
+                    modifiedLine = addOrReplaceAttribute(modifiedLine, key: "RESOLUTION", value: "\(width)x\(height)", quoted: false)
+                }
+
+                let resLabel = normalizeResolutionLabel(width: width, height: height)
 
                 if !uri.isEmpty {
                     parsedVariants.append(ParsedVariant(
@@ -184,7 +213,20 @@ class PlaybackHlsRewriter {
         // Apply quality filter if requested (e.g. "1080p", "720p", "360p")
         var finalVariants = parsedVariants
         if let targetQuality, !targetQuality.isEmpty, targetQuality != "Авто", targetQuality.lowercased() != "auto" {
-            let matches = parsedVariants.filter { $0.resolutionLabel.lowercased() == targetQuality.lowercased() }
+            let targetHeight: Int = {
+                let clean = targetQuality.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                if clean.contains("4k") || clean.contains("2160") { return 2160 }
+                if clean.contains("2k") || clean.contains("1440") { return 1440 }
+                if clean.contains("1080") { return 1080 }
+                if clean.contains("720") { return 720 }
+                if clean.contains("480") { return 480 }
+                if clean.contains("360") { return 360 }
+                return Int(clean.replacingOccurrences(of: "p", with: "")) ?? 0
+            }()
+            let matches = parsedVariants.filter {
+                $0.resolutionLabel.lowercased() == targetQuality.lowercased() ||
+                (targetHeight > 0 && $0.height == targetHeight)
+            }
             if !matches.isEmpty {
                 finalVariants = matches
             } else if let maxHeight = parsedVariants.map({ $0.height }).max(), maxHeight > 0 {

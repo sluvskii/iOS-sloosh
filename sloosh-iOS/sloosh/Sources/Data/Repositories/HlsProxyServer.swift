@@ -32,6 +32,7 @@ class HlsProxyServer {
         config.httpMaximumConnectionsPerHost = 20
         config.timeoutIntervalForRequest = 30  // Увеличен с 15 до 30 с
         config.timeoutIntervalForResource = 90 // Общий таймаут ресурса 90 с
+        config.waitsForConnectivity = true
         let delegate = ProxyTrustAllSessionDelegate()
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
@@ -384,7 +385,16 @@ class HlsProxyServer {
 
         do {
             if isPlaylist {
-                let (data, response) = try await session.data(for: request)
+                let (data, response): (Data, URLResponse) = try await {
+                    do {
+                        return try await self.session.data(for: request)
+                    } catch {
+                        guard !Task.isCancelled else { throw error }
+                        AppDiagnostics.shared.log("HlsProxyServer playlist fetch failed: \(error), retrying once in 400ms...")
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        return try await self.session.data(for: request)
+                    }
+                }()
                 guard !Task.isCancelled else { return }
                 guard let httpResponse = response as? HTTPURLResponse else {
                     AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")

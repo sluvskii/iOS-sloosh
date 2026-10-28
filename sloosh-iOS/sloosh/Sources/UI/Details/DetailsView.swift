@@ -633,6 +633,8 @@ struct DetailsView: View {
     @State private var showSourceSheet = false
     @State private var selectedIframeUrl: String? = nil
     @State private var sourceSheetTitle = ""
+    @State private var sourceSheetSeason: Int? = nil
+    @State private var sourceSheetEpisode: Int? = nil
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetMode: SourceSelectionMode = .play
     @Namespace private var transition
@@ -1049,6 +1051,8 @@ struct DetailsView: View {
                 sourceFetchTask?.cancel()
                 sourceFetchTask = nil
                 sourceSheetTitle = ""
+                sourceSheetSeason = nil
+                sourceSheetEpisode = nil
                 viewModel.resetSourceSheet()
                 if pendingPlayerLaunch {
                     pendingPlayerLaunch = false
@@ -1064,7 +1068,9 @@ struct DetailsView: View {
                     source2Result: viewModel.sourceResultWrapper?.collapsResult,
                     kpId: viewModel.sourceResultWrapper?.kpId,
                     details: viewModel.details,
-                    fallbackTitle: sourceSheetTitle
+                    fallbackTitle: sourceSheetTitle,
+                    initialSeason: sourceSheetSeason,
+                    initialEpisode: sourceSheetEpisode
                 ) { translation, season, episode, quality, source, subs, headers in
                     let effectiveWrapper = viewModel.sourceResultWrapper
                     if sourceSheetMode == .play {
@@ -1095,7 +1101,7 @@ struct DetailsView: View {
                             playerEpisodeSubtitles = [:]
                             playerSeriesResult = alloha
                             playerVoices = alloha.allTranslationNames
-                            playerSubtitles = []
+                            playerSubtitles = subs
                             playerCustomHeaders = nil
                         }
                         
@@ -1286,6 +1292,8 @@ struct DetailsView: View {
 
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = title
+        sourceSheetSeason = nil
+        sourceSheetEpisode = nil
         sourceSheetMode = .play
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
@@ -1318,6 +1326,8 @@ struct DetailsView: View {
 
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = title
+        sourceSheetSeason = season
+        sourceSheetEpisode = episode
         sourceSheetMode = .play
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true

@@ -82,6 +82,7 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     }
 
     value = value
+        .replacingOccurrences(of: "💬", with: "")
         .replacingOccurrences(of: "(?i)\\b(?:AC3|E-AC3|EAC3|DDP|DD|DTS-HD|DTS|TrueHD|AAC|FLAC|MP3|PCM|LPCM)\\s*(?:5[.]?1|7[.]?1|2[.]?0|51)?(?:\\s*@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?)?", with: "", options: .regularExpression)
         .replacingOccurrences(of: "(?i)@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?", with: "", options: .regularExpression)
         .replacingOccurrences(of: "(?i)\\b\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)\\b", with: "", options: .regularExpression)
@@ -196,6 +197,12 @@ func translationRank(_ name: String) -> Int {
         return 80
     }
 
+    // Субтитры (русские субтитры или оригинал с субтитрами) -> ранг 70
+    // Приоритет выше чистого иностранного оригинала без субтитров (80-90), но ниже русской озвучки (10-40)
+    if lower.contains("субтитр") || lower.contains("subtitle") {
+        return 70
+    }
+
     // Английский / оригинал -> в самый конец для стриминга на русском языке
     if isOriginalOrEnglishTranslation(name) {
         return 90
@@ -241,6 +248,13 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     
     let left = normalizedAllohaTranslationName(lhsRaw).lowercased()
     let right = normalizedAllohaTranslationName(rhsRaw).lowercased()
+    
+    // Subtitles must never match audio voiceovers
+    let leftIsSub = left.contains("субтитр") || left.contains("subtitle")
+    let rightIsSub = right.contains("субтитр") || right.contains("subtitle")
+    if leftIsSub != rightIsSub {
+        return false
+    }
     
     if left == right {
         return true
@@ -449,21 +463,28 @@ func findMatchingAudioVariant(
         }
     }
 
-    // 5. Для аудиодорожек фильма/сериала:
-    // Если целевая озвучка — русский дубляж/перевод, а вариант 0 — английский/оригинал,
-    // то выбираем русский/не-английский вариант!
+    // 5. Для выделенного iframe (загруженного под конкретную озвучку translation=ID):
+    // Если совпадение по названию/студии (шаги 1-4) не найдено, мы НЕ должны подменять
+    // стрим чужим вариантом из audioVariants. Стрим самого iframe уже содержит выбранную озвучку.
+    if isDedicatedIframe {
+        return nil
+    }
+
+    // 6. Для не-выделенного общего iframe:
+    // Если целевая озвучка — общий запрос русского перевода ("Дубляж" / "Русский"),
+    // а не конкретная студия, и вариант 0 — английский/оригинал, выбираем русский вариант
+    let targetClean = normalizedAllohaTranslationName(target).lowercased()
+    let isGenericTarget = targetClean.isEmpty || targetClean == "дубляж" || targetClean == "русский" || targetClean == "многоголосый"
     let targetIsRussian = isRussianTranslation(target)
     let targetIsOriginal = isOriginalOrEnglishTranslation(target)
 
-    if targetIsRussian && audioVariants.count > 1 {
-        // Ищем вариант, который явно русский или не английский
+    if isGenericTarget && targetIsRussian && audioVariants.count > 1 {
         if let rusVariant = audioVariants.first(where: {
             let t = ($0["title"] as? String) ?? ""
             return isRussianTranslation(t)
         }) {
             return rusVariant
         }
-        // Если вариант 0 — английский, отдаём вариант 1
         let v0Title = (audioVariants[0]["title"] as? String) ?? ""
         if isOriginalOrEnglishTranslation(v0Title) {
             return audioVariants[1]
@@ -474,28 +495,6 @@ func findMatchingAudioVariant(
             return isOriginalOrEnglishTranslation(t)
         }) {
             return engVariant
-        }
-    }
-
-    // 6. Для выделенного iframe (загруженного под конкретную озвучку translation=ID):
-    if isDedicatedIframe && audioVariants.count > 1 {
-        let isTargetDub = target.lowercased().contains("дубл")
-        if !isTargetDub {
-            if let nonDub = audioVariants.first(where: {
-                let t = (($0["title"] as? String) ?? "").lowercased()
-                return !t.contains("дубл") && !t.contains("dub")
-            }) {
-                return nonDub
-            }
-            return audioVariants[1]
-        } else {
-            // Если целевая озвучка — дубляж, отдаём вариант, не являющийся оригиналом
-            if let dubVariant = audioVariants.first(where: {
-                let t = ($0["title"] as? String) ?? ""
-                return !isOriginalOrEnglishTranslation(t)
-            }) {
-                return dubVariant
-            }
         }
     }
 
@@ -1010,10 +1009,7 @@ final class AllohaRepository: @unchecked Sendable {
                             let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                            let lower = finalTitle.lowercased()
-                            if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
-                            }
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
@@ -1033,10 +1029,7 @@ final class AllohaRepository: @unchecked Sendable {
 
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                            let lower = finalTitle.lowercased()
-                            if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
-                            }
+                            parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     }
 
@@ -1085,10 +1078,7 @@ final class AllohaRepository: @unchecked Sendable {
                     }
                     let cleanTitle = normalizedAllohaTranslationName(transName.isEmpty ? "Озвучка \(tKey)" : transName)
                     let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                    let lower = finalTitle.lowercased()
-                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                        parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
-                    }
+                    parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             } else if let transIframeArray = dataObj["translation_iframe"] as? [[String: Any]] {
@@ -1103,10 +1093,7 @@ final class AllohaRepository: @unchecked Sendable {
                     let transName = tDict["name"] as? String ?? tDict["translation"] as? String ?? tDict["title"] as? String ?? "Озвучка \(index + 1)"
                     let cleanTitle = normalizedAllohaTranslationName(transName)
                     let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                    let lower = finalTitle.lowercased()
-                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                        parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
-                    }
+                    parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             }
@@ -1123,10 +1110,7 @@ final class AllohaRepository: @unchecked Sendable {
                         let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                         let cleanTitle = normalizedAllohaTranslationName(transName)
                         let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                        let lower = finalTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
-                        }
+                        parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transArray = transSource as? [[String: Any]] {
@@ -1141,10 +1125,7 @@ final class AllohaRepository: @unchecked Sendable {
                         let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                         let cleanTitle = normalizedAllohaTranslationName(transName)
                         let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
-                        let lower = finalTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
-                        }
+                        parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transStr = transSource as? String {
@@ -1153,10 +1134,7 @@ final class AllohaRepository: @unchecked Sendable {
                     if !iframe.isEmpty {
                         let cleanTitle = normalizedAllohaTranslationName(transStr)
                         let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
-                        let lower = finalName.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
-                        }
+                        parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
                     }
                 }
             }
