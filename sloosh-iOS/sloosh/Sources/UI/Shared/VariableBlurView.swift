@@ -5,9 +5,9 @@ import QuartzCore
 /// Создает эффект прогрессивного размытия (Liquid Glass) в стиле iOS 27:
 ///  1. Базовый проход — прогрессивный блюр, плавно затухающий от полного к нулю.
 ///  2. Диффузионный проход-«ореол» — второй, более сильный блюр с растушёванной
-///     (ease-out) маской, частичной прозрачностью и выходом ЗА границы бара.
-///     Размытый контент начинает «рассеиваться» за краем бара, создавая мягкий
-///     световой ореол (bloom) вокруг резкого контента — дорогой системный эффект.
+///     (ease-out) маской и частичной прозрачностью. По умолчанию он плотнее
+///     у размытой стороны и затухает раньше базового прохода, оставляя мягкий
+///     световой ореол (bloom) без длинного туманного хвоста.
 ///
 /// Реализация скопирована из Telegram-iOS с обходом приватного API (CAFilter variableBlur).
 public struct VariableBlurView: View {
@@ -17,9 +17,10 @@ public struct VariableBlurView: View {
     public var tintOpacity: Double = 1.0
     public var style: UIBlurEffect.Style = .systemMaterial
     /// Сила диффузионного ореола: прозрачность второго прохода (0 — выключить).
-    public var haloIntensity: Double = 0.55
-    /// Насколько далеко (в долях размера) ореол выходит за границу блюра.
-    public var haloSpread: CGFloat = 0.6
+    public var haloIntensity: Double = 0.65
+    /// Дополнительный размер вью ореола, не длина его видимой маски.
+    /// При 0.2 маска затухает на 0.68 × 1.2 = 81.6% длины базового прохода.
+    public var haloSpread: CGFloat = 0.2
     /// Во сколько раз радиус блюра ореола больше базового.
     public var haloRadiusBoost: CGFloat = 3.0
 
@@ -29,8 +30,8 @@ public struct VariableBlurView: View {
         tintColor: Color = Color(UIColor.systemBackground),
         tintOpacity: Double = 1.0,
         style: UIBlurEffect.Style = .systemMaterial,
-        haloIntensity: Double = 0.55,
-        haloSpread: CGFloat = 0.6,
+        haloIntensity: Double = 0.65,
+        haloSpread: CGFloat = 0.2,
         haloRadiusBoost: CGFloat = 3.0
     ) {
         self.maxBlurRadius = maxBlurRadius
@@ -84,8 +85,8 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
     public var maxBlurRadius: CGFloat = 2
     public var direction: BlurDirection = .blurredTopClearBottom
     public var style: UIBlurEffect.Style = .systemMaterial
-    public var haloIntensity: Double = 0.55
-    public var haloSpread: CGFloat = 0.6
+    public var haloIntensity: Double = 0.65
+    public var haloSpread: CGFloat = 0.2
     public var haloRadiusBoost: CGFloat = 3.0
 
     public enum BlurDirection {
@@ -99,8 +100,8 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         maxBlurRadius: CGFloat = 2,
         direction: BlurDirection = .blurredTopClearBottom,
         style: UIBlurEffect.Style = .systemMaterial,
-        haloIntensity: Double = 0.55,
-        haloSpread: CGFloat = 0.6,
+        haloIntensity: Double = 0.65,
+        haloSpread: CGFloat = 0.2,
         haloRadiusBoost: CGFloat = 3.0
     ) {
         self.maxBlurRadius = maxBlurRadius
@@ -188,8 +189,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
         maxBlurRadius: CGFloat = 2,
         direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom,
         style: UIBlurEffect.Style = .systemMaterial,
-        haloIntensity: Double = 0.55,
-        haloSpread: CGFloat = 0.6,
+        haloIntensity: Double = 0.65,
+        haloSpread: CGFloat = 0.2,
         haloRadiusBoost: CGFloat = 3.0
     ) {
         self.maxBlurRadius = maxBlurRadius
@@ -372,8 +373,9 @@ public final class VariableBlurUIView: UIVisualEffectView {
             easing: .linear
         )
 
-        // 2. Диффузионный проход-ореол: радиус ×boost, ease-out маска с длинным
-        //    мягким хвостом, частичная прозрачность, выход за границы
+        // 2. Диффузионный проход-ореол: радиус ×boost и мягкая ease-out маска.
+        //    По умолчанию её хвост заканчивается раньше базового прохода;
+        //    сила усилена прозрачностью, без увеличения радиуса/стоимости блюра.
         guard haloIntensity > 0 else {
             haloEffectView.effect = nil
             Self.applyVariableBlur(to: haloEffectView, radius: 0, direction: direction, easing: .linear, clear: true)
