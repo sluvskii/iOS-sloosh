@@ -501,7 +501,7 @@ struct RemotePosterView<Overlay: View>: View {
         } fallback: {
             FallbackPosterView(cornerRadius: cornerRadius)
         }
-        .overlay {
+        .overlay(alignment: .bottomLeading) {
             overlay()
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -547,13 +547,13 @@ struct MoviePosterCard: View {
                         .padding(.vertical, 3)
                         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .padding(8)
-                } else if let rating = movie.rating, rating > 0 {
-                    Text(String(format: "%.1f", rating))
+                } else if movie.effectiveRating > 0 {
+                    Text(String(format: "%.1f", movie.effectiveRating))
                         .font(.system(size: 13, weight: .heavy))
                         .foregroundColor(.white)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 3)
-                        .background(Color.rating(rating))
+                        .background(Color.rating(movie.effectiveRating))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .padding(8)
                 }
@@ -650,38 +650,27 @@ struct MoviePosterCard: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
-                
-                // Rating overlay on top-left of the poster
-                if movie.isUnreleased {
-                    VStack {
-                        HStack {
-                            Text("Скоро")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .padding(8)
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                } else if let rating = movie.rating, rating > 0 {
-                    VStack {
-                        HStack {
-                            Text(String(format: "%.1f", rating))
-                                .font(.system(size: 12, weight: .heavy))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 3)
-                                .background(Color.rating(rating))
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .padding(8)
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        }
+        .overlay(alignment: .topLeading) {
+            if movie.isUnreleased {
+                Text("Скоро")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .padding(8)
+            } else if movie.effectiveRating > 0 {
+                Text(String(format: "%.1f", movie.effectiveRating))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(Color.rating(movie.effectiveRating))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(8)
             }
         }
         .aspectRatio(2/3, contentMode: .fit)

@@ -3723,7 +3723,8 @@ class DetailsViewModel: ObservableObject {
                 posterUrl: details.poster ?? details.backdrop,
                 rating: details.ratings?.tmdb ?? details.ratings?.kp,
                 year: details.year?.description,
-                genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
+                genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) },
+                releaseDate: details.releaseDate
             )
             generator.notificationOccurred(.success)
             ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", iconColor: .primary, duration: 2.0)

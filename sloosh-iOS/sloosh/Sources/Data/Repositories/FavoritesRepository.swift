@@ -84,7 +84,8 @@ public final class FavoritesRepository: ObservableObject {
                 posterUrl: model.posterUrl,
                 rating: model.rating,
                 year: model.year,
-                genres: genres
+                genres: genres,
+                releaseDate: model.releaseDate
             )
         }
     }
@@ -97,7 +98,7 @@ public final class FavoritesRepository: ObservableObject {
         return favorites.contains { $0.mediaId == mediaId && $0.type == mediaType }
     }
     
-    public func addToFavorites(mediaId: String, mediaType: String, title: String?, posterUrl: String?, rating: Double?, year: String? = nil, genres: [GenreDto]? = nil) {
+    public func addToFavorites(mediaId: String, mediaType: String, title: String?, posterUrl: String?, rating: Double?, year: String? = nil, genres: [GenreDto]? = nil, releaseDate: String? = nil) {
         if !isFavorite(mediaId: mediaId, mediaType: mediaType) {
             let activeUserId = currentUserId
             let genresRaw = try? String(data: JSONEncoder().encode(genres), encoding: .utf8)
@@ -109,7 +110,8 @@ public final class FavoritesRepository: ObservableObject {
                 posterUrl: posterUrl,
                 rating: rating,
                 year: year,
-                genresRaw: genresRaw
+                genresRaw: genresRaw,
+                releaseDate: releaseDate
             )
             context.insert(model)
             try? context.save()
@@ -202,6 +204,7 @@ public final class FavoritesRepository: ObservableObject {
                 if let p = dto.posterUrl { local.posterUrl = p }
                 if let r = dto.rating { local.rating = r }
                 if let y = dto.year { local.year = y }
+                if let rd = dto.releaseDate { local.releaseDate = rd }
             } else {
                 let genresRaw = try? String(data: JSONEncoder().encode(dto.genres), encoding: .utf8)
                 let model = FavoriteModel(
@@ -212,7 +215,8 @@ public final class FavoritesRepository: ObservableObject {
                     posterUrl: dto.posterUrl,
                     rating: dto.rating,
                     year: dto.year,
-                    genresRaw: genresRaw
+                    genresRaw: genresRaw,
+                    releaseDate: dto.releaseDate
                 )
                 context.insert(model)
             }

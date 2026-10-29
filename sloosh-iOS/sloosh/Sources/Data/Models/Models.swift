@@ -308,6 +308,15 @@ struct MediaDto: Codable, Identifiable {
             if yearInt > currentYear {
                 return true
             }
+            if yearInt == currentYear {
+                let hasRating = (rating != nil && rating! > 0) ||
+                                (ratings?.kp != nil && ratings!.kp! > 0) ||
+                                (ratings?.tmdb != nil && ratings!.tmdb! > 0) ||
+                                (ratings?.imdb != nil && ratings!.imdb! > 0)
+                if !hasRating {
+                    return true
+                }
+            }
         }
         return false
     }
@@ -641,6 +650,14 @@ struct MediaDetailsDto: Codable {
             let currentYear = Calendar.current.component(.year, from: Date())
             if year > currentYear {
                 return true
+            }
+            if year == currentYear {
+                let hasRating = (ratings?.kp != nil && ratings!.kp! > 0) ||
+                                (ratings?.tmdb != nil && ratings!.tmdb! > 0) ||
+                                (ratings?.imdb != nil && ratings!.imdb! > 0)
+                if !hasRating {
+                    return true
+                }
             }
         }
         return false
@@ -1354,6 +1371,7 @@ public struct FavoriteDto: Codable, Identifiable {
     public let rating: Double?
     public let year: String?
     public let genres: [GenreDto]?
+    public let releaseDate: String?
 
     public init(
         id: String? = nil,
@@ -1363,7 +1381,8 @@ public struct FavoriteDto: Codable, Identifiable {
         posterUrl: String? = nil,
         rating: Double? = nil,
         year: String? = nil,
-        genres: [GenreDto]? = nil
+        genres: [GenreDto]? = nil,
+        releaseDate: String? = nil
     ) {
         self.id = id
         self.mediaId = mediaId
@@ -1373,6 +1392,7 @@ public struct FavoriteDto: Codable, Identifiable {
         self.rating = rating
         self.year = year
         self.genres = genres
+        self.releaseDate = releaseDate
     }
     
     // Mapping to MediaDto for UI reuse
@@ -1382,6 +1402,7 @@ public struct FavoriteDto: Codable, Identifiable {
             title: title,
             originalTitle: nil,
             year: year != nil ? .string(year!) : nil,
+            releaseDate: releaseDate,
             rating: rating,
             posterUrl: posterUrl,
             description: nil,

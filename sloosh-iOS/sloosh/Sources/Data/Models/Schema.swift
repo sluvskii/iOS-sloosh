@@ -110,9 +110,10 @@ final class FavoriteModel {
     var rating: Double?
     var year: String?
     var genresRaw: String? // JSON encoded
+    var releaseDate: String?
     var addedAt: Date
     
-    init(userId: String = "guest", mediaId: String, type: String, title: String? = nil, posterUrl: String? = nil, rating: Double? = nil, year: String? = nil, genresRaw: String? = nil, addedAt: Date = Date()) {
+    init(userId: String = "guest", mediaId: String, type: String, title: String? = nil, posterUrl: String? = nil, rating: Double? = nil, year: String? = nil, genresRaw: String? = nil, releaseDate: String? = nil, addedAt: Date = Date()) {
         self.userId = userId
         self.mediaId = mediaId
         self.type = type
@@ -122,6 +123,7 @@ final class FavoriteModel {
         self.rating = rating
         self.year = year
         self.genresRaw = genresRaw
+        self.releaseDate = releaseDate
         self.addedAt = addedAt
     }
 }
