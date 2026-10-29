@@ -519,7 +519,14 @@ public final class VariableBlurUIView: UIVisualEffectView {
         let alphas: [(location: CGFloat, alpha: CGFloat)]
         switch easing {
         case .linear:
-            alphas = [(0.0, 1.0), (1.0, 0.0)]
+            alphas = [
+                (0.0, 1.0),
+                (0.25, 0.78),
+                (0.55, 0.40),
+                (0.80, 0.12),
+                (0.95, 0.01),
+                (1.0, 0.0)
+            ]
         case .easeOut:
             // Сконцентрирован у края (там, где живой контент) и полностью
             // затухает раньше конца — без блёклого хвоста через весь бар
@@ -546,11 +553,11 @@ public final class VariableBlurUIView: UIVisualEffectView {
 
         switch direction {
         case .blurredTopClearBottom:
-            startPoint = CGPoint(x: 0, y: 0)
-            endPoint = CGPoint(x: 0, y: height)
-        case .blurredBottomClearTop:
             startPoint = CGPoint(x: 0, y: height)
             endPoint = CGPoint(x: 0, y: 0)
+        case .blurredBottomClearTop:
+            startPoint = CGPoint(x: 0, y: 0)
+            endPoint = CGPoint(x: 0, y: height)
         case .blurredLeadingClearTrailing:
             startPoint = CGPoint(x: 0, y: 0)
             endPoint = CGPoint(x: width, y: 0)
