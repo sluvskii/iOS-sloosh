@@ -33,7 +33,8 @@ final class CollapsRepository: @unchecked Sendable {
     func fetchMedia(
         kpId: Int?,
         imdbId: String? = nil,
-        title: String? = nil
+        title: String? = nil,
+        isTv: Bool? = nil
     ) async throws -> CollapsParser.ParseResult? {
         let effectiveKp = (kpId ?? 0) > 0 ? kpId : nil
         let effectiveImdb = (imdbId?.isEmpty == false) ? imdbId : nil
@@ -42,7 +43,8 @@ final class CollapsRepository: @unchecked Sendable {
             return nil
         }
 
-        let cacheKey = effectiveKp.map { "kp_\($0)" } ?? "imdb_\(effectiveImdb!)"
+        let typeSuffix = isTv.map { $0 ? "_tv" : "_movie" } ?? ""
+        let cacheKey = (effectiveKp.map { "kp_\($0)" } ?? "imdb_\(effectiveImdb!)") + typeSuffix
 
         cacheLock.lock()
         if let cached = cache[cacheKey], cached.expiresAt > Date() {
@@ -51,40 +53,61 @@ final class CollapsRepository: @unchecked Sendable {
         }
         cacheLock.unlock()
 
-        let embedUrlString: String
+        func isValidType(_ parsed: CollapsParser.ParseResult) -> Bool {
+            if let isTv = isTv {
+                if isTv && !parsed.apiResult.isSerial {
+                    return false
+                }
+                if !isTv && parsed.apiResult.isSerial {
+                    return false
+                }
+            }
+            return true
+        }
+
+        func queryEmbed(urlStr: String) async -> CollapsParser.ParseResult? {
+            guard let url = URL(string: urlStr) else { return nil }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            for (k, v) in Self.embedHeaders {
+                request.setValue(v, forHTTPHeaderField: k)
+            }
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                    return nil
+                }
+                guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1251) else {
+                    return nil
+                }
+                let resolvedTitle = title ?? "Без названия"
+                return CollapsParser.parseCatalog(embedHtml: html, defaultTitle: resolvedTitle)
+            } catch {
+                return nil
+            }
+        }
+
+        // 1. Попытка через KP ID
         if let kp = effectiveKp {
-            embedUrlString = "https://api.luxembd.ws/embed/kp/\(kp)"
-        } else {
-            embedUrlString = "https://api.luxembd.ws/embed/imdb/\(effectiveImdb!)"
+            if let parsed = await queryEmbed(urlStr: "https://api.luxembd.ws/embed/kp/\(kp)"), isValidType(parsed) {
+                cacheLock.lock()
+                cache[cacheKey] = (result: parsed, expiresAt: Date().addingTimeInterval(cacheTtl))
+                cacheLock.unlock()
+                return parsed
+            }
         }
 
-        guard let url = URL(string: embedUrlString) else { return nil }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        for (k, v) in Self.embedHeaders {
-            request.setValue(v, forHTTPHeaderField: k)
+        // 2. Попытка через IMDB ID (если KP не сработал или вернул не тот тип — например, сериал вместо фильма!)
+        if let imdb = effectiveImdb {
+            if let parsed = await queryEmbed(urlStr: "https://api.luxembd.ws/embed/imdb/\(imdb)"), isValidType(parsed) {
+                cacheLock.lock()
+                cache[cacheKey] = (result: parsed, expiresAt: Date().addingTimeInterval(cacheTtl))
+                cacheLock.unlock()
+                return parsed
+            }
         }
 
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            return nil
-        }
-
-        guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1251) else {
-            return nil
-        }
-
-        let resolvedTitle = title ?? "Без названия"
-        guard let parsed = CollapsParser.parseCatalog(embedHtml: html, defaultTitle: resolvedTitle) else {
-            return nil
-        }
-
-        cacheLock.lock()
-        cache[cacheKey] = (result: parsed, expiresAt: Date().addingTimeInterval(cacheTtl))
-        cacheLock.unlock()
-
-        return parsed
+        return nil
     }
 
     func invalidateCache() {

@@ -690,10 +690,12 @@ class PlayerViewModel: ObservableObject {
 
     private func executeCollapsRetry() async {
         do {
+            let isTv = (currentSeason != nil && currentSeason! > 0) || (currentEpisode != nil && currentEpisode! > 0)
             let result = try await CollapsRepository.shared.fetchMedia(
                 kpId: currentKpId,
                 imdbId: nil,
-                title: fallbackTitle
+                title: fallbackTitle,
+                isTv: isTv
             )
             guard let result else {
                 isLoading = false
@@ -965,7 +967,13 @@ class PlayerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 do {
-                    let res = try await AllohaRepository.shared.fetchByKpId(kpId: kpId ?? 0, tmdbId: tmdbId, title: self.fallbackTitle)
+                    let isTv = (season != nil && season! > 0) || (episode != nil && episode! > 0)
+                    let res = try await AllohaRepository.shared.fetchByKpId(
+                        kpId: kpId ?? 0,
+                        tmdbId: tmdbId,
+                        title: self.fallbackTitle,
+                        isTv: isTv
+                    )
                     self.seriesResult = res
                     var targetIframe: String? = nil
                     var availableVoices: [String] = []

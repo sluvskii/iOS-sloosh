@@ -546,10 +546,12 @@ private final class ContinueViewModel: ObservableObject {
 
     private func resolveAlloha(for item: ContinueWatchingItem) async -> ContinuePlaybackRoute? {
         do {
+            let isTv = (item.record.season != nil && item.record.season! > 0) || (item.record.episode != nil && item.record.episode! > 0) || (item.metadata?.type?.lowercased() == "tv") || (item.metadata?.type?.lowercased() == "serial") || (item.metadata?.type?.lowercased() == "series")
             let result = try await AllohaRepository.shared.fetchMedia(
                 kpId: item.kpId > 0 ? item.kpId : nil,
                 tmdbId: item.tmdbId,
-                title: item.title
+                title: item.title,
+                isTv: isTv
             )
             return makePlaybackRoute(
                 for: item,
@@ -566,10 +568,12 @@ private final class ContinueViewModel: ObservableObject {
 
     private func resolveCollaps(for item: ContinueWatchingItem) async -> ContinuePlaybackRoute? {
         do {
+            let isTv = (item.record.season != nil && item.record.season! > 0) || (item.record.episode != nil && item.record.episode! > 0) || (item.metadata?.type?.lowercased() == "tv") || (item.metadata?.type?.lowercased() == "serial") || (item.metadata?.type?.lowercased() == "series")
             guard let parseResult = try await CollapsRepository.shared.fetchMedia(
                 kpId: item.kpId > 0 ? item.kpId : nil,
                 imdbId: nil,
-                title: item.title
+                title: item.title,
+                isTv: isTv
             ) else {
                 return nil
             }

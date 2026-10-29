@@ -121,13 +121,24 @@ struct SourceSelectionView: View {
         UserDefaults.standard.set(source.rawValue, forKey: "preferredStreamSource")
     }
 
+    private var isProjectMovie: Bool {
+        if let type = details?.type?.lowercased() {
+            if type == "movie" { return true }
+            if type == "tv" || type == "serial" || type == "series" { return false }
+        }
+        if let seasons = details?.seasons, !seasons.isEmpty { return false }
+        return false
+    }
+
     private func isSourceAvailable(_ source: MediaStreamSource) -> Bool {
         switch source {
         case .source1:
             guard let r = source1Result else { return false }
+            if isProjectMovie && r.isSerial { return false }
             return !r.seasons.isEmpty || r.movie != nil
         case .source2:
             guard let r = source2Result?.apiResult else { return false }
+            if isProjectMovie && r.isSerial { return false }
             return !r.seasons.isEmpty || r.movie != nil
         }
     }
@@ -137,8 +148,9 @@ struct SourceSelectionView: View {
     }
 
     private var isLikelySerial: Bool {
+        if isProjectMovie { return false }
         if let seasons = details?.seasons, !seasons.isEmpty { return true }
-        if let type = details?.type { return type.lowercased() == "tv" || type.lowercased() == "serial" }
+        if let type = details?.type { return type.lowercased() == "tv" || type.lowercased() == "serial" || type.lowercased() == "series" }
         return false
     }
 
@@ -645,6 +657,24 @@ struct SingleSourceContentView: View {
     let initialSeason: Int?
     let initialEpisode: Int?
 
+    private var isProjectMovie: Bool {
+        if let type = details?.type?.lowercased() {
+            if type == "movie" { return true }
+            if type == "tv" || type == "serial" || type == "series" { return false }
+        }
+        if let seasons = details?.seasons, !seasons.isEmpty { return false }
+        return false
+    }
+
+    private var isSerial: Bool {
+        if isProjectMovie { return false }
+        if let type = details?.type?.lowercased() {
+            if type == "tv" || type == "serial" || type == "series" { return true }
+        }
+        if let seasons = details?.seasons, !seasons.isEmpty { return true }
+        return result.isSerial
+    }
+
     init(
         mode: SourceSelectionMode,
         source: MediaStreamSource,
@@ -677,7 +707,16 @@ struct SingleSourceContentView: View {
         var epTransMap: [EpisodeKey: Set<String>] = [:]
         var movieNames = Set<String>()
 
-        if result.isSerial {
+        let effectiveIsSerial: Bool = {
+            if let type = details?.type?.lowercased() {
+                if type == "movie" { return false }
+                if type == "tv" || type == "serial" || type == "series" { return true }
+            }
+            if let seasons = details?.seasons, !seasons.isEmpty { return true }
+            return result.isSerial
+        }()
+
+        if effectiveIsSerial {
             var allNames = Set<String>()
             for season in result.seasons {
                 let epNums = season.episodes.map { $0.episode }.sorted()
@@ -731,8 +770,9 @@ struct SingleSourceContentView: View {
                 }
                 sTransMap[season.season] = seasonMatchedNames
             }
-        } else if let movie = result.movie {
-            let allMovieNames = movie.translations.map { $0.name }
+        } else {
+            let movieTranslations = result.movie?.translations ?? result.seasons.first?.episodes.first?.translations ?? []
+            let allMovieNames = movieTranslations.map { $0.name }
             let nonSubNames = allMovieNames.filter { name in
                 let lower = name.lowercased()
                 return !lower.contains("субтитр") && !lower.contains("subtitle")
@@ -782,7 +822,7 @@ struct SingleSourceContentView: View {
 
     // Instant O(1) Available checking
     func isTranslationAvailable(_ name: String) -> Bool {
-        if result.isSerial {
+        if isSerial {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
             return episodeTranslationsMap[EpisodeKey(season: s, episode: e)]?.contains(name) ?? false
         } else {
@@ -817,7 +857,7 @@ struct SingleSourceContentView: View {
     // Selection actions
     func selectTranslation(_ name: String) {
         selectedTranslationName = name
-        if result.isSerial {
+        if isSerial {
             var s = selectedSeason
             if let currentS = s, !seasonHasTranslation(season: currentS, name: name) {
                 if let newS = allSeasons.first(where: { seasonHasTranslation(season: $0, name: name) }) {
@@ -922,7 +962,16 @@ struct SingleSourceContentView: View {
             savedVoiceover = globalVoiceover
         }
 
-        if result.isSerial {
+        let effectiveIsSerial: Bool = {
+            if let type = details?.type?.lowercased() {
+                if type == "movie" { return false }
+                if type == "tv" || type == "serial" || type == "series" { return true }
+            }
+            if let seasons = details?.seasons, !seasons.isEmpty { return true }
+            return result.isSerial
+        }()
+
+        if effectiveIsSerial {
             var initialSeason = requestedSeason ?? result.seasons.first?.season
             var initialEpisode: Int? = requestedEpisode
 
@@ -969,11 +1018,11 @@ struct SingleSourceContentView: View {
                 return (seasonNum, epNum, tName)
             }
             return (initialSeason, initialEpisode, nil)
-        } else if let movie = result.movie {
-            let tName = bestTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
+        } else {
+            let movieTranslations = result.movie?.translations ?? result.seasons.first?.episodes.first?.translations ?? []
+            let tName = bestTranslation(in: movieTranslations, preferredName: savedVoiceover)?.name
             return (nil, nil, tName)
         }
-        return (nil, nil, nil)
     }
 
     func actionSelected() {
@@ -984,7 +1033,7 @@ struct SingleSourceContentView: View {
         let currentKey = mediaKey
         let sourceKey = source == .source2 ? "collaps" : "alloha"
 
-        if result.isSerial {
+        if isSerial {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
@@ -1004,12 +1053,13 @@ struct SingleSourceContentView: View {
 
             let subs = episodeSubtitles[EpisodeKey(season: s, episode: e)] ?? []
             onCommit(translation, s, e, subs, customHeaders)
-        } else if let movie = result.movie {
+        } else {
+            let availableTranslations = result.movie?.translations ?? result.seasons.first?.episodes.first?.translations ?? []
             guard let tName = selectedTranslationName,
-                  let translation = movie.translations.first(where: { $0.name == tName })
-                      ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
-                      ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
-                      ?? bestTranslation(in: movie.translations, preferredName: tName) else { return }
+                  let translation = availableTranslations.first(where: { $0.name == tName })
+                      ?? availableTranslations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
+                      ?? availableTranslations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
+                      ?? bestTranslation(in: availableTranslations, preferredName: tName) else { return }
 
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: nil, episode: nil)
@@ -1027,7 +1077,7 @@ struct SingleSourceContentView: View {
 
     var isReadyToPlay: Bool {
         guard selectedTranslationName != nil else { return false }
-        if result.isSerial {
+        if isSerial {
             return selectedSeason != nil && selectedEpisode != nil
         }
         return true
@@ -1038,7 +1088,7 @@ struct SingleSourceContentView: View {
             VStack(alignment: .leading, spacing: 24) {
                 translationsSection
 
-                if result.isSerial && !allSeasons.isEmpty {
+                if isSerial && !allSeasons.isEmpty {
                     seasonsSection
                     if !allEpisodes.isEmpty {
                         episodesSection

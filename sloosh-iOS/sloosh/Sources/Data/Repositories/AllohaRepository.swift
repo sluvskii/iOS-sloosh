@@ -783,7 +783,7 @@ final class AllohaRepository: @unchecked Sendable {
         }
     }
     
-    private var catalogCache: [Int: (result: AllohaApiResult, expiresAt: Date)] = [:]
+    private var catalogCache: [String: (result: AllohaApiResult, expiresAt: Date)] = [:]
     private let cacheTtl: TimeInterval = 5 * 60 // 5 minutes
     private let cacheQueue = DispatchQueue(label: "ru.sloosh.alloharepo.cache", attributes: .concurrent)
 
@@ -807,10 +807,20 @@ final class AllohaRepository: @unchecked Sendable {
         imdbId: String? = nil,
         title: String? = nil,
         originalTitle: String? = nil,
-        year: Int? = nil
+        year: Int? = nil,
+        isTv: Bool? = nil
     ) async throws -> AllohaApiResult {
-        let cacheKey = kpId > 0 ? kpId : (tmdbId ?? 0)
-        if cacheKey > 0 {
+        let typeSuffix = isTv.map { $0 ? "_tv" : "_movie" } ?? ""
+        let baseKey: String? = {
+            if kpId > 0 { return "kp_\(kpId)" }
+            if let tmdb = tmdbId, tmdb > 0 { return "tmdb_\(tmdb)" }
+            if let imdb = imdbId?.trimmingCharacters(in: .whitespacesAndNewlines), !imdb.isEmpty { return "imdb_\(imdb)" }
+            if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return "title_\(t)" }
+            return nil
+        }()
+        let cacheKey = baseKey.map { $0 + typeSuffix }
+
+        if let cacheKey {
             let cached = cacheQueue.sync { catalogCache[cacheKey] }
             if let cached = cached, cached.expiresAt > Date() {
                 return cached.result
@@ -818,7 +828,7 @@ final class AllohaRepository: @unchecked Sendable {
         }
 
         func saveToCache(_ result: AllohaApiResult) {
-            if cacheKey > 0 {
+            if let cacheKey {
                 cacheQueue.async(flags: .barrier) { [weak self] in
                     guard let self = self else { return }
                     self.catalogCache[cacheKey] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
@@ -826,9 +836,25 @@ final class AllohaRepository: @unchecked Sendable {
             }
         }
 
+        func isValidType(_ result: AllohaApiResult) -> Bool {
+            if let isTv = isTv {
+                if isTv && !result.isSerial {
+                    return false
+                }
+                if !isTv && result.isSerial {
+                    return false
+                }
+            }
+            return true
+        }
+
+        let categoryParam = isTv.map { $0 ? "2" : "1" }
+
         // 1. Try KP ID first if positive
         if kpId > 0 {
-            if let result = try? await performAllohaQuery(params: ["kp": String(kpId)]) {
+            var params = ["kp": String(kpId)]
+            if let categoryParam { params["category"] = categoryParam }
+            if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                 saveToCache(result)
                 return result
             }
@@ -836,7 +862,9 @@ final class AllohaRepository: @unchecked Sendable {
 
         // 2. Fallback to TMDB ID if available
         if let tmdb = tmdbId, tmdb > 0 {
-            if let result = try? await performAllohaQuery(params: ["tmdb": String(tmdb)]) {
+            var params = ["tmdb": String(tmdb)]
+            if let categoryParam { params["category"] = categoryParam }
+            if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                 saveToCache(result)
                 return result
             }
@@ -844,7 +872,9 @@ final class AllohaRepository: @unchecked Sendable {
 
         // 3. Fallback to IMDB ID if available (crucial when provider has id_tmdb = null)
         if let imdb = imdbId?.trimmingCharacters(in: .whitespacesAndNewlines), !imdb.isEmpty {
-            if let result = try? await performAllohaQuery(params: ["imdb": imdb]) {
+            var params = ["imdb": imdb]
+            if let categoryParam { params["category"] = categoryParam }
+            if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                 saveToCache(result)
                 return result
             }
@@ -855,12 +885,16 @@ final class AllohaRepository: @unchecked Sendable {
            !cleanTitle.isEmpty,
            !cleanTitle.hasPrefix("Без названия") {
             if let yr = year, yr > 1900 {
-                if let result = try? await performAllohaQuery(params: ["name": cleanTitle, "year": String(yr)]) {
+                var params = ["name": cleanTitle, "year": String(yr)]
+                if let categoryParam { params["category"] = categoryParam }
+                if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                     saveToCache(result)
                     return result
                 }
             }
-            if let result = try? await performAllohaQuery(params: ["name": cleanTitle]) {
+            var params = ["name": cleanTitle]
+            if let categoryParam { params["category"] = categoryParam }
+            if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                 saveToCache(result)
                 return result
             }
@@ -871,12 +905,16 @@ final class AllohaRepository: @unchecked Sendable {
            !cleanOrig.isEmpty,
            cleanOrig != title {
             if let yr = year, yr > 1900 {
-                if let result = try? await performAllohaQuery(params: ["name": cleanOrig, "year": String(yr)]) {
+                var params = ["name": cleanOrig, "year": String(yr)]
+                if let categoryParam { params["category"] = categoryParam }
+                if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                     saveToCache(result)
                     return result
                 }
             }
-            if let result = try? await performAllohaQuery(params: ["name": cleanOrig]) {
+            var params = ["name": cleanOrig]
+            if let categoryParam { params["category"] = categoryParam }
+            if let result = try? await performAllohaQuery(params: params), isValidType(result) {
                 saveToCache(result)
                 return result
             }
@@ -891,7 +929,8 @@ final class AllohaRepository: @unchecked Sendable {
         imdbId: String? = nil,
         title: String? = nil,
         originalTitle: String? = nil,
-        year: Int? = nil
+        year: Int? = nil,
+        isTv: Bool? = nil
     ) async throws -> AllohaApiResult {
         let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : 0
         let validTmdb = (tmdbId ?? 0) > 0 ? tmdbId : nil
@@ -901,7 +940,8 @@ final class AllohaRepository: @unchecked Sendable {
             imdbId: imdbId,
             title: title,
             originalTitle: originalTitle,
-            year: year
+            year: year,
+            isTv: isTv
         )
     }
 

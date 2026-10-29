@@ -121,17 +121,36 @@ struct HomeDirectPlayWrapper: View {
         .presentationDetents([.fraction(0.62)])
         .presentationDragIndicator(.visible)
         .task {
+            let initialIsTv: Bool? = {
+                if let mediaType {
+                    let lower = mediaType.lowercased()
+                    if lower == "tv" || lower == "serial" || lower == "series" { return true }
+                    if lower == "movie" { return false }
+                }
+                return nil
+            }()
+
             if let initialKpId = initialKpId, initialKpId > 0 {
-                await viewModel.fetchSources(kpId: initialKpId, title: fallbackTitle)
+                await viewModel.fetchSources(kpId: initialKpId, title: fallbackTitle, isTv: initialIsTv)
             } else {
                 await viewModel.loadDetails(id: movieId, type: mediaType)
                 let resolvedKpId = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.replacingOccurrences(of: "kp_", with: "")) : nil) ?? 0
                 let resolvedTmdbId = viewModel.details?.externalIds?.tmdb ?? viewModel.details?.ids?.tmdb ?? (movieId.hasPrefix("tmdb_") ? Int(movieId.replacingOccurrences(of: "tmdb_", with: "")) : Int(movieId))
                 let resolvedTitle = viewModel.details?.title ?? fallbackTitle
+                let isTv: Bool? = {
+                    if let initialIsTv { return initialIsTv }
+                    if let type = viewModel.details?.type?.lowercased() {
+                        if type == "tv" || type == "serial" || type == "series" { return true }
+                        if type == "movie" { return false }
+                    }
+                    if let seasons = viewModel.details?.seasons, !seasons.isEmpty { return true }
+                    return nil
+                }()
                 await viewModel.fetchSources(
                     kpId: resolvedKpId,
                     tmdbId: resolvedTmdbId,
-                    title: resolvedTitle
+                    title: resolvedTitle,
+                    isTv: isTv
                 )
             }
             fetchAttempted = true

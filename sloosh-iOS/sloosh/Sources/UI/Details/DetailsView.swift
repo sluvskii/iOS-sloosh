@@ -1250,12 +1250,14 @@ struct DetailsView: View {
         let title = details.title ?? details.originalTitle ?? ""
         guard kpId > 0 || (tmdbId ?? 0) > 0 || imdbId != nil || !title.isEmpty else { return }
 
+        let isTv = details.type?.lowercased() == "tv" || details.type?.lowercased() == "serial" || details.type?.lowercased() == "series" || (details.seasons != nil && !details.seasons!.isEmpty)
+
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = title
         sourceSheetSeason = nil
         sourceSheetEpisode = nil
         sourceSheetMode = .play
-        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
+        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId, isTv: isTv)
         showSourceSheet = true
 
         sourceFetchTask?.cancel()
@@ -1266,7 +1268,8 @@ struct DetailsView: View {
                 imdbId: imdbId,
                 title: sourceSheetTitle,
                 originalTitle: details.originalTitle,
-                year: details.year
+                year: details.year,
+                isTv: isTv
             )
         }
     }
@@ -1289,7 +1292,7 @@ struct DetailsView: View {
         sourceSheetSeason = season
         sourceSheetEpisode = episode
         sourceSheetMode = .play
-        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
+        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId, isTv: true)
         showSourceSheet = true
 
         sourceFetchTask?.cancel()
@@ -1300,7 +1303,8 @@ struct DetailsView: View {
                 imdbId: imdbId,
                 title: sourceSheetTitle,
                 originalTitle: details.originalTitle,
-                year: details.year
+                year: details.year,
+                isTv: true
             )
         }
     }
@@ -1418,7 +1422,8 @@ struct DetailsView: View {
         
         sourceSheetTitle = title
         sourceSheetMode = .download
-        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
+        let isTv = (season != nil && season! > 0) || (episode != nil && episode! > 0) || details.type?.lowercased() == "tv" || details.type?.lowercased() == "serial" || details.type?.lowercased() == "series" || (details.seasons != nil && !details.seasons!.isEmpty)
+        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId, isTv: isTv)
         showSourceSheet = true
 
         sourceFetchTask?.cancel()
@@ -1429,7 +1434,8 @@ struct DetailsView: View {
                 imdbId: imdbId,
                 title: sourceSheetTitle,
                 originalTitle: details.originalTitle,
-                year: details.year
+                year: details.year,
+                isTv: isTv
             )
         }
     }
@@ -2683,7 +2689,8 @@ struct EpisodeDetailsSheet: View {
                 imdbId: imdbId,
                 title: title,
                 originalTitle: details.originalTitle,
-                year: details.year
+                year: details.year,
+                isTv: true
             )
             guard let result = vm.sourceResultWrapper?.allohaResult else { return }
             
@@ -3492,14 +3499,26 @@ class DetailsViewModel: ObservableObject {
     }
 
     // MARK: - Sources cache (5 min TTL)
-    private var sourcesCache: [Int: (wrapper: SourceResultWrapper, expiresAt: Date)] = [:]
+    private var sourcesCache: [String: (wrapper: SourceResultWrapper, expiresAt: Date)] = [:]
     private let sourcesCacheTtl: TimeInterval = 5 * 60
 
-    func prepareSourceSheet(kpId: Int, tmdbId: Int? = nil) {
-        let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
-        let cacheKey = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
+    func prepareSourceSheet(kpId: Int, tmdbId: Int? = nil, isTv: Bool? = nil) {
+        let isTvResolved: Bool = {
+            if let isTv = isTv { return isTv }
+            if let type = details?.type?.lowercased() {
+                if type == "tv" || type == "serial" || type == "series" { return true }
+                if type == "movie" { return false }
+            }
+            if let seasons = details?.seasons, !seasons.isEmpty { return true }
+            return false
+        }()
 
-        if cacheKey > 0, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
+        let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
+        let baseKey = kpId > 0 ? "kp_\(kpId)" : (effectiveTmdbId.map { "tmdb_\($0)" } ?? "")
+        let typeSuffix = isTvResolved ? "_tv" : "_movie"
+        let cacheKey = baseKey.isEmpty ? "" : (baseKey + typeSuffix)
+
+        if !cacheKey.isEmpty, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
             sourceResultWrapper = cached.wrapper
             isFetchingSources = false
             hasFinishedSourceFetch = true
@@ -3649,7 +3668,8 @@ class DetailsViewModel: ObservableObject {
                 imdbId: effectiveImdbId,
                 title: effectiveTitle,
                 originalTitle: effectiveOriginal,
-                year: effectiveYear
+                year: effectiveYear,
+                isTv: true
             )
             if result.isSerial && !result.seasons.isEmpty {
                 self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, collapsResult: nil, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
@@ -3664,7 +3684,8 @@ class DetailsViewModel: ObservableObject {
         if let collaps = try? await CollapsRepository.shared.fetchMedia(
             kpId: effectiveKp,
             imdbId: effectiveImdbId,
-            title: effectiveTitle
+            title: effectiveTitle,
+            isTv: true
         ), collaps.apiResult.isSerial && !collaps.apiResult.seasons.isEmpty {
             self.inlineSourceWrapper = SourceResultWrapper(allohaResult: collaps.apiResult, collapsResult: collaps, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
         }
@@ -3722,17 +3743,31 @@ class DetailsViewModel: ObservableObject {
         imdbId: String? = nil,
         title: String,
         originalTitle: String? = nil,
-        year: Int? = nil
+        year: Int? = nil,
+        isTv: Bool? = nil
     ) async {
+        let isTvResolved: Bool = {
+            if let isTv = isTv { return isTv }
+            if let type = details?.type?.lowercased() {
+                if type == "tv" || type == "serial" || type == "series" { return true }
+                if type == "movie" { return false }
+            }
+            if let seasons = details?.seasons, !seasons.isEmpty { return true }
+            return false
+        }()
+
         let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
         let effectiveImdbId = imdbId ?? details?.externalIds?.imdb ?? details?.ids?.imdb
         let effectiveTitle = title.isEmpty ? (details?.title ?? "") : title
         let effectiveOriginal = originalTitle ?? details?.originalTitle
         let effectiveYear = year ?? details?.year
-        let cacheKey = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
+
+        let baseKey = kpId > 0 ? "kp_\(kpId)" : (effectiveTmdbId.map { "tmdb_\($0)" } ?? "")
+        let typeSuffix = isTvResolved ? "_tv" : "_movie"
+        let cacheKey = baseKey.isEmpty ? "" : (baseKey + typeSuffix)
 
         // Кэш на 5 минут — повторный тап «Смотреть» возвращает результат мгновенно
-        if cacheKey > 0, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
+        if !cacheKey.isEmpty, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
             sourceResultWrapper = cached.wrapper
             isFetchingSources = false
             hasFinishedSourceFetch = true
@@ -3755,17 +3790,37 @@ class DetailsViewModel: ObservableObject {
             imdbId: effectiveImdbId,
             title: effectiveTitle,
             originalTitle: effectiveOriginal,
-            year: effectiveYear
+            year: effectiveYear,
+            isTv: isTvResolved
         )
 
         async let collapsTask = CollapsRepository.shared.fetchMedia(
             kpId: validKp,
             imdbId: effectiveImdbId,
-            title: effectiveTitle
+            title: effectiveTitle,
+            isTv: isTvResolved
         )
 
-        let allohaResult = try? await allohaTask
-        let collapsResult = (try? await collapsTask) ?? nil
+        var allohaResult = try? await allohaTask
+        var collapsResult = (try? await collapsTask) ?? nil
+
+        // Жёсткая санитаризация: исключаем попадание сериала в фильм и наоборот
+        if !isTvResolved {
+            if let al = allohaResult, al.isSerial {
+                allohaResult = nil
+            }
+            if let col = collapsResult, col.apiResult.isSerial {
+                collapsResult = nil
+            }
+        } else {
+            if let al = allohaResult, !al.isSerial {
+                allohaResult = nil
+            }
+            if let col = collapsResult, !col.apiResult.isSerial {
+                collapsResult = nil
+            }
+        }
+
         let resolvedKp = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
         let wrapper = SourceResultWrapper(
             allohaResult: allohaResult,
@@ -3773,7 +3828,7 @@ class DetailsViewModel: ObservableObject {
             kpId: resolvedKp
         )
 
-        if cacheKey > 0 && (allohaResult != nil || collapsResult != nil) {
+        if !cacheKey.isEmpty && (allohaResult != nil || collapsResult != nil) {
             sourcesCache[cacheKey] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
         }
         self.sourceResultWrapper = wrapper

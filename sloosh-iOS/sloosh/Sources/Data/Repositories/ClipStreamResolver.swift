@@ -73,11 +73,13 @@ public final class ClipStreamResolver {
     private func doResolve(clip: MovieClip, source: MediaStreamSource) async -> ResolvedClipPlayback? {
         AppDiagnostics.shared.log("[ClipStreamResolver] Resolving clip=\(clip.id) source=\(source.rawValue) kpId=\(clip.kpId ?? 0) tmdbId=\(clip.tmdbId ?? 0) title=\(clip.title)")
 
+        let isClipTv = (clip.season != nil && (clip.season ?? 0) > 0) || (clip.episode != nil && (clip.episode ?? 0) > 0)
+
         // Branch 1: Source 2 (Collaps) when user manually selects Source 2
         if source == .source2 {
             let kpId = clip.kpId ?? 0
             if kpId > 0 || !clip.title.isEmpty {
-                if let collaps = try? await CollapsRepository.shared.fetchMedia(kpId: kpId > 0 ? kpId : nil, title: clip.title) {
+                if let collaps = try? await CollapsRepository.shared.fetchMedia(kpId: kpId > 0 ? kpId : nil, title: clip.title, isTv: isClipTv) {
                     let res = collaps.apiResult
                     var streamUrlString: String? = nil
                     var matchedVoice: String? = nil
@@ -120,7 +122,7 @@ public final class ClipStreamResolver {
         // 1. Query Alloha dynamic catalog using kpId, tmdbId or title
         let kpId = clip.kpId ?? 0
         if kpId > 0 || (clip.tmdbId != nil && clip.tmdbId! > 0) || !clip.title.isEmpty {
-            if let res = try? await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: clip.tmdbId, title: clip.title) {
+            if let res = try? await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: clip.tmdbId, title: clip.title, isTv: isClipTv) {
                 if let season = clip.season, let episode = clip.episode {
                     if let sObj = res.seasons.first(where: { $0.season == season }),
                        let epObj = sObj.episodes.first(where: { $0.episode == episode }) {
