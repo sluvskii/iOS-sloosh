@@ -1360,7 +1360,7 @@ struct DetailsView: View {
             handlePlayAction(details: details)
         } label: {
             Image(systemName: "play.fill")
-                .font(.system(size: 30, weight: .semibold))
+                .font(.system(size: 34, weight: .semibold))
                 // Centered rather than the previous +2pt rightward offset.
                 // DetailsHeroButton uses this symbol as an alpha cutout.
         }
@@ -1370,7 +1370,7 @@ struct DetailsView: View {
     }
 
     private func favoriteButton(inNavigationBar: Bool = false) -> some View {
-        DetailsHeroButton(size: inNavigationBar ? 44 : nil) {
+        DetailsHeroButton(size: inNavigationBar ? 44 : nil, usesGlass: inNavigationBar) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 viewModel.toggleFavorite()
             }

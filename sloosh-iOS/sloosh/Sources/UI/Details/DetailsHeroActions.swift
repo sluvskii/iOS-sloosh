@@ -13,10 +13,12 @@ struct DetailsHeroButton<Label: View>: View {
     let action: () -> Void
     private let label: () -> Label
     private let size: CGFloat?
+    private let usesGlass: Bool
 
-    init(isPrimary: Bool = false, size: CGFloat? = nil, action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+    init(isPrimary: Bool = false, size: CGFloat? = nil, usesGlass: Bool = false, action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
         self.isPrimary = isPrimary
         self.size = size
+        self.usesGlass = usesGlass
         self.action = action
         self.label = label
     }
@@ -44,15 +46,25 @@ struct DetailsHeroButton<Label: View>: View {
             }
             // No glass behind the disc: it would fill the transparent cutout.
             .buttonStyle(.plain)
-        } else {
+        } else if usesGlass {
             Button(action: action) {
-                label()
-                    .frame(width: diameter, height: diameter)
-                    .contentShape(Circle())
+                secondaryLabel
                     .glassEffect(.regular.interactive(), in: .circle)
             }
             .buttonStyle(.glassPress)
+        } else {
+            Button(action: action) {
+                secondaryLabel
+                    .background(Circle().fill(.white.opacity(0.18)))
+            }
+            .buttonStyle(.plain)
         }
+    }
+
+    private var secondaryLabel: some View {
+        label()
+            .frame(width: diameter, height: diameter)
+            .contentShape(Circle())
     }
 }
 
@@ -114,7 +126,7 @@ struct DetailsHeroDownloadButton: View {
                     .trim(from: 0, to: min(1, max(0, item?.progress ?? 0)))
                     .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Image(systemName: item?.status == .paused ? "arrow.down" : "pause.fill")
+                Image(systemName: item?.status == .paused ? "arrow.down.to.line" : "pause.fill")
                     .font(.system(size: 9, weight: .semibold))
             }
             .frame(width: 24, height: 24)
@@ -125,7 +137,7 @@ struct DetailsHeroDownloadButton: View {
         case .failed:
             Image(systemName: "arrow.clockwise").font(.system(size: 20, weight: .semibold))
         case nil:
-            Image(systemName: "arrow.down").font(.system(size: 20, weight: .semibold))
+            Image(systemName: "arrow.down.to.line").font(.system(size: 22, weight: .semibold))
         }
     }
 }
