@@ -504,6 +504,8 @@ struct RemotePosterView<Overlay: View>: View {
         .overlay {
             overlay()
         }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -601,13 +603,14 @@ struct MoviePosterCard: View {
             ZStack(alignment: .bottomLeading) {
                 // Progressive blur with dark tint at the bottom of the poster
                 VariableBlurView(
-                    maxBlurRadius: 2,
+                    maxBlurRadius: 6,
                     direction: .blurredBottomClearTop,
                     tintColor: .black,
-                    tintOpacity: 0.78,
-                    style: .dark
+                    tintOpacity: 0.82,
+                    style: .dark,
+                    haloIntensity: 0
                 )
-                .frame(height: 50)
+                .frame(height: 72)
                 .frame(maxWidth: .infinity, alignment: .bottom)
                 .allowsHitTesting(false)
                 

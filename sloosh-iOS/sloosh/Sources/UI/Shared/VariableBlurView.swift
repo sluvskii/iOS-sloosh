@@ -55,12 +55,34 @@ public struct VariableBlurView: View {
         )
         .overlay(
             LinearGradient(
-                colors: {
+                stops: {
                     switch direction {
-                    case .blurredTopClearBottom, .blurredLeadingClearTrailing:
-                        return [tintColor.opacity(tintOpacity), tintColor.opacity(0.0)]
-                    case .blurredBottomClearTop, .blurredTrailingClearLeading:
-                        return [tintColor.opacity(0.0), tintColor.opacity(tintOpacity)]
+                    case .blurredTopClearBottom:
+                        return [
+                            .init(color: tintColor.opacity(tintOpacity), location: 0.0),
+                            .init(color: tintColor.opacity(tintOpacity * 0.65), location: 0.35),
+                            .init(color: tintColor.opacity(tintOpacity * 0.22), location: 0.70),
+                            .init(color: tintColor.opacity(0.0), location: 1.0)
+                        ]
+                    case .blurredBottomClearTop:
+                        return [
+                            .init(color: tintColor.opacity(0.0), location: 0.0),
+                            .init(color: tintColor.opacity(tintOpacity * 0.22), location: 0.30),
+                            .init(color: tintColor.opacity(tintOpacity * 0.65), location: 0.65),
+                            .init(color: tintColor.opacity(tintOpacity), location: 1.0)
+                        ]
+                    case .blurredLeadingClearTrailing:
+                        return [
+                            .init(color: tintColor.opacity(tintOpacity), location: 0.0),
+                            .init(color: tintColor.opacity(tintOpacity * 0.55), location: 0.40),
+                            .init(color: tintColor.opacity(0.0), location: 1.0)
+                        ]
+                    case .blurredTrailingClearLeading:
+                        return [
+                            .init(color: tintColor.opacity(0.0), location: 0.0),
+                            .init(color: tintColor.opacity(tintOpacity * 0.55), location: 0.60),
+                            .init(color: tintColor.opacity(tintOpacity), location: 1.0)
+                        ]
                     }
                 }(),
                 startPoint: {
@@ -201,18 +223,17 @@ public final class VariableBlurUIView: UIVisualEffectView {
         self.haloRadiusBoost = haloRadiusBoost
         super.init(effect: UIBlurEffect(style: style))
 
-        if self.subviews.indices.contains(1) {
-            let tintOverlayView = subviews[1]
-            tintOverlayView.alpha = 0
-        }
+        hideTintOverlays()
 
         // Диффузионный проход-ореол: дочерний blur-вью, выходящий за границы
         // базового прохода. ВАЖНО: сабвью UIVisualEffectView добавляются только
         // в contentView — прямое addSubview в effect view роняет приложение.
-        haloEffectView.isUserInteractionEnabled = false
-        haloEffectView.clipsToBounds = false
-        contentView.addSubview(haloEffectView)
-        contentView.clipsToBounds = false
+        if haloIntensity > 0 {
+            haloEffectView.isUserInteractionEnabled = false
+            haloEffectView.clipsToBounds = false
+            contentView.addSubview(haloEffectView)
+            contentView.clipsToBounds = false
+        }
 
         // После закрытия fullScreenCover (плеер/шиты) хуки layout/didMoveToWindow
         // у нижнего экрана не гарантированы — чиним фильтры на активацию приложения
@@ -226,18 +247,31 @@ public final class VariableBlurUIView: UIVisualEffectView {
         self.resetEffect()
     }
 
+    private func hideTintOverlays() {
+        for subview in self.subviews.dropFirst() {
+            subview.alpha = 0
+            subview.isHidden = true
+        }
+        for subview in haloEffectView.subviews.dropFirst() {
+            subview.alpha = 0
+            subview.isHidden = true
+        }
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
     public override func layoutSubviews() {
         super.layoutSubviews()
+        hideTintOverlays()
         haloEffectView.frame = haloFrame()
         healLostFiltersIfNeeded(force: false)
     }
 
     public override func didMoveToWindow() {
         super.didMoveToWindow()
+        hideTintOverlays()
         if window != nil {
             healLostFiltersIfNeeded(force: false)
             scheduleDelayedHeals()
@@ -293,6 +327,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
     /// в тёмный прямоугольник с жёсткими краями. Переустанавливаем.
     private func healLostFiltersIfNeeded(force: Bool) {
         guard window != nil, bounds.width > 0, bounds.height > 0 else { return }
+        hideTintOverlays()
 
         func filtersMissing(_ layer: CALayer?) -> Bool {
             guard let filters = layer?.value(forKey: "filters") as? [Any] else { return true }
@@ -365,6 +400,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
     // MARK: - Effect Configuration
 
     private func resetEffect() {
+        hideTintOverlays()
+
         // 1. Базовый прогрессивный проход (линейная маска) — как раньше
         Self.applyVariableBlur(
             to: self,
@@ -509,11 +546,11 @@ public final class VariableBlurUIView: UIVisualEffectView {
 
         switch direction {
         case .blurredTopClearBottom:
-            startPoint = CGPoint(x: 0, y: height)
-            endPoint = CGPoint(x: 0, y: 0)
-        case .blurredBottomClearTop:
             startPoint = CGPoint(x: 0, y: 0)
             endPoint = CGPoint(x: 0, y: height)
+        case .blurredBottomClearTop:
+            startPoint = CGPoint(x: 0, y: height)
+            endPoint = CGPoint(x: 0, y: 0)
         case .blurredLeadingClearTrailing:
             startPoint = CGPoint(x: 0, y: 0)
             endPoint = CGPoint(x: width, y: 0)
