@@ -137,7 +137,8 @@ struct DetailsHeroDownloadButton: View {
         case .failed:
             Image(systemName: "arrow.clockwise").font(.system(size: 20, weight: .semibold))
         case nil:
-            Image(systemName: "arrow.down.to.line").font(.system(size: 22, weight: .semibold))
+            // This taller glyph needs a smaller point size to balance the 22pt heart.
+            Image(systemName: "arrow.down.to.line").font(.system(size: 20, weight: .semibold))
         }
     }
 }
