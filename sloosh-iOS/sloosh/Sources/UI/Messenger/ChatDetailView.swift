@@ -855,7 +855,7 @@ private struct PeakMessageBubbleView: View {
         if message.type == .watchParty, let party = message.watchParty {
             WatchPartyInviteCardView(payload: party, isFromMe: isFromMe) { invite in
                 Task {
-                    let cid = invite.chatId ?? repo.getOrCreateChatId(peerUserId: peerUser.id)
+                    let cid = invite.chatId ?? MessengerRepository.shared.getOrCreateChatId(peerUserId: peerUser.id)
                     if let session = await WatchPartyRepository.shared.joinSession(chatId: cid, partyId: invite.partyId) {
                         let payload = MediaCardPayload(
                             mediaId: session.mediaId,
