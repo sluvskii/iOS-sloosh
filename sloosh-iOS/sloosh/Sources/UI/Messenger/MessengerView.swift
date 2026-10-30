@@ -94,7 +94,7 @@ public struct MessengerView: View {
                     titleView: AnyView(
                         Text("Чаты")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .backdropForeground()
                             .lineLimit(1)
                             .matchedGeometryIfPresent(id: "nav_platter_title", in: messengerNamespace)
                     ),

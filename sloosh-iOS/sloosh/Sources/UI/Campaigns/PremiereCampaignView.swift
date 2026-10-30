@@ -89,10 +89,10 @@ private struct PremiereCampaignView: View {
                 // the old card decoration back into the countdown layout.
                 Text(isCompleted ? (campaign.completedText ?? campaign.title) : campaign.title)
                     .font(.subheadline.weight(.semibold))
+                    .backdropForeground()
                     .multilineTextAlignment(.center)
             }
         }
-        .foregroundStyle(.white)
         .padding(.vertical, 14)
         .frame(maxWidth: 420)
     }
@@ -120,7 +120,7 @@ private struct PremiereCampaignView: View {
     private var separator: some View {
         Text(":")
             .font(.system(size: min(digitSize, 50) * 0.65, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.45))
+            .backdropForeground(opacity: 0.45)
             .frame(width: 8, height: min(digitSize, 50) * 1.2)
             .accessibilityHidden(true)
     }
@@ -129,6 +129,7 @@ private struct PremiereCampaignView: View {
         VStack(spacing: 6) {
             Text(String(format: "%02d", value))
                 .font(.system(size: min(digitSize, 50), weight: .bold))
+                .backdropForeground()
                 .monospacedDigit()
                 .tracking(-1)
                 .contentTransition(.numericText(countsDown: true))
@@ -137,7 +138,7 @@ private struct PremiereCampaignView: View {
                 .frame(height: min(digitSize, 50) * 1.2)
             Text(kind.label(for: value))
                 .font(.system(size: min(labelSize, 16), weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .backdropForeground(opacity: 0.5)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 // Only digits roll. Noun changes should not slide or crossfade.

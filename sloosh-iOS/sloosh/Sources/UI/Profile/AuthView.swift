@@ -214,6 +214,7 @@ public struct AuthView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 SlooshTopBar(
                     title: mode == .signIn ? "Вход" : "Регистрация",
+                    blendsTitle: false,
                     scrollOffset: $scrollOffset,
                     leadingIcon: "xmark",
                     leadingAction: { dismiss() },

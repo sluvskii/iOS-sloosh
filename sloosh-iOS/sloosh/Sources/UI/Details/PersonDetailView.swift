@@ -239,7 +239,7 @@ struct PersonDetailView: View {
                 if isTitleAtTop {
                     Text(viewModel.details?.name ?? initialName ?? "")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .backdropForeground()
                         .lineLimit(1)
                         .padding(.horizontal, 68)
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -354,7 +354,7 @@ struct PersonDetailView: View {
             VStack(spacing: 6) {
                 Text(details.name)
                     .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
+                    .backdropForeground()
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
                     .opacity(isTitleAtTop ? 0 : 1)
@@ -365,7 +365,7 @@ struct PersonDetailView: View {
                 if let originalName = details.originalName, !originalName.isEmpty, originalName.lowercased() != details.name.lowercased() {
                     Text(originalName)
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .backdropForeground(opacity: 0.65)
                         .opacity(isTitleAtTop ? 0 : 1)
                         .blur(radius: isTitleAtTop ? 6 : 0)
                         .scaleEffect(isTitleAtTop ? 0.92 : 1.0)
@@ -563,11 +563,11 @@ private struct PersonBiographySection: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Биография")
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
 
             ZStack(alignment: .bottomLeading) {
                 Text(biography)
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(.primary.opacity(0.85))
                     .lineSpacing(4)
                     .lineLimit(isExpanded ? nil : 5)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -601,6 +601,7 @@ private struct PersonBiographySection: View {
                             }
                         }
                     )
+                    .backdropForeground(opacity: 0.85)
             }
             .background(
                 Text(biography)
@@ -674,10 +675,11 @@ private struct PersonExtraInfoBlock: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
 
             Text(content)
                 .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.primary.opacity(0.85))
+                .backdropForeground(opacity: 0.85)
                 .lineSpacing(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -782,6 +784,7 @@ private struct PersonPhotosSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Фотографии")
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
                 .padding(.horizontal, 16)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1383,6 +1386,7 @@ private struct PersonFilmographySection: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Фильмография")
                     .font(.system(size: 18, weight: .bold))
+                    .backdropForeground()
 
                 HStack(spacing: 8) {
                     ForEach(PersonDetailViewModel.FilmographyTab.allCases) { tab in
