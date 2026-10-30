@@ -191,10 +191,9 @@ public final class WatchPartyRepository: ObservableObject {
             // Host becomes peer for guest
             let hostPeer = SlooshUser(
                 id: session.hostUid,
-                username: session.hostName,
                 displayName: session.hostName,
-                avatarUrl: session.hostAvatarUrl,
-                tag: nil
+                tag: nil,
+                avatarUrl: session.hostAvatarUrl
             )
 
             self.activeSession = session

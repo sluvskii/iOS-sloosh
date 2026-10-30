@@ -9,6 +9,17 @@ struct WatchPartyInviteCardView: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    private var subtitleText: String? {
+        var parts: [String] = []
+        if let s = payload.season, let e = payload.episode {
+            parts.append("Сезон \(s), Серия \(e)")
+        }
+        if let tr = payload.translationName, !tr.isEmpty {
+            parts.append(tr)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Header badge
@@ -57,16 +68,8 @@ struct WatchPartyInviteCardView: View {
                         .foregroundColor(colorScheme == .dark ? .white : .primary)
                         .lineLimit(2)
 
-                    var subtitleParts: [String] = []
-                    if let s = payload.season, let e = payload.episode {
-                        subtitleParts.append("Сезон \(s), Серия \(e)")
-                    }
-                    if let tr = payload.translationName, !tr.isEmpty {
-                        subtitleParts.append(tr)
-                    }
-
-                    if !subtitleParts.isEmpty {
-                        Text(subtitleParts.joined(separator: " · "))
+                    if let subtitle = subtitleText {
+                        Text(subtitle)
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                             .lineLimit(1)

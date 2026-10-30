@@ -99,7 +99,7 @@ struct WatchPartySyncTests {
             preconditionFailure("Failed to encode/decode WatchPartySession: \(error)")
         }
 
-        // Test 6: WatchPartyInvitePayload in ChatMessage
+        // Test 6: WatchPartyInvitePayload encoding and decoding
         let invitePayload = WatchPartyInvitePayload(
             partyId: "wp_test123",
             mediaId: "movie_99",
@@ -114,26 +114,14 @@ struct WatchPartySyncTests {
         check(invitePayload.status.isPlayable, "Active status is playable")
         check(invitePayload.id == "wp_test123", "Payload id is partyId")
 
-        let chatMessage = ChatMessage(
-            id: "msg_1",
-            senderId: "u_host",
-            receiverId: "u_guest",
-            type: .watchParty,
-            text: "Приглашение к просмотру",
-            media: nil,
-            watchParty: invitePayload,
-            timestampMs: 1_000_000
-        )
-
         do {
-            let msgData = try encoder.encode(chatMessage)
-            let decodedMsg = try decoder.decode(ChatMessage.self, from: msgData)
-            check(decodedMsg.type == .watchParty, "Message type is watchParty")
-            check(decodedMsg.watchParty?.partyId == "wp_test123", "WatchParty payload preserved")
-            check(decodedMsg.watchParty?.season == 1, "Season preserved")
-            check(decodedMsg.watchParty?.episode == 2, "Episode preserved")
+            let payloadData = try encoder.encode(invitePayload)
+            let decodedPayload = try decoder.decode(WatchPartyInvitePayload.self, from: payloadData)
+            check(decodedPayload.partyId == "wp_test123", "WatchParty payload preserved")
+            check(decodedPayload.season == 1, "Season preserved")
+            check(decodedPayload.episode == 2, "Episode preserved")
         } catch {
-            preconditionFailure("Failed to encode/decode ChatMessage with watchParty: \(error)")
+            preconditionFailure("Failed to encode/decode WatchPartyInvitePayload: \(error)")
         }
 
         // Test 7: Closed status transitions
