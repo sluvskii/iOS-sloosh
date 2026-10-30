@@ -31,7 +31,7 @@ struct DetailsHeroButton<Label: View>: View {
         if isPrimary {
             Button(action: action) {
                 Circle()
-                    .fill(.white)
+                    .fill(.white.opacity(0.9)) // Same intensity as Home's active dark text tab.
                     .overlay {
                         label()
                             .foregroundStyle(.white)
@@ -40,6 +40,8 @@ struct DetailsHeroButton<Label: View>: View {
                     // Flatten ONLY the circle and symbol: the triangle removes
                     // alpha from the disc, revealing the actual screen beneath.
                     .compositingGroup()
+                    // Blend the finished disc, not the destination-out symbol.
+                    .blendMode(.plusLighter)
                     .frame(width: diameter, height: diameter)
                     // Keep the transparent triangle part of the tappable button.
                     .contentShape(Circle())
@@ -55,7 +57,12 @@ struct DetailsHeroButton<Label: View>: View {
         } else {
             Button(action: action) {
                 secondaryLabel
+                    .opacity(0.9)
                     .background(Circle().fill(.white.opacity(0.18)))
+                    // Blend the icon and flat fill together against the real
+                    // Details backdrop, just like Home's layered text tabs.
+                    .compositingGroup()
+                    .blendMode(.plusLighter)
             }
             .buttonStyle(.plain)
         }
