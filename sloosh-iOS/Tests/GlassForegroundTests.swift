@@ -68,7 +68,6 @@ struct GlassForegroundTests {
         }
         .frame(width: 32, height: 32)
         .environment(\.colorScheme, dark ? .dark : .light)
-        .environment(\.accessibilityReduceTransparency, false)
         let renderer = ImageRenderer(content: content)
         renderer.scale = 1
         guard let image = renderer.cgImage else { fatalError("Foreground sample did not render") }
