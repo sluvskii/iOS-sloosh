@@ -7,6 +7,8 @@ struct PlayerContainerView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
 
+    @ObservedObject private var watchPartyRepo = WatchPartyRepository.shared
+
     @State private var showControls = true
     @State private var showLockOverlay = false
     @State private var lockHideTask: Task<Void, Never>?
@@ -104,16 +106,31 @@ struct PlayerContainerView: View {
                         .zIndex(6)
                     }
                 }
+
+                // 9. Оверлей статуса совместного просмотра (Liquid Glass Toast)
+                if let toast = watchPartyRepo.lastStatusToast {
+                    VStack {
+                        WatchPartyStatusToast(message: toast)
+                            .padding(.top, 16)
+                        Spacer()
+                    }
+                    .zIndex(20)
+                    .allowsHitTesting(false)
+                }
             }
         }
         .environment(\.colorScheme, .dark)
         .preferredColorScheme(.dark)
         .tint(.white)
-        .onAppear { scheduleAutoHide() }
+        .onAppear {
+            scheduleAutoHide()
+            setupWatchPartySync()
+        }
         .onDisappear {
             hideTask?.cancel()
             tapTask?.cancel()
             lockHideTask?.cancel()
+            watchPartyRepo.leaveSession()
         }
         .onChange(of: vm.isPlaying) { _, playing in
             if playing {
@@ -444,17 +461,29 @@ struct PlayerContainerView: View {
         }
     }
 
-    private func scheduleLockAutoHide() {
-        lockHideTask?.cancel()
-        lockHideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3.5))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.22)) {
-                showLockOverlay = false
+    private func setupWatchPartySync() {
+        watchPartyRepo.onRemotePlay = { [weak vm] in
+            guard let vm else { return }
+            if !vm.isPlaying {
+                vm.togglePlayPause()
             }
         }
+        watchPartyRepo.onRemotePause = { [weak vm] in
+            guard let vm else { return }
+            if vm.isPlaying {
+                vm.togglePlayPause()
+            }
+        }
+        watchPartyRepo.onRemoteSeek = { [weak vm] targetSec in
+            vm?.seek(to: targetSec)
+        }
+        watchPartyRepo.onRemoteRateChange = { [weak vm] rate in
+            vm?.player?.rate = rate
+        }
+        watchPartyRepo.onRemoteEpisodeChange = { [weak vm] season, episode in
+            vm?.selectEpisode(season: season, episode: episode)
+        }
     }
-
 }
 
 // MARK: - Seek ripple transitions

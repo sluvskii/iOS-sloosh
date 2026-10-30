@@ -34,6 +34,7 @@ public enum TagValidator {
 public enum MessageType: String, Codable, Sendable, Hashable {
     case text
     case media
+    case watchParty
 }
 
 public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hashable {
@@ -228,6 +229,7 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
     public let type: MessageType
     public var text: String?
     public var media: MediaCardPayload?
+    public var watchParty: WatchPartyInvitePayload?
     public var timestampMs: Int64
     public let replyToId: String?
     public var reactions: [String: String]?
@@ -242,6 +244,7 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
         type: MessageType = .text,
         text: String? = nil,
         media: MediaCardPayload? = nil,
+        watchParty: WatchPartyInvitePayload? = nil,
         timestampMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
         replyToId: String? = nil,
         reactions: [String: String]? = nil,
@@ -255,6 +258,7 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
         self.type = type
         self.text = text
         self.media = media
+        self.watchParty = watchParty
         self.timestampMs = timestampMs
         self.replyToId = replyToId
         self.reactions = reactions

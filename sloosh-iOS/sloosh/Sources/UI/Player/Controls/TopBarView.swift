@@ -12,6 +12,9 @@ struct TopBarView: View {
     @Binding var isInteracting: Bool
     var onInteraction: (() -> Void)? = nil
 
+    @StateObject private var watchPartyRepo = WatchPartyRepository.shared
+    @State private var showFriendPicker = false
+
     var body: some View {
         VStack(spacing: 4) {
             ZStack {
@@ -26,6 +29,7 @@ struct TopBarView: View {
                     closeButton
                     dualActionsGroup
                     Spacer()
+                    watchPartyButton
                     clipButton
                     lockButton
                 }
@@ -202,6 +206,82 @@ struct TopBarView: View {
         .padding(.horizontal, 2)
         .frame(height: 44)
         .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    // MARK: - Совместный просмотр (SharePlay-style)
+
+    @ViewBuilder
+    private var watchPartyButton: some View {
+        if watchPartyRepo.isConnected, let peer = watchPartyRepo.peerUser {
+            Menu {
+                Text("Совместно с \(peer.displayTitle)")
+                Button(role: .destructive) {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    watchPartyRepo.leaveSession()
+                } label: {
+                    Label("Завершить просмотр", systemImage: "xmark.circle")
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "shareplay")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.green)
+
+                    if let avatar = peer.avatarUrl, let url = URL(string: avatar) {
+                        AsyncCachedImage(url: url) {
+                            Circle().fill(Color.white.opacity(0.15))
+                        } content: { image in
+                            Image(uiImage: image).resizable().scaledToFill()
+                        } fallback: {
+                            Circle().fill(Color.white.opacity(0.15))
+                        }
+                        .frame(width: 20, height: 20)
+                        .clipShape(Circle())
+                    }
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 44)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .accessibilityLabel("Управление совместным просмотром")
+        } else {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showFriendPicker = true
+            } label: {
+                Image(systemName: "shareplay")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .glassForeground()
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel("Смотреть вместе")
+            .sheet(isPresented: $showFriendPicker) {
+                WatchPartyFriendPickerSheet { friend in
+                    let mediaId = vm.rootMediaKey ?? vm.fallbackTitle
+                    Task {
+                        _ = await watchPartyRepo.createSession(
+                            mediaId: mediaId,
+                            mediaType: vm.isMovie ? "movie" : "tv",
+                            title: vm.fallbackTitle,
+                            posterUrl: nil,
+                            season: vm.currentSeason,
+                            episode: vm.currentEpisode,
+                            translationId: nil,
+                            translationName: vm.currentTranslationName,
+                            currentPosition: vm.currentTime,
+                            isPlaying: vm.isPlaying,
+                            invitee: friend
+                        )
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Создать момент (вырезать клип)

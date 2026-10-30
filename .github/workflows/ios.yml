@@ -55,6 +55,9 @@ jobs:
       - name: Test clip playback policy
         run: bash sloosh-iOS/Tests/run-clip-playback-tests.sh
 
+      - name: Test watch party sync
+        run: bash sloosh-iOS/Tests/run-watch-party-tests.sh
+
       - name: Test messenger search
         run: bash sloosh-iOS/Tests/run-messenger-search-tests.sh
 

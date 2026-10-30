@@ -1433,10 +1433,12 @@ class PlayerViewModel: ObservableObject {
             isBuffering = false
             isPausedByUser = true
             saveCurrentProgress()
+            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: false, positionSec: currentTime, action: .pause)
         } else {
             isPausedByUser = false
             player.play()
             isPlaying = true
+            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: true, positionSec: currentTime, action: .play)
         }
         updateNowPlaying()
     }
@@ -1473,6 +1475,7 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 self.isUserSeeking = false
                 self.saveCurrentProgress()
+                WatchPartyRepository.shared.sendPlaybackAction(isPlaying: self.isPlaying, positionSec: effectiveSeconds, action: .seek, targetTime: effectiveSeconds)
                 if !self.isPausedByUser {
                     self.player?.play()
                 }
@@ -2929,6 +2932,7 @@ class PlayerViewModel: ObservableObject {
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
                     }
+                    WatchPartyRepository.shared.evaluateDrift(localCurrentTime: t, localIsPlaying: self.isPlaying)
                     if !self.activeSubtitleCues.isEmpty {
                         self.updateSubtitleCue(at: t)
                     }
@@ -3224,6 +3228,7 @@ class PlayerViewModel: ObservableObject {
               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else { return }
         guard let translation = preferredTranslation(in: epObj) else { return }
+        WatchPartyRepository.shared.sendEpisodeChange(season: season, episode: episode)
         playEpisode((season: season, episode: episode, translation: translation))
     }
 

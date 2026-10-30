@@ -220,6 +220,13 @@
       }
     },
 
+    "watch_parties": {
+      "$partyId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
     "global_stats": {
       ".read": true,
       ".write": "auth != null"

@@ -852,7 +852,51 @@ private struct PeakMessageBubbleView: View {
 
     @ViewBuilder
     private var bubbleBody: some View {
-        if message.type == .media, let media = message.media {
+        if message.type == .watchParty, let party = message.watchParty {
+            WatchPartyInviteCardView(payload: party, isFromMe: isFromMe) { invite in
+                Task {
+                    if let session = await WatchPartyRepository.shared.joinSession(partyId: invite.partyId) {
+                        let payload = MediaCardPayload(
+                            mediaId: session.mediaId,
+                            type: session.mediaType,
+                            title: session.title,
+                            posterUrl: session.posterUrl,
+                            rating: nil,
+                            year: nil,
+                            season: session.season,
+                            episode: session.episode,
+                            translationName: session.translationName
+                        )
+                        onPlayDirectly(payload)
+                    }
+                }
+            }
+            .contextMenu {
+                Group {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                            showReactionPicker.toggle()
+                        }
+                    } label: {
+                        Label("Реакция...", systemImage: "face.smiling")
+                    }
+
+                    Button {
+                        onReply(message)
+                    } label: {
+                        Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                    }
+                }
+                .tint(Color.primary)
+
+                Button(role: .destructive) {
+                    onDelete(message)
+                } label: {
+                    Label("Удалить у всех", systemImage: "trash")
+                }
+                .tint(.red)
+            }
+        } else if message.type == .media, let media = message.media {
             MediaMessageCardView(media: media, onOpenDetails: { movieId in
                 onOpenMovie(movieId)
             }, onPlayDirectly: { payload in

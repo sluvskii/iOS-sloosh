@@ -1136,6 +1136,8 @@ public final class MessengerRepository: ObservableObject {
         let previewText: String
         if let media = sendingMessage.media {
             previewText = "🎬 \(media.title)"
+        } else if let party = sendingMessage.watchParty {
+            previewText = "🍿 Смотреть вместе: \(party.title)"
         } else {
             previewText = sendingMessage.text ?? ""
         }
@@ -1194,6 +1196,42 @@ public final class MessengerRepository: ObservableObject {
             media: mediaPayload,
             timestampMs: monotonicTs,
             replyToId: replyToId,
+            deliveryStatus: .sending
+        )
+        return await sendMessage(toPeerUser: peerUser, message: message)
+    }
+
+    public func sendWatchPartyInvite(
+        toPeerUser peerUser: SlooshUser,
+        party: WatchPartySession
+    ) async -> Bool {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
+        let chatId = getOrCreateChatId(peerUserId: peerUser.id)
+        let lastDiskTs = loadMessagesFromDisk(chatId: chatId).map(\.timestampMs).max() ?? 0
+        let monotonicTs = generateMonotonicTimestamp(after: lastDiskTs)
+        let msgId = "msg_\(monotonicTs)_\(UUID().uuidString.prefix(8).lowercased())"
+
+        let payload = WatchPartyInvitePayload(
+            partyId: party.id,
+            mediaId: party.mediaId,
+            mediaType: party.mediaType,
+            title: party.title,
+            posterUrl: party.posterUrl,
+            season: party.season,
+            episode: party.episode,
+            translationName: party.translationName,
+            status: party.status
+        )
+
+        let message = ChatMessage(
+            id: msgId,
+            senderId: currentUser.id,
+            receiverId: peerUser.id,
+            type: .watchParty,
+            text: "Приглашение к совместному просмотру",
+            media: nil,
+            watchParty: payload,
+            timestampMs: monotonicTs,
             deliveryStatus: .sending
         )
         return await sendMessage(toPeerUser: peerUser, message: message)
@@ -1308,6 +1346,8 @@ public final class MessengerRepository: ObservableObject {
                 let previewText: String
                 if let media = message.media {
                     previewText = "🎬 \(media.title)"
+                } else if let party = message.watchParty {
+                    previewText = "🍿 Смотреть вместе: \(party.title)"
                 } else {
                     previewText = message.text ?? ""
                 }
@@ -1486,6 +1526,8 @@ public final class MessengerRepository: ObservableObject {
         let previewText: String
         if let media = lastMsg?.media {
             previewText = "🎬 \(media.title)"
+        } else if let party = lastMsg?.watchParty {
+            previewText = "🍿 Смотреть вместе: \(party.title)"
         } else {
             previewText = lastMsg?.text ?? ""
         }
