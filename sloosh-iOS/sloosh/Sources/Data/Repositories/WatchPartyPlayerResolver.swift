@@ -108,7 +108,7 @@ enum WatchPartyPlayerResolver {
         let resolvedKey = kp > 0 ? "kp_\(kp)" : (vm.details?.id ?? "tmdb_\(tmdb ?? 0)")
         let voices = result.allTranslationNames
         let effectiveSource: MediaStreamSource = (isSource2 && wrapper.collapsResult != nil) ? .source2 : .source1
-        let customHeaders = effectiveSource == .source2 ? wrapper.collapsResult?.headers : nil
+        let customHeaders = effectiveSource == .source2 ? CollapsRepository.streamHeaders : nil
         let subs: [PlaybackSubtitle] = effectiveSource == .source2
             ? (targetSeason != nil && targetEpisode != nil ? (wrapper.collapsResult?.episodeSubtitles[EpisodeKey(season: targetSeason!, episode: targetEpisode!)] ?? []) : (wrapper.collapsResult?.movieSubtitles ?? []))
             : []
