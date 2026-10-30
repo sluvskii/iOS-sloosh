@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Appearance policy shared by text on cinematic backdrops and variable-blur
-/// headers. This is opt-in, never a global environment or card/content style.
+/// Appearance policy shared by neutral text and non-glass symbols on cinematic
+/// backdrops and variable-blur headers. This is opt-in, never a global environment or card/content style.
 struct BackdropForegroundAppearance {
     let opacity: Double
     let blendMode: BlendMode
