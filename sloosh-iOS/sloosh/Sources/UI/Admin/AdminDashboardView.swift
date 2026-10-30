@@ -1697,6 +1697,7 @@ public struct AdminDashboardView: View {
                     Image(systemName: "pencil")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.primary)
+                        .glassForeground()
                         .padding(8)
                         .glassEffect(in: Circle())
                 }

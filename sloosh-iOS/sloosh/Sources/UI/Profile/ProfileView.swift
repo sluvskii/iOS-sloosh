@@ -142,6 +142,7 @@ struct ProfileView: View {
                                     Image(systemName: "arrow.down.circle.fill")
                                         .font(.system(size: 21, weight: .medium))
                                         .foregroundStyle(.primary)
+                                        .glassForeground()
                                         .frame(width: 44, height: 44)
                                         .contentShape(Rectangle())
                                 }
@@ -157,6 +158,7 @@ struct ProfileView: View {
                                     Image(systemName: "gearshape.fill")
                                         .font(.system(size: 20, weight: .medium))
                                         .foregroundStyle(.primary)
+                                        .glassForeground()
                                         .frame(width: 44, height: 44)
                                         .contentShape(Rectangle())
                                 }

@@ -32,6 +32,16 @@ struct TelegramGlassIconButton: View {
             action: action
         )
         .frame(width: buttonSize, height: buttonSize)
+        .overlay {
+            // UIKit keeps reliable UIControl hit testing/accessibility; SwiftUI
+            // draws the symbol so blending affects the glyph, not the glass.
+            Image(systemName: systemName)
+                .font(.system(size: iconSize, weight: .medium))
+                .foregroundStyle(tintColor ?? .primary)
+                .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: tintColor))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .glassEffect(.regular.interactive(), in: .circle)
     }
 }
@@ -44,12 +54,15 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
     
     func makeUIView(context: Context) -> UIButton {
         let button = HighlightableTelegramButton(type: .custom)
+        button.backgroundColor = .clear
+        button.isOpaque = false
         button.adjustsImageWhenHighlighted = false
         button.adjustsImageWhenDisabled = false
         
         let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
         let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
         button.setImage(image, for: .normal)
+        button.imageView?.alpha = 0 // The visible symbol is the SwiftUI foreground overlay.
         button.overrideUserInterfaceStyle = context.environment.colorScheme == .dark ? .dark : .unspecified
         button.tintColor = tintColor != nil ? UIColor(tintColor!) : (context.environment.colorScheme == .dark ? .white : .label)
         
@@ -63,6 +76,7 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
             let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
             let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
             button.setImage(image, for: .normal)
+            button.imageView?.alpha = 0
             button.overrideUserInterfaceStyle = context.environment.colorScheme == .dark ? .dark : .unspecified
             button.tintColor = tintColor != nil ? UIColor(tintColor!) : (context.environment.colorScheme == .dark ? .white : .label)
         }

@@ -57,6 +57,7 @@ struct ShareToFriendSheet: View {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(.white)
+                            .glassForeground()
                     }
                     .tint(.white)
                 }
@@ -69,6 +70,7 @@ struct ShareToFriendSheet: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
+                            .glassForeground()
                     }
                     .tint(.white)
                 }
@@ -100,6 +102,7 @@ struct ShareToFriendSheet: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.secondary)
+                .glassForeground()
 
             TextField("Поиск", text: $searchQuery)
                 .font(.system(size: 15))
@@ -122,6 +125,7 @@ struct ShareToFriendSheet: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
+                        .glassForeground()
                 }
                 .buttonStyle(.plain)
             }

@@ -46,6 +46,7 @@ struct TrailerPlayerSheetView: View {
                         Image(systemName: "xmark")
                             .symbolRenderingMode(.monochrome)
                             .foregroundStyle(.primary)
+                            .glassForeground()
                     }
                     .tint(.primary)
                     .buttonStyle(.plain)
@@ -58,6 +59,7 @@ struct TrailerPlayerSheetView: View {
                             Image(systemName: "square.and.arrow.up")
                                 .symbolRenderingMode(.monochrome)
                                 .foregroundStyle(.primary)
+                                .glassForeground()
                         }
                         .tint(.primary)
                         .buttonStyle(.plain)

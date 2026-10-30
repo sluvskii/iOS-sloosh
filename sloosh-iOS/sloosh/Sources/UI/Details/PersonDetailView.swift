@@ -645,6 +645,7 @@ private struct PersonBiographySection: View {
                     }
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.white)
+                    .glassForeground()
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .glassEffect(.regular.interactive(), in: .capsule)

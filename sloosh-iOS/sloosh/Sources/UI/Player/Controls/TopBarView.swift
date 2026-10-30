@@ -132,16 +132,19 @@ struct TopBarView: View {
             Image(systemName: "rectangle.stack")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.85))
+                .glassForeground()
 
             Text("\(season) сезон, \(episode) серия")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
+                .glassForeground()
                 .lineLimit(1)
 
             if isInteractive {
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 7.5, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.45))
+                    .glassForeground()
             }
         }
         .padding(.horizontal, 9)
@@ -164,6 +167,7 @@ struct TopBarView: View {
             Image(systemName: "xmark")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
@@ -182,6 +186,7 @@ struct TopBarView: View {
                     Image(systemName: vm.isPiPActive ? "pip.exit" : "pip.enter")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(.white.opacity(0.85))
+                        .glassForeground()
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
@@ -211,6 +216,7 @@ struct TopBarView: View {
             Image(systemName: "scissors")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
@@ -231,6 +237,7 @@ struct TopBarView: View {
             Image(systemName: "lock.open.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }

@@ -216,6 +216,7 @@ struct MediaCommentsSheetView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.primary)
+                        .glassForeground()
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
@@ -245,6 +246,7 @@ struct MediaCommentsSheetView: View {
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.primary)
+                            .glassForeground()
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
                     }
@@ -565,6 +567,7 @@ struct MediaCommentsSheetView: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.black)
+                        .glassForeground(isInverted: true)
                 }
             }
             .frame(width: 40, height: 40)

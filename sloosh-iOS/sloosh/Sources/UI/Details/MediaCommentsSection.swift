@@ -106,6 +106,7 @@ struct MediaCommentsSection: View {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.6))
+                    .glassForeground()
                     .frame(width: 40, height: 40)
                     .glassEffect(.regular.interactive(), in: .circle)
 

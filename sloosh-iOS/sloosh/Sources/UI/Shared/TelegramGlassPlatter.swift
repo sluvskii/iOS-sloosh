@@ -116,11 +116,13 @@ private struct PlatterItemButton: View {
                     Image(systemName: systemName)
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(effectiveTintColor)
+                        .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: item.tintColor))
                         .frame(width: isSingleIcon ? 44 : 42, height: 44)
                 } else if let title = item.title {
                     Text(title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(effectiveTintColor)
+                        .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: item.tintColor))
                         .padding(.horizontal, 14)
                         .frame(height: 44)
                 }
