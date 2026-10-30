@@ -474,25 +474,19 @@ struct PlayerContainerView: View {
 
     private func setupWatchPartySync() {
         watchPartyRepo.onRemotePlay = { [weak vm] in
-            guard let vm else { return }
-            if !vm.isPlaying {
-                vm.togglePlayPause()
-            }
+            vm?.applyRemotePlay()
         }
         watchPartyRepo.onRemotePause = { [weak vm] in
-            guard let vm else { return }
-            if vm.isPlaying {
-                vm.togglePlayPause()
-            }
+            vm?.applyRemotePause()
         }
         watchPartyRepo.onRemoteSeek = { [weak vm] targetSec in
-            vm?.seek(to: targetSec)
+            vm?.applyRemoteSeek(to: targetSec)
         }
         watchPartyRepo.onRemoteRateChange = { [weak vm] rate in
             vm?.player?.rate = rate
         }
         watchPartyRepo.onRemoteEpisodeChange = { [weak vm] season, episode in
-            vm?.selectEpisode(season: season, episode: episode)
+            vm?.selectEpisode(season: season, episode: episode, isRemote: true)
         }
     }
 }

@@ -1425,6 +1425,27 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - Playback actions
 
+    func applyRemotePlay() {
+        guard let player else { return }
+        isPausedByUser = false
+        player.play()
+        isPlaying = true
+        updateNowPlaying()
+    }
+
+    func applyRemotePause() {
+        guard let player else { return }
+        player.pause()
+        isPlaying = false
+        isBuffering = false
+        isPausedByUser = true
+        updateNowPlaying()
+    }
+
+    func applyRemoteSeek(to seconds: Double) {
+        seek(to: seconds, isRemote: true)
+    }
+
     func togglePlayPause() {
         guard let player else { return }
         if isPlaying || player.rate > 0 || player.timeControlStatus == .playing {
@@ -1459,8 +1480,7 @@ class PlayerViewModel: ObservableObject {
         seek(to: target)
     }
 
-
-    func seek(to seconds: Double) {
+    func seek(to seconds: Double, isRemote: Bool = false) {
         guard let player else { return }
         let minTime: Double = isCollapsStream ? 3.5 : 0.0
         let effectiveSeconds = max(minTime, seconds)
@@ -1475,7 +1495,9 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 self.isUserSeeking = false
                 self.saveCurrentProgress()
-                WatchPartyRepository.shared.sendPlaybackAction(isPlaying: self.isPlaying, positionSec: effectiveSeconds, action: .seek, targetTime: effectiveSeconds)
+                if !isRemote {
+                    WatchPartyRepository.shared.sendPlaybackAction(isPlaying: self.isPlaying, positionSec: effectiveSeconds, action: .seek, targetTime: effectiveSeconds)
+                }
                 if !self.isPausedByUser {
                     self.player?.play()
                 }
@@ -2932,7 +2954,12 @@ class PlayerViewModel: ObservableObject {
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
                     }
-                    WatchPartyRepository.shared.evaluateDrift(localCurrentTime: t, localIsPlaying: self.isPlaying)
+                    WatchPartyRepository.shared.evaluateDrift(
+                        localCurrentTime: t,
+                        localIsPlaying: self.isPlaying,
+                        isBuffering: self.isBuffering,
+                        isUserSeeking: self.isUserSeeking
+                    )
                     if !self.activeSubtitleCues.isEmpty {
                         self.updateSubtitleCue(at: t)
                     }
@@ -3223,12 +3250,14 @@ class PlayerViewModel: ObservableObject {
         playEpisode(prevEpisode)
     }
 
-    func selectEpisode(season: Int, episode: Int) {
+    func selectEpisode(season: Int, episode: Int, isRemote: Bool = false) {
         guard let seriesResult,
               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else { return }
         guard let translation = preferredTranslation(in: epObj) else { return }
-        WatchPartyRepository.shared.sendEpisodeChange(season: season, episode: episode)
+        if !isRemote {
+            WatchPartyRepository.shared.sendEpisodeChange(season: season, episode: episode)
+        }
         playEpisode((season: season, episode: episode, translation: translation))
     }
 

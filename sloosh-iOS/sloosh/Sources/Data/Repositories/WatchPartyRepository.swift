@@ -15,7 +15,7 @@ public final class WatchPartyRepository: ObservableObject {
     @Published public private(set) var isHost: Bool = false
     @Published public private(set) var lastStatusToast: String? = nil
     @Published public var incomingInvite: WatchPartyInvitePayload? = nil
-    @Published public var pendingDirectPlayPayload: MediaCardPayload? = nil
+    @Published public var activePartyPlayerConfig: PlayerConfig? = nil
 
     // Callback hooks for PlayerViewModel
     public var onRemotePlay: (() -> Void)?
@@ -30,6 +30,9 @@ public final class WatchPartyRepository: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var toastDismissTask: Task<Void, Never>?
     private var isApplyingRemoteAction: Bool = false
+    private var lastProcessedPlaybackUpdatedAtMs: Int64 = 0
+    private var lastHardSeekTime: Date = .distantPast
+    private var lastDriftEvaluationTime: Date = .distantPast
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
 
     private init() {}
@@ -79,6 +82,7 @@ public final class WatchPartyRepository: ObservableObject {
         episode: Int?,
         translationId: Int?,
         translationName: String?,
+        streamSource: String? = nil,
         currentPosition: Double,
         isPlaying: Bool,
         invitee: SlooshUser
@@ -114,6 +118,7 @@ public final class WatchPartyRepository: ObservableObject {
             episode: episode,
             translationId: translationId,
             translationName: translationName,
+            streamSource: streamSource,
             playback: playback,
             status: .active
         )
@@ -156,6 +161,7 @@ public final class WatchPartyRepository: ObservableObject {
         self.isHost = true
         self.peerUser = invitee
         self.isConnected = true
+        self.lastProcessedPlaybackUpdatedAtMs = playback.updatedAtMs
 
         startObservingSession(chatId: chatId, partyId: partyId)
         showToast("Приглашение отправлено \(invitee.displayTitle)")
@@ -241,6 +247,7 @@ public final class WatchPartyRepository: ObservableObject {
         self.isHost = false
         self.peerUser = hostPeer
         self.isConnected = true
+        self.lastProcessedPlaybackUpdatedAtMs = session.playback.updatedAtMs
 
         startObservingSession(chatId: resolvedChatId, partyId: session.id)
         showToast("Вы подключились к просмотру с \(session.hostName)")
@@ -249,6 +256,17 @@ public final class WatchPartyRepository: ObservableObject {
     }
 
     /// Fast one-tap join directly from an incoming invite or conversation in chat.
+    public func acceptInviteFromChat(partyId: String, chatId: String) {
+        incomingInvite = nil
+        Task { @MainActor in
+            if let joined = await joinSession(chatId: chatId, partyId: partyId) {
+                if let config = await WatchPartyPlayerResolver.resolveConfig(for: joined) {
+                    self.activePartyPlayerConfig = config
+                }
+            }
+        }
+    }
+
     public func acceptInviteFromChat(chatId: String) async {
         guard let url = URL(string: "\(databaseBaseURL)/chats/\(chatId)/watch_party.json\(authQueryParam)") else { return }
         do {
@@ -257,18 +275,9 @@ public final class WatchPartyRepository: ObservableObject {
             guard let session = try? JSONDecoder().decode(WatchPartySession.self, from: data), session.status == .active else { return }
 
             if let joined = await joinSession(chatId: chatId, partyId: session.id) {
-                let payload = MediaCardPayload(
-                    mediaId: joined.mediaId,
-                    type: joined.mediaType,
-                    title: joined.title,
-                    posterUrl: joined.posterUrl,
-                    rating: nil,
-                    year: nil,
-                    season: joined.season,
-                    episode: joined.episode,
-                    translationName: joined.translationName
-                )
-                self.pendingDirectPlayPayload = payload
+                if let config = await WatchPartyPlayerResolver.resolveConfig(for: joined) {
+                    self.activePartyPlayerConfig = config
+                }
             }
         } catch {
             AppDiagnostics.shared.log("WatchPartyRepository: Failed to accept invite from chat: \(error)")
@@ -482,6 +491,7 @@ public final class WatchPartyRepository: ObservableObject {
         // 2. Ignore actions originated by current user
         let action = remote.playback
         if action.lastActionByUid == currentUserId {
+            self.activeSession = remote
             return
         }
 
@@ -494,6 +504,7 @@ public final class WatchPartyRepository: ObservableObject {
                 if newSeason != oldSeason || newEpisode != oldEpisode {
                     activeSession?.season = newSeason
                     activeSession?.episode = newEpisode
+                    lastProcessedPlaybackUpdatedAtMs = action.updatedAtMs
                     showToast("\(action.lastActionByName) переключил(а) на \(newEpisode) серию")
                     onRemoteEpisodeChange?(newSeason, newEpisode)
                     return
@@ -501,7 +512,15 @@ public final class WatchPartyRepository: ObservableObject {
             }
         }
 
-        // 4. Handle Play / Pause / Seek events
+        // 4. Check if this playback action was ALREADY processed!
+        // Prevents endless re-triggering of seek/play on every 1-second polling tick.
+        guard action.updatedAtMs > lastProcessedPlaybackUpdatedAtMs else {
+            self.activeSession = remote
+            return
+        }
+        lastProcessedPlaybackUpdatedAtMs = action.updatedAtMs
+
+        // 5. Handle Play / Pause / Seek events (only once per user action)
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let targetPos = action.targetPosition(at: nowMs)
 
@@ -523,9 +542,22 @@ public final class WatchPartyRepository: ObservableObject {
     }
 
     /// Evaluates clock drift and returns recommended playback rate or seek target.
-    public func evaluateDrift(localCurrentTime: Double, localIsPlaying: Bool) {
+    /// Safely throttled to avoid endless seek loops while buffering.
+    public func evaluateDrift(
+        localCurrentTime: Double,
+        localIsPlaying: Bool,
+        isBuffering: Bool = false,
+        isUserSeeking: Bool = false
+    ) {
         guard let session = activeSession, isConnected else { return }
         guard !isApplyingRemoteAction else { return }
+        guard !isBuffering && !isUserSeeking else { return }
+
+        // Throttle drift checks to at most once every 3.0 seconds
+        let now = Date()
+        guard now.timeIntervalSince(lastDriftEvaluationTime) >= 3.0 else { return }
+        lastDriftEvaluationTime = now
+
         let playback = session.playback
 
         // If remote is paused, ensure local is paused
@@ -540,18 +572,21 @@ public final class WatchPartyRepository: ObservableObject {
         let targetPos = playback.targetPosition(at: nowMs)
         let drift = localCurrentTime - targetPos // positive = local ahead, negative = local behind
 
-        if abs(drift) > 2.0 {
-            // Hard drift: soft seek to catch up
-            isApplyingRemoteAction = true
-            onRemoteSeek?(targetPos)
-            onRemoteRateChange?(1.0)
-            isApplyingRemoteAction = false
-        } else if abs(drift) > 0.35 {
-            // Soft drift: micro-adjust playback rate to silently align audio/video buffers
-            let targetRate: Float = drift < 0 ? 1.04 : 0.96
+        if abs(drift) > 3.0 {
+            // Hard drift: soft seek only with an 8-second cooldown to prevent ping-pong loops
+            if now.timeIntervalSince(lastHardSeekTime) >= 8.0 {
+                lastHardSeekTime = now
+                isApplyingRemoteAction = true
+                onRemoteSeek?(targetPos)
+                onRemoteRateChange?(1.0)
+                isApplyingRemoteAction = false
+            }
+        } else if abs(drift) > 0.4 {
+            // Soft drift: micro-adjust playback rate (1.03x or 0.97x) to silently align buffers
+            let targetRate: Float = drift < 0 ? 1.03 : 0.97
             onRemoteRateChange?(targetRate)
         } else {
-            // Perfectly in sync: ensure rate is standard 1.0x
+            // In sync: ensure rate is standard 1.0x
             onRemoteRateChange?(1.0)
         }
     }

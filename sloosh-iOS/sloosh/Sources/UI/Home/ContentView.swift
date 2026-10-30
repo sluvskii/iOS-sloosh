@@ -19,8 +19,6 @@ struct ContentView: View {
     @ObservedObject private var watchPartyRepo = WatchPartyRepository.shared
     @State private var loadedAvatarImage: UIImage? = resolveInitialAvatar(for: AuthRepository.shared.currentUser)
     @State private var avatarVersion: Int = 0
-    @State private var activePartyPayload: MediaCardPayload? = nil
-    @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var activePlayerConfig: PlayerConfig? = nil
 
     @ViewBuilder
@@ -141,19 +139,6 @@ struct ContentView: View {
                 }
             }
             .withToasts()
-            .sheet(item: $activePartyPayload, onDismiss: {
-                if let pending = pendingPlayerConfig {
-                    pendingPlayerConfig = nil
-                    DispatchQueue.main.async {
-                        activePlayerConfig = pending
-                    }
-                }
-            }) { media in
-                HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title) { config in
-                    pendingPlayerConfig = config
-                    activePartyPayload = nil
-                }
-            }
             .fullScreenCover(item: $activePlayerConfig, onDismiss: {
                 activePlayerConfig = nil
             }) { config in
@@ -161,10 +146,10 @@ struct ContentView: View {
                     .preferredColorScheme(.dark)
                     .environment(\.colorScheme, .dark)
             }
-            .onReceive(watchPartyRepo.$pendingDirectPlayPayload) { payload in
-                if let payload = payload {
-                    activePartyPayload = payload
-                    watchPartyRepo.pendingDirectPlayPayload = nil
+            .onReceive(watchPartyRepo.$activePartyPlayerConfig) { config in
+                if let config {
+                    activePlayerConfig = config
+                    watchPartyRepo.activePartyPlayerConfig = nil
                 }
             }
             .onAppear {

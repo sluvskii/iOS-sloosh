@@ -269,11 +269,12 @@ struct TopBarView: View {
                             mediaId: mediaId,
                             mediaType: vm.isMovie ? "movie" : "tv",
                             title: vm.fallbackTitle,
-                            posterUrl: nil,
+                            posterUrl: vm.posterUrl,
                             season: vm.currentSeason,
                             episode: vm.currentEpisode,
                             translationId: nil,
                             translationName: vm.currentTranslationName,
+                            streamSource: vm.streamSource == .source2 ? "source2" : "source1",
                             currentPosition: vm.currentTime,
                             isPlaying: vm.isPlaying,
                             invitee: friend

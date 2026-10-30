@@ -76,6 +76,12 @@ public struct ChatDetailView: View {
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
+        .onReceive(WatchPartyRepository.shared.$activePartyPlayerConfig) { config in
+            if let config {
+                activePlayerConfig = config
+                WatchPartyRepository.shared.activePartyPlayerConfig = nil
+            }
+        }
         .fullScreenCover(item: $selectedClipForPlayback, onDismiss: {
             selectedClipForPlayback = nil
         }) { clip in
@@ -854,23 +860,8 @@ private struct PeakMessageBubbleView: View {
     private var bubbleBody: some View {
         if message.type == .watchParty, let party = message.watchParty {
             WatchPartyInviteCardView(payload: party, isFromMe: isFromMe) { invite in
-                Task {
-                    let cid = invite.chatId ?? MessengerRepository.shared.getOrCreateChatId(peerUserId: peerUser.id)
-                    if let session = await WatchPartyRepository.shared.joinSession(chatId: cid, partyId: invite.partyId) {
-                        let payload = MediaCardPayload(
-                            mediaId: session.mediaId,
-                            type: session.mediaType,
-                            title: session.title,
-                            posterUrl: session.posterUrl,
-                            rating: nil,
-                            year: nil,
-                            season: session.season,
-                            episode: session.episode,
-                            translationName: session.translationName
-                        )
-                        onPlayDirectly(payload)
-                    }
-                }
+                let cid = invite.chatId ?? MessengerRepository.shared.getOrCreateChatId(peerUserId: peerUser.id)
+                WatchPartyRepository.shared.acceptInviteFromChat(partyId: invite.partyId, chatId: cid)
             }
             .contextMenu {
                 Group {
