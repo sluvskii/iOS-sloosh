@@ -3101,7 +3101,7 @@ struct EpisodeCellView: View {
                 } label: {
                     Image(systemName: "info.circle")
                         .font(.system(size: 15))
-                        .foregroundColor(.secondary.opacity(0.8))
+                        .backdropForeground(opacity: 0.65)
                         .padding(.leading, 4)
                 }
                 .buttonStyle(.plain)
