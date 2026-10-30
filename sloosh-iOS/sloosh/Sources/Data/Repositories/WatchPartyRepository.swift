@@ -15,7 +15,7 @@ public final class WatchPartyRepository: ObservableObject {
     @Published public private(set) var isHost: Bool = false
     @Published public private(set) var lastStatusToast: String? = nil
     @Published public var incomingInvite: WatchPartyInvitePayload? = nil
-    @Published public var activePartyPlayerConfig: PlayerConfig? = nil
+    @Published var activePartyPlayerConfig: PlayerConfig? = nil
 
     // Callback hooks for PlayerViewModel
     public var onRemotePlay: (() -> Void)?

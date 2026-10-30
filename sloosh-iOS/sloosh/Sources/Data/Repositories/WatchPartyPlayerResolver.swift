@@ -3,10 +3,10 @@ import SwiftUI
 import AVFoundation
 
 @MainActor
-public enum WatchPartyPlayerResolver {
+enum WatchPartyPlayerResolver {
     /// Resolves exact PlayerConfig matching the host's selected voiceover, season, episode, and stream source.
     /// Operates completely in the background without displaying SourceSelectionView or prompting the guest.
-    public static func resolveConfig(for session: WatchPartySession) async -> PlayerConfig? {
+    static func resolveConfig(for session: WatchPartySession) async -> PlayerConfig? {
         let vm = DetailsViewModel()
         let movieId = session.mediaId
         let mediaType = session.mediaType
