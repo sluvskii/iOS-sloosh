@@ -107,6 +107,7 @@ struct SearchView: View {
                         Image(systemName: viewModel.searchFilters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                             .font(.system(size: 19))
                             .foregroundColor(.primary)
+                            .glassForeground()
                     }
                 }
             }

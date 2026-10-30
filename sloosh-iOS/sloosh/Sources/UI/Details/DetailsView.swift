@@ -2363,6 +2363,7 @@ private struct DetailsInfoSection: View {
                             }
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.white)
+                            .glassForeground()
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
                             .glassEffect(.regular.interactive(), in: .capsule)
@@ -2625,6 +2626,7 @@ struct EpisodeDetailsSheet: View {
                     } label: {
                         Image(systemName: "xmark")
                             .foregroundStyle(.primary)
+                            .glassForeground()
                     }
                     .tint(.primary)
                     .buttonStyle(.plain)
@@ -4139,6 +4141,7 @@ private struct TrailerCardView: View {
                 Image(systemName: "play.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
+                    .glassForeground()
                     .frame(width: 42, height: 42)
                     .glassEffect(.regular.interactive(), in: Circle())
                     .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)

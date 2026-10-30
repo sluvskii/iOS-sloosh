@@ -235,6 +235,7 @@ struct PlayerTitleInfoView: View, Equatable {
                 Image(systemName: "waveform")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
+                    .glassForeground()
                     .frame(width: 22, height: 22)
             }
 
@@ -242,6 +243,7 @@ struct PlayerTitleInfoView: View, Equatable {
             Text(info.title)
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
+                .glassForeground()
                 .lineLimit(1)
 
             // Индикатор возможности выбора
@@ -249,6 +251,7 @@ struct PlayerTitleInfoView: View, Equatable {
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.45))
+                    .glassForeground()
             }
         }
         .padding(.leading, (info.studio?.hasAsset == true || info.flag.hasAsset) ? 10 : 13)

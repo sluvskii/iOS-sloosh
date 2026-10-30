@@ -145,6 +145,7 @@ public struct ClipCommentsSheetView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.primary)
+                        .glassForeground()
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
@@ -191,6 +192,7 @@ public struct ClipCommentsSheetView: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.black)
+                        .glassForeground(isInverted: true)
                         .frame(width: 40, height: 40)
                         .background(
                             Circle()

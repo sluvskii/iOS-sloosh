@@ -336,6 +336,7 @@ private struct DownloadRowView: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.primary)
+                            .glassForeground()
                             .frame(width: 32, height: 32)
                             .glassEffect(in: Circle())
                     }

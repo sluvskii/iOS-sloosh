@@ -931,6 +931,7 @@ public struct ClipsFeedView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 19, weight: .semibold))
                             .foregroundStyle(.white)
+                            .glassForeground()
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
                     }
@@ -949,6 +950,7 @@ public struct ClipsFeedView: View {
                             Image(systemName: "bubble.left.and.bubble.right.fill")
                                 .font(.system(size: 19, weight: .medium))
                                 .foregroundStyle(.white)
+                                .glassForeground()
                                 .frame(width: 44, height: 44)
                                 .contentShape(Circle())
 
@@ -1171,6 +1173,7 @@ public struct ClipsFeedView: View {
             Image(systemName: "ellipsis")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(Circle())
@@ -1528,6 +1531,7 @@ public struct ClipsFeedView: View {
                 Image(systemName: "play.fill")
                     .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white)
+                    .glassForeground()
                     .frame(width: 72, height: 72)
                     .glassEffect(in: .circle)
                     .clipShape(Circle())
@@ -1553,6 +1557,7 @@ public struct ClipsFeedView: View {
                             .font(.system(size: 17, weight: .bold).monospacedDigit())
                     }
                     .foregroundStyle(.white)
+                    .glassForeground()
                     .padding(.horizontal, 18)
                     .padding(.vertical, 8)
                     .glassEffect(in: .capsule)
@@ -1717,6 +1722,7 @@ public struct ClipsFeedView: View {
                         .font(.system(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
+                .glassForeground()
                 .padding(.horizontal, 16)
                 .frame(height: 38)
                 .glassEffect(.regular.interactive(), in: .capsule)
@@ -1938,7 +1944,8 @@ public struct ClipsFeedView: View {
                 }
             } label: {
                 HeartShape()
-                    .fill(isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001))
+                    .fill(isLiked ? Color.red.opacity(0.92) : Color.white)
+                    .glassForeground(isEnabled: !isLiked)
                     .frame(width: 36, height: 36)
                     .contentShape(HeartShape())
             }
@@ -1969,7 +1976,8 @@ public struct ClipsFeedView: View {
                 showCommentsForClip = clip
             } label: {
                 SpeechBubbleShape()
-                    .fill(Color.white.opacity(0.001), style: FillStyle(eoFill: true))
+                    .fill(Color.white, style: FillStyle(eoFill: true))
+                    .glassForeground()
                     .frame(width: 36, height: 36)
                     .contentShape(SpeechBubbleShape(), eoFill: true)
             }
@@ -1996,7 +2004,8 @@ public struct ClipsFeedView: View {
                 shareClip(clip)
             } label: {
                 ShareArrowShape()
-                    .fill(Color.white.opacity(0.001))
+                    .fill(Color.white)
+                    .glassForeground()
                     .frame(width: 36, height: 36)
                     .contentShape(ShareArrowShape())
             }
@@ -2025,7 +2034,8 @@ public struct ClipsFeedView: View {
                 toggleScaleMode()
             } label: {
                 AspectExpandShape()
-                    .fill(Color.white.opacity(0.001))
+                    .fill(Color.white)
+                    .glassForeground()
                     .frame(width: 36, height: 36)
                     .contentShape(AspectExpandShape())
             }

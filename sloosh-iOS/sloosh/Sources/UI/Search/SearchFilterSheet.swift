@@ -116,6 +116,7 @@ struct SearchFilterSheet: View {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(filters.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
+                        .glassForeground(isEnabled: !filters.isEmpty)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
@@ -133,6 +134,7 @@ struct SearchFilterSheet: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.primary)
+                        .glassForeground()
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }

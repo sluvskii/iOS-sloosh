@@ -173,6 +173,7 @@ struct MediaArtworkPickerSheet: View {
                     } label: {
                         Image(systemName: "xmark")
                             .foregroundStyle(.white)
+                            .glassForeground()
                     }
                     .tint(.white)
                     .accessibilityLabel("Закрыть")
@@ -190,6 +191,7 @@ struct MediaArtworkPickerSheet: View {
                         } else {
                             Image(systemName: "checkmark")
                                 .foregroundStyle(.white)
+                                .glassForeground()
                         }
                     }
                     .disabled(isSaving)

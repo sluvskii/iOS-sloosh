@@ -463,6 +463,7 @@ public struct ChatDetailView: View {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(colorScheme == .dark ? .black : .white)
+                        .glassForeground(isInverted: true)
                         .frame(width: 40, height: 40)
                         .background(
                             Circle()

@@ -584,6 +584,7 @@ struct PlayerClipTrimmerView: View {
                     Image(systemName: "play.fill")
                         .font(.system(size: 34))
                         .foregroundStyle(.white.opacity(0.92))
+                        .glassForeground()
                         .frame(width: 66, height: 66)
                         .glassEffect(.regular.interactive(), in: .circle)
                         .shadow(color: .black.opacity(0.4), radius: 10)

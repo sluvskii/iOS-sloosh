@@ -69,6 +69,7 @@ struct BottomRowView: View, Equatable {
                     .font(.system(size: 12.5, weight: .semibold))
             }
             .foregroundStyle(.white.opacity(0.92))
+            .glassForeground()
             .padding(.horizontal, 10)
             .frame(height: 44)
             .contentShape(Rectangle())
@@ -101,6 +102,7 @@ struct BottomRowView: View, Equatable {
                     .font(.system(size: 12.5, weight: .semibold))
             }
             .foregroundStyle(.white.opacity(0.92))
+            .glassForeground()
             .padding(.horizontal, 10)
             .frame(height: 44)
             .contentShape(Rectangle())
@@ -156,6 +158,7 @@ struct BottomRowView: View, Equatable {
             Image(systemName: currentSubtitleUrl != nil ? "captions.bubble.fill" : "captions.bubble")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(currentSubtitleUrl != nil ? .white : .white.opacity(0.85))
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }

@@ -243,6 +243,7 @@ struct SlooshSearchField: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.secondary)
+                .glassForeground()
 
             TextField(prompt, text: $text)
                 .font(.system(size: 15))
@@ -262,6 +263,7 @@ struct SlooshSearchField: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
+                        .glassForeground()
                 }
                 .buttonStyle(.plain)
             }
@@ -287,6 +289,7 @@ struct SlooshGlassTextButton: View {
             Text(title)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(isEnabled ? tintColor : tintColor.opacity(0.35))
+                .glassForeground(isEnabled: isEnabled && GlassForegroundAppearance.shouldBlend(tint: tintColor))
                 .padding(.horizontal, 14)
                 .frame(height: 44)
                 .glassEffect(.regular.interactive(), in: Capsule())

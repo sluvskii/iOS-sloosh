@@ -413,6 +413,7 @@ struct PlayerContainerView: View {
             Image(systemName: "lock.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }

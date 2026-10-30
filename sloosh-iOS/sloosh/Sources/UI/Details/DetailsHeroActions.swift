@@ -51,6 +51,7 @@ struct DetailsHeroButton<Label: View>: View {
         } else if usesGlass {
             Button(action: action) {
                 secondaryLabel
+                    .glassForeground()
                     .glassEffect(.regular.interactive(), in: .circle)
             }
             .buttonStyle(.glassPress)

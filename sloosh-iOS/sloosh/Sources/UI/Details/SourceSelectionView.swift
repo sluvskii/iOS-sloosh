@@ -233,6 +233,7 @@ struct SourceSelectionView: View {
                     Image(systemName: isSelectingQuality ? "chevron.left" : "xmark")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.primary)
+                        .glassForeground()
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                         .contentTransition(.symbolEffect(.replace))
@@ -305,6 +306,7 @@ struct SourceSelectionView: View {
                 .renderingMode(.template)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Color.primary)
+                .glassForeground()
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
