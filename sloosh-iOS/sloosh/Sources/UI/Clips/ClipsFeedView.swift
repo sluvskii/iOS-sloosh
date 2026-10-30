@@ -1944,8 +1944,7 @@ public struct ClipsFeedView: View {
                 }
             } label: {
                 HeartShape()
-                    .fill(isLiked ? Color.red.opacity(0.92) : Color.white)
-                    .glassForeground(isEnabled: !isLiked)
+                    .fill(isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(HeartShape())
             }
@@ -1976,8 +1975,7 @@ public struct ClipsFeedView: View {
                 showCommentsForClip = clip
             } label: {
                 SpeechBubbleShape()
-                    .fill(Color.white, style: FillStyle(eoFill: true))
-                    .glassForeground()
+                    .fill(Color.white.opacity(0.001), style: FillStyle(eoFill: true))
                     .frame(width: 36, height: 36)
                     .contentShape(SpeechBubbleShape(), eoFill: true)
             }
@@ -2004,8 +2002,7 @@ public struct ClipsFeedView: View {
                 shareClip(clip)
             } label: {
                 ShareArrowShape()
-                    .fill(Color.white)
-                    .glassForeground()
+                    .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(ShareArrowShape())
             }
@@ -2034,8 +2031,7 @@ public struct ClipsFeedView: View {
                 toggleScaleMode()
             } label: {
                 AspectExpandShape()
-                    .fill(Color.white)
-                    .glassForeground()
+                    .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(AspectExpandShape())
             }
