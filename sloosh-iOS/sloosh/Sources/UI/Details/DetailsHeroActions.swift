@@ -31,7 +31,7 @@ struct DetailsHeroButton<Label: View>: View {
         if isPrimary {
             Button(action: action) {
                 Circle()
-                    .fill(.white.opacity(0.9)) // Same intensity as Home's active dark text tab.
+                    .fill(.white.opacity(0.85)) // Slightly translucent while retaining Play prominence.
                     .overlay {
                         label()
                             .foregroundStyle(.white)
@@ -57,7 +57,7 @@ struct DetailsHeroButton<Label: View>: View {
         } else {
             Button(action: action) {
                 secondaryLabel
-                    .opacity(0.65)
+                    .opacity(0.72)
                     .background(Circle().fill(.white.opacity(0.12)))
                     // Blend the icon and flat fill together against the real
                     // Details backdrop, just like Home's layered text tabs.
