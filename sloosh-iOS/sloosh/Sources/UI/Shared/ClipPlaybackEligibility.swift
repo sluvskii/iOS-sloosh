@@ -14,6 +14,26 @@ struct ClipPlaybackEligibility {
     }
 }
 
+/// Comments are an interactive partial overlay: the same feed/video remains
+/// visible above the sheet. Every actual destination or blocking presentation
+/// still revokes playback, even when comments are also open.
+struct ClipPlaybackCoverage {
+    var showsMessenger = false
+    var showsDetails = false
+    var showsAuthorProfile = false
+    var showsMainPlayer = false
+    var showsShareSheet = false
+    var showsDeleteConfirmation = false
+    var showsComments = false
+
+    var blocksPlayback: Bool {
+        // Intentionally exclude showsComments. Never use it to bypass visibility,
+        // selected-tab, scene activity, main-player focus or another presentation.
+        showsMessenger || showsDetails || showsAuthorProfile || showsMainPlayer
+            || showsShareSheet || showsDeleteConfirmation
+    }
+}
+
 /// Invalidate asynchronous work even when the same clip is reopened (an ID check
 /// alone cannot distinguish two successive playback sessions of that clip).
 struct ClipPlaybackSession {
