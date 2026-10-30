@@ -105,3 +105,25 @@
 Проверяется, что цвет фона виден в символе, а пиксели вне символа не меняются.
 Это не screenshot-тест нативного iOS Liquid Glass: его внешний вид и UIKit-табы
 по-прежнему нужно проверить на iPhone по `docs/BACKDROP_FOREGROUND.md`.
+
+## Messenger cleanup
+
+`bash sloosh-iOS/Tests/run-messenger-search-tests.sh` runs 15 Foundation-only cases
+against the shared query used by both the chat list and the new-message picker:
+whitespace, Cyrillic/case-insensitive name search, tags with/without @, message
+preview text, punctuation and empty-tag false positives.
+
+Manual on-device checklist (not covered by the standalone query test):
+- Moments → Chats → back returns to the same feed; no Edit/proxy/camera controls.
+- Guest can return or sign in; authenticated header has back + compose only.
+- Open an existing conversation, back to list, back to Moments; all back controls
+  use the same standard glass chevron, no platter morphing between unrelated actions.
+- Long name, online/offline/typing status, light/dark theme, VoiceOver labels.
+- Search with empty list, whitespace-only input, fast typing/clearing; opening and
+  closing compose must not overwrite the main list's results or show stale results.
+- Search results do not duplicate a matching existing conversation. Pull to refresh.
+- Compose → choose a peer: sheet dismisses before chat is pushed; cancel changes nothing.
+- Context-menu delete requires explicit confirmation explaining deletion for both
+  participants; cancel leaves the chat intact. Test destructive flow only with test accounts.
+- Existing send/reply/edit/reaction/retry/read/unread behavior and shared film/clip
+  playback remain functional; no changes to message transport or player resolution.

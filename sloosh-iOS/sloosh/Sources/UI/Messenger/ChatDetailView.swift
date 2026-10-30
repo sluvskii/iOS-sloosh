@@ -3,11 +3,11 @@ import UIKit
 
 public struct ChatDetailView: View {
     public let peerUser: SlooshUser
-    public var animationNamespace: Namespace.ID? = nil
 
     @StateObject private var repo = MessengerRepository.shared
     @State private var messages: [ChatMessage] = []
     @State private var messageText: String = ""
+    @State private var scrollOffset: CGFloat = 0
     @State private var isSending: Bool = false
 
     @State private var selectedMovieIdForDetails: String? = nil
@@ -29,9 +29,8 @@ public struct ChatDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
-    public init(peerUser: SlooshUser, animationNamespace: Namespace.ID? = nil) {
+    public init(peerUser: SlooshUser) {
         self.peerUser = peerUser
-        self.animationNamespace = animationNamespace
         let cached = UserPresenceService.shared.getCachedPresence(userId: peerUser.id) ?? (peerUser.isCurrentlyOnline, peerUser.lastSeenMs)
         _livePresence = State(initialValue: cached)
     }
@@ -124,78 +123,64 @@ public struct ChatDetailView: View {
             UserPresenceService.shared.clearTyping(chatId: chatId)
             pollTask?.cancel()
         }
+        .fullWidthSwipeBack()
         .tint(Color.primary)
     }
 
     // MARK: - Custom Header
 
     private var headerBar: some View {
-        ZStack {
-            Button {
-                isShowingInfo = true
-            } label: {
-                VStack(spacing: 1) {
-                    Text(peerUser.displayTitle)
-                        .font(.system(size: 16, weight: .bold))
-                        .backdropForeground()
-                        .lineLimit(1)
-
-                    if isPeerTyping {
-                        HStack(spacing: 4) {
-                            Text("печатает...")
-                                .font(.system(size: 12, weight: .medium))
-                                .backdropForeground(opacity: 0.65)
-                        }
-                        .transition(.opacity)
-                    } else {
-                        let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
-                        let lastSeen = livePresence.lastSeenMs ?? peerUser.lastSeenMs
-                        let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: online, lastSeenMs: lastSeen)
-
-                        Text(statusText)
-                            .font(.system(size: 12, weight: online ? .medium : .regular))
-                            .backdropForeground(opacity: online ? 0.9 : 0.65)
-                            .transition(.opacity)
-                    }
-                }
-                .frame(maxWidth: 200)
-            }
-            .buttonStyle(.plain)
-            .matchedGeometryIfPresent(id: "nav_platter_title", in: animationNamespace)
-
-            HStack {
-                TelegramGlassPlatter(id: "back", systemName: "chevron.left") {
-                    dismiss()
-                }
-                .matchedGeometryIfPresent(id: "nav_platter_leading", in: animationNamespace)
-
-                Spacer()
-
+        SlooshTopBar(
+            scrollOffset: $scrollOffset,
+            leadingAction: { dismiss() },
+            titleView: AnyView(
                 Button {
                     isShowingInfo = true
                 } label: {
-                    let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
-                    TelegramGlassCustomPlatter {
-                        SlooshAvatarView(
-                            avatarSource: peerUser.avatarUrl,
-                            fallbackText: peerUser.displayTitle,
-                            size: 34,
-                            showOnline: true,
-                            isOnline: online
-                        )
-                        .frame(width: 44, height: 44)
+                    VStack(spacing: 1) {
+                        Text(peerUser.displayTitle)
+                            .font(.system(size: 16, weight: .semibold))
+                            .backdropForeground()
+                            .lineLimit(1)
+
+                        if isPeerTyping {
+                            Text("печатает…")
+                                .font(.system(size: 12, weight: .medium))
+                                .backdropForeground(opacity: 0.65)
+                                .transition(.opacity)
+                        } else {
+                            let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                            let lastSeen = livePresence.lastSeenMs ?? peerUser.lastSeenMs
+                            Text(PresenceFormatter.formatLastSeen(isOnlineFlag: online, lastSeenMs: lastSeen))
+                                .font(.system(size: 12, weight: online ? .medium : .regular))
+                                .backdropForeground(opacity: online ? 0.9 : 0.65)
+                                .lineLimit(1)
+                                .transition(.opacity)
+                        }
                     }
                 }
-                .buttonStyle(PlatterPressButtonStyle())
-                .matchedGeometryIfPresent(id: "nav_platter_trailing", in: animationNamespace)
-            }
-        }
-        .frame(height: 44)
-        .padding(.horizontal, 16)
-        .background(
-            VariableBlurView(tintColor: Color(UIColor.systemGroupedBackground), tintOpacity: 1.0)
-                .padding(.bottom, -60)
-                .ignoresSafeArea(edges: .top)
+                .buttonStyle(.plain)
+                .accessibilityHint("Открыть профиль собеседника")
+            ),
+            tintColor: Color(UIColor.systemGroupedBackground),
+            titleMaxWidth: 180,
+            showsBottom: false,
+            trailing: {
+                Button { isShowingInfo = true } label: {
+                    let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                    SlooshAvatarView(
+                        avatarSource: peerUser.avatarUrl,
+                        fallbackText: peerUser.displayTitle,
+                        size: 36, showOnline: true, isOnline: online
+                    )
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Профиль: \(peerUser.displayTitle)")
+            },
+            bottom: { EmptyView() }
         )
     }
 
@@ -264,6 +249,9 @@ public struct ChatDetailView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.interactively)
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                    scrollOffset = offset
+                }
                 .onChange(of: messages.count) { oldCount, newCount in
                     if newCount > oldCount, let lastId = messages.last?.id {
                         proxy.scrollTo(lastId, anchor: .bottom)

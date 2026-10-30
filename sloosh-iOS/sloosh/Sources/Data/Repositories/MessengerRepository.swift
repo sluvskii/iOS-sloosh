@@ -741,16 +741,17 @@ public final class MessengerRepository: ObservableObject {
         }
     }
 
-    public func searchUsers(query: String) async -> [SlooshUser] {
+    public func searchUsers(query: String, publishResults: Bool = true) async -> [SlooshUser] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            self.searchResults = []
+            if publishResults { self.searchResults = [] }
             return []
         }
 
-        isLoading = true
-        defer { isLoading = false }
+        if publishResults { isLoading = true }
+        defer { if publishResults { isLoading = false } }
 
+        guard !Task.isCancelled else { return [] }
         await syncCurrentUserProfile()
 
         var allUsersMap: [String: SlooshUser] = [:]
@@ -770,6 +771,8 @@ public final class MessengerRepository: ObservableObject {
             allUsersMap[uId] = user
         }
 
+        guard !Task.isCancelled else { return [] }
+
         // 3. Load profiles from /user_profiles.json
         if let profiles = await fetchUsersFromNode("user_profiles") {
             for p in profiles {
@@ -777,6 +780,8 @@ public final class MessengerRepository: ObservableObject {
                 saveLocalKnownUser(p)
             }
         }
+
+        guard !Task.isCancelled else { return [] }
 
         // 4. Load from /public_users.json
         if let pubUsers = await fetchUsersFromNode("public_users") {
@@ -788,6 +793,8 @@ public final class MessengerRepository: ObservableObject {
             }
         }
 
+        guard !Task.isCancelled else { return [] }
+
         // 5. Fallback /users.json
         if let users = await fetchUsersFromNode("users") {
             for u in users {
@@ -797,6 +804,8 @@ public final class MessengerRepository: ObservableObject {
                 }
             }
         }
+
+        guard !Task.isCancelled else { return [] }
 
         // 6. Direct userTags query
         if let url = await makeURL(path: "userTags"),
@@ -844,7 +853,8 @@ public final class MessengerRepository: ObservableObject {
             return u1.displayName < u2.displayName
         }
 
-        self.searchResults = finalArray
+        guard !Task.isCancelled else { return [] }
+        if publishResults { self.searchResults = finalArray }
         return finalArray
     }
 
