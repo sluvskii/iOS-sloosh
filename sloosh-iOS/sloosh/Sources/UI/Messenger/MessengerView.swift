@@ -1,705 +1,220 @@
 import SwiftUI
 
+/// Pushed from Moments: back returns to the feed, compose opens a real user picker.
 public struct MessengerView: View {
-    @Namespace private var messengerNamespace
-    @StateObject private var repo = MessengerRepository.shared
+    @ObservedObject private var repo = MessengerRepository.shared
     @ObservedObject private var authRepo = AuthRepository.shared
     @Environment(\.dismiss) private var dismiss
-
-    @State private var isEditing: Bool = false
-    @State private var searchQuery: String = ""
+    @State private var searchQuery = ""
     @State private var scrollOffset: CGFloat = 0
-    @State private var selectedPeerUser: SlooshUser? = nil
-    @State private var selectedChannel: ChannelModel? = nil
-    @State private var showAuthSheet: Bool = false
-    @State private var showCreateChannelSheet: Bool = false
-    @State private var showNewChatSheet: Bool = false
-
-    // Chat deletion state
-    @State private var peerToDelete: SlooshUser? = nil
-    @State private var showDeleteChatConfirm: Bool = false
-
-    // Channel action state (Unsubscribe or Delete) - Archived for channels
-    @State private var channelToAction: ChannelModel? = nil
-    @State private var showChannelActionConfirm: Bool = false
-
-    // Search state
-    @State private var searchedPublicChannels: [ChannelModel] = []
-    @State private var isSearching: Bool = false
-    @State private var searchTask: Task<Void, Never>? = nil
+    @State private var selectedPeerUser: SlooshUser?
+    @State private var pendingPeerUser: SlooshUser?
+    @State private var showAuthSheet = false
+    @State private var showNewChatSheet = false
+    @State private var peerToDelete: SlooshUser?
+    @State private var showDeleteChatConfirm = false
+    @State private var foundUsers: [SlooshUser] = []
+    @State private var isSearching = false
 
     public init() {}
 
-    private var currentUserId: String {
-        authRepo.currentUser?.id ?? ""
+    private var query: MessengerSearchQuery { MessengerSearchQuery(searchQuery) }
+
+    private var filteredConversations: [ChatConversation] {
+        repo.conversations.filter {
+            query.matches(name: $0.peerUser.displayTitle, tag: $0.peerUser.displayTag, message: $0.lastMessageText)
+        }.sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
-    private var unifiedFeedItems: [MessengerFeedItem] {
-        var items: [MessengerFeedItem] = []
-        if searchQuery.isEmpty {
-            items += repo.conversations.map { MessengerFeedItem.directChat($0) }
-            // Archived: Channels can be re-enabled here in the future
-            // items += repo.subscribedChannels.map { MessengerFeedItem.channel($0) }
-        } else {
-            let query = searchQuery.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            let cleanQuery = TagValidator.sanitize(query)
-            let filteredChats = repo.conversations.filter {
-                $0.peerUser.displayTitle.localizedCaseInsensitiveContains(query) ||
-                $0.peerUser.displayTag.localizedCaseInsensitiveContains(cleanQuery) ||
-                $0.lastMessageText.localizedCaseInsensitiveContains(query)
-            }
-            items += filteredChats.map { MessengerFeedItem.directChat($0) }
-            // Archived: Channels can be re-enabled here in the future
-            // let filteredSubs = repo.subscribedChannels.filter { ... }
-            // items += filteredSubs.map { MessengerFeedItem.channel($0) }
-        }
-        return items.sorted { $0.timestampMs > $1.timestampMs }
+    // An existing conversation is already a search result: don't show it twice.
+    private var newPeople: [SlooshUser] {
+        let visibleIds = Set(filteredConversations.map { $0.peerUser.id })
+        return foundUsers.filter { !visibleIds.contains($0.id) }
     }
 
     public var body: some View {
         ZStack {
-                Color(UIColor.systemBackground).ignoresSafeArea()
-
-                if !authRepo.isAuthenticated {
-                    guestView
-                } else if repo.isLoading && repo.conversations.isEmpty {
-                    skeletonList
-                } else if repo.conversations.isEmpty && searchQuery.isEmpty {
-                    emptyState
-                } else {
-                    feedList
-                }
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
-                    title: "Чаты",
-                    scrollOffset: $scrollOffset,
-                    leadingView: AnyView(
-                        TelegramGlassPlatter(
-                            id: "edit",
-                            title: isEditing ? "Готово" : "Изм.",
-                            tintColor: isEditing ? .slooshAccent : nil,
-                            action: {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    isEditing.toggle()
-                                }
-                            },
-                            onLongPress: {
-                                dismiss()
-                            }
-                        )
-                        .matchedGeometryIfPresent(id: "nav_platter_leading", in: messengerNamespace)
-                    ),
-                    titleView: AnyView(
-                        Text("Чаты")
-                            .font(.system(size: 18, weight: .semibold))
-                            .backdropForeground()
-                            .lineLimit(1)
-                            .matchedGeometryIfPresent(id: "nav_platter_title", in: messengerNamespace)
-                    ),
-                    trailing: {
-                        if authRepo.isAuthenticated {
-                            TelegramGlassPlatter(items: [
-                                TelegramGlassPlatterItem(
-                                    id: "proxy",
-                                    systemName: "shield.lefthalf.filled",
-                                    tintColor: Color.green,
-                                    action: {
-                                        ToastManager.shared.show(
-                                            title: "Cloudflare Edge Gateway активен",
-                                            subtitle: "Шифрованное соединение с защитой от блокировок",
-                                            icon: "shield.lefthalf.filled",
-                                            iconColor: .green
-                                        )
-                                    }
-                                ),
-                                TelegramGlassPlatterItem(
-                                    id: "camera",
-                                    systemName: "camera.fill",
-                                    action: {
-                                        ToastManager.shared.show(
-                                            title: "Камера и Моменты",
-                                            subtitle: "Создание клипов доступно в плеере во время просмотра",
-                                            icon: "camera.fill",
-                                            iconColor: .white
-                                        )
-                                    }
-                                ),
-                                TelegramGlassPlatterItem(
-                                    id: "compose",
-                                    systemName: "square.and.pencil",
-                                    action: {
-                                        showNewChatSheet = true
-                                    }
-                                )
-                            ])
-                            .matchedGeometryIfPresent(id: "nav_platter_trailing", in: messengerNamespace)
-                        }
-                    },
-                    bottom: {
-                        SlooshSearchField(
-                            text: $searchQuery,
-                            prompt: "Поиск по имени или @тегу"
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 2)
-                    }
+            Color(UIColor.systemBackground).ignoresSafeArea()
+            if !authRepo.isAuthenticated {
+                AppEmptyStateView(
+                    icon: "bubble.left.and.bubble.right",
+                    title: "Сообщения для своих",
+                    description: "Войдите, чтобы переписываться и делиться фильмами и моментами.",
+                    action: .init(label: "Войти в аккаунт", handler: { showAuthSheet = true })
                 )
+            } else {
+                conversationList
             }
-            .onChange(of: searchQuery) { _, newValue in
-                searchTask?.cancel()
-                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    self.isSearching = false
-                    repo.clearSearchResults()
-                    return
-                }
-
-                self.isSearching = true
-                searchTask = Task {
-                    try? await Task.sleep(nanoseconds: 180_000_000)
-                    if Task.isCancelled { return }
-
-                    _ = await repo.searchUsers(query: trimmed)
-                    if Task.isCancelled { return }
-
-                    await MainActor.run {
-                        self.isSearching = false
-                    }
-                }
-            }
-            .navigationDestination(item: $selectedPeerUser) { peer in
-                ChatDetailView(peerUser: peer, animationNamespace: messengerNamespace)
-            }
-            .navigationDestination(item: $selectedChannel) { channel in
-                ChannelDetailView(channel: channel)
-            }
-            .sheet(isPresented: $showNewChatSheet) {
-                NewChatSheet { selectedUser in
-                    selectedPeerUser = selectedUser
-                }
-            }
-            .sheet(isPresented: $showCreateChannelSheet) {
-                CreateChannelSheet { newChannel in
-                    selectedChannel = newChannel
-                }
-            }
-            .fullScreenCover(isPresented: $showAuthSheet) {
-                AuthView()
-            }
-            .confirmationDialog(
-                "Удалить чат с \(peerToDelete?.displayTitle ?? "")?",
-                isPresented: $showDeleteChatConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Удалить чат", role: .destructive) {
-                    if let peer = peerToDelete {
-                        deleteChat(peer: peer)
-                    }
-                }
-                Button("Отмена", role: .cancel) {}
-            } message: {
-                Text("История сообщений будет удалена.")
-            }
-            .confirmationDialog(
-                channelActionTitle,
-                isPresented: $showChannelActionConfirm,
-                titleVisibility: .visible
-            ) {
-                if let channel = channelToAction {
-                    let isOwner = (channel.ownerId == currentUserId)
-                    if isOwner {
-                        Button("Удалить канал", role: .destructive) {
-                            Task {
-                                _ = await repo.deleteChannel(channelId: channel.id)
-                            }
-                        }
-                    } else {
-                        Button("Отписаться от канала", role: .destructive) {
-                            Task {
-                                _ = await repo.unsubscribeFromChannel(channelId: channel.id)
-                            }
-                        }
-                    }
-                }
-                Button("Отмена", role: .cancel) {}
-            } message: {
-                Text(channelActionMessage)
-            }
-            .task {
-                if authRepo.isAuthenticated {
-                    await repo.syncCurrentUserProfile()
-                    await repo.fetchConversations()
-                    // Channels archived per user instructions:
-                    // _ = await repo.fetchSubscribedChannels()
-                    // _ = await repo.fetchPublicChannels()
-                }
-            }
-            .refreshable {
-                if authRepo.isAuthenticated {
-                    await repo.fetchConversations()
-                    // _ = await repo.fetchSubscribedChannels()
-                    // _ = await repo.fetchPublicChannels()
-                }
-            }
-            .tint(Color.primary)
-    }
-
-    private var channelActionTitle: String {
-        guard let channel = channelToAction else { return "" }
-        if channel.ownerId == currentUserId {
-            return "Удалить канал «\(channel.name)»?"
-        } else {
-            return "Отписаться от «\(channel.name)»?"
         }
-    }
-
-    private var channelActionMessage: String {
-        guard let channel = channelToAction else { return "" }
-        if channel.ownerId == currentUserId {
-            return "Канал и все публикации будут удалены без возможности восстановления."
-        } else {
-            return "Вы перестанете получать обновления из этого канала."
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbarVisibility(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SlooshTopBar(
+                title: "Чаты",
+                scrollOffset: $scrollOffset,
+                leadingAction: { dismiss() },
+                showsBottom: authRepo.isAuthenticated,
+                trailing: {
+                    if authRepo.isAuthenticated {
+                        TelegramGlassIconButton(systemName: "square.and.pencil") {
+                            showNewChatSheet = true
+                        }
+                        .accessibilityLabel("Новое сообщение")
+                    }
+                },
+                bottom: {
+                    SlooshSearchField(text: $searchQuery, prompt: "Имя, @тег или сообщение")
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
+            )
         }
+        .navigationDestination(item: $selectedPeerUser) { peer in
+            ChatDetailView(peerUser: peer)
+        }
+        .sheet(isPresented: $showNewChatSheet, onDismiss: {
+            // Push only after dismissal, not during the sheet's transition.
+            if let peer = pendingPeerUser {
+                pendingPeerUser = nil
+                selectedPeerUser = peer
+            }
+        }) {
+            NewChatSheet { pendingPeerUser = $0 }
+        }
+        .fullScreenCover(isPresented: $showAuthSheet) { AuthView() }
+        .confirmationDialog(
+            "Удалить чат с \(peerToDelete?.displayTitle ?? "")?",
+            isPresented: $showDeleteChatConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Удалить чат", role: .destructive) {
+                if let peer = peerToDelete {
+                    let chatId = repo.getOrCreateChatId(peerUserId: peer.id)
+                    Task { _ = await repo.deleteChat(chatId: chatId, peerUserId: peer.id, deleteForEveryone: true) }
+                }
+                peerToDelete = nil
+            }
+            Button("Отмена", role: .cancel) { peerToDelete = nil }
+        } message: {
+            Text("Чат и история сообщений будут удалены у вас и у собеседника. Это действие нельзя отменить.")
+        }
+        .task(id: authRepo.currentUser?.id) {
+            guard authRepo.isAuthenticated else { return }
+            await repo.syncCurrentUserProfile()
+            await repo.fetchConversations()
+        }
+        .task(id: query.text) { await searchPeople() }
+        .onChange(of: authRepo.currentUser?.id) { _, _ in
+            searchQuery = ""
+            foundUsers = []
+            pendingPeerUser = nil
+            showNewChatSheet = false
+        }
+        .fullWidthSwipeBack()
+        .tint(.primary)
     }
 
-    // MARK: - Feed List & Search Sections
-
-    private var feedList: some View {
+    private var conversationList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // 0. Индикатор поиска
                 if isSearching {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Color.primary)
-                        Text("Поиск...")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Поиск пользователей…").font(.subheadline).foregroundStyle(.secondary)
                         Spacer()
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(16)
                 }
 
-                // 1. Поиск: Пользователи
-                if !searchQuery.isEmpty && !repo.searchResults.isEmpty {
-                    Section {
-                        ForEach(repo.searchResults) { user in
-                            Button {
-                                selectedPeerUser = user
-                            } label: {
-                                PeakUserSearchRow(user: user)
-                            }
+                if !query.isEmpty && !filteredConversations.isEmpty {
+                    sectionTitle("Чаты")
+                }
+                ForEach(filteredConversations) { chat in
+                    Button { selectedPeerUser = chat.peerUser } label: {
+                        MessengerConversationRow(chat: chat)
+                    }
+                    .buttonStyle(PeakPressButtonStyle())
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            peerToDelete = chat.peerUser
+                            showDeleteChatConfirm = true
+                        } label: {
+                            Label("Удалить чат", systemImage: "trash")
+                        }
+                    }
+                    PeakDivider().padding(.leading, 86)
+                }
+
+                if !query.isEmpty && !newPeople.isEmpty {
+                    sectionTitle("Пользователи")
+                    ForEach(newPeople) { user in
+                        Button { selectedPeerUser = user } label: { MessengerUserRow(user: user) }
                             .buttonStyle(PeakPressButtonStyle())
-
-                            PeakDivider()
-                                .padding(.leading, 86)
-                        }
-                    } header: {
-                        HStack {
-                            Text("ПОЛЬЗОВАТЕЛИ")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
-                        .padding(.bottom, 4)
+                        PeakDivider().padding(.leading, 86)
                     }
                 }
-
-                // 2. Основной список диалогов
-                if !searchQuery.isEmpty && !repo.searchResults.isEmpty && !unifiedFeedItems.isEmpty {
-                    HStack {
-                        Text("ЧАТЫ")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
-                }
-
-                ForEach(unifiedFeedItems) { item in
-                    switch item {
-                    case .directChat(let chat):
-                        Button {
-                            if isEditing {
-                                peerToDelete = chat.peerUser
-                                showDeleteChatConfirm = true
-                            } else {
-                                selectedPeerUser = chat.peerUser
-                            }
-                        } label: {
-                            PeakChatRow(
-                                chat: chat,
-                                isEditing: isEditing,
-                                onDelete: {
-                                    peerToDelete = chat.peerUser
-                                    showDeleteChatConfirm = true
-                                }
-                            )
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-
-                        PeakDivider()
-                            .padding(.leading, isEditing ? 120 : 86)
-                            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isEditing)
-
-                    case .channel(let channel):
-                        Button {
-                            selectedChannel = channel
-                        } label: {
-                            PeakChannelRow(
-                                channel: channel,
-                                isOwner: channel.ownerId == currentUserId,
-                                onAction: {
-                                    channelToAction = channel
-                                    showChannelActionConfirm = true
-                                }
-                            )
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-
-                        PeakDivider()
-                            .padding(.leading, 86)
-                    }
-                }
-
-                // 3. Пустой результат поиска
-                if !searchQuery.isEmpty && !isSearching && repo.searchResults.isEmpty && unifiedFeedItems.isEmpty {
-                    searchEmptyState
-                        .padding(.top, 60)
-                }
             }
-        }
-        .scrollContentBackground(.hidden)
-        .scrollDismissesKeyboard(.interactively)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
-        }
-    }
-
-    private var searchEmptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 44, weight: .light))
-                .foregroundColor(.secondary)
-
-            Text("Ничего не найдено")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.primary)
-
-            Text("По запросу «\(searchQuery)» не найдено ни одного пользователя.")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-    }
-
-    private func toggleChannelSubscription(channel: ChannelModel) {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-        Task {
-            if repo.isSubscribed(channelId: channel.id) {
-                _ = await repo.unsubscribeFromChannel(channelId: channel.id)
-            } else {
-                _ = await repo.subscribeToChannel(channel: channel)
-            }
-        }
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 52, weight: .thin))
-                .foregroundColor(.secondary)
-
-            Text("Нет сообщений")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(.primary)
-
-            Text("Найдите собеседника по имени или @тегу через поиск, чтобы начать диалог.")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-
-            Button {
-                showNewChatSheet = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 15, weight: .bold))
-                    Text("Написать сообщение")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                .foregroundColor(Color(UIColor.systemBackground))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(Capsule().fill(Color.primary))
-            }
-            .buttonStyle(PeakPressButtonStyle())
             .padding(.top, 8)
         }
-    }
-
-    private var skeletonList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(0..<6, id: \.self) { _ in
-                    HStack(spacing: 14) {
-                        Circle()
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(width: 56, height: 56)
-                        VStack(alignment: .leading, spacing: 8) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.2))
-                                .frame(width: 140, height: 16)
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.15))
-                                .frame(width: 220, height: 14)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                }
-            }
-        }
-    }
-
-    private var guestView: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.primary, .secondary],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+        .overlay {
+            if query.isEmpty && repo.conversations.isEmpty {
+                if repo.isLoading {
+                    ProgressView("Загрузка чатов…")
+                } else {
+                    AppEmptyStateView(
+                        icon: "bubble.left.and.bubble.right",
+                        title: "Пока нет сообщений",
+                        description: "Найдите собеседника по имени или @тегу и отправьте первое сообщение.",
+                        action: .init(label: "Написать сообщение", handler: { showNewChatSheet = true })
                     )
+                }
+            } else if !query.isEmpty && !isSearching && filteredConversations.isEmpty && newPeople.isEmpty {
+                AppEmptyStateView(
+                    icon: "magnifyingglass", title: "Ничего не найдено",
+                    description: "Попробуйте другое имя, @тег или текст сообщения."
                 )
-
-            VStack(spacing: 8) {
-                Text("Личные сообщения Sloosh")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.primary)
-
-                Text("Войдите в аккаунт, чтобы общаться с друзьями и делиться фильмами!")
-                    .font(.system(size: 15))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
             }
-
-            Button {
-                showAuthSheet = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "person.crop.circle.badge.plus")
-                        .font(.system(size: 18, weight: .bold))
-                    Text("Войти в аккаунт")
-                        .font(.system(size: 17, weight: .bold))
-                }
-                .foregroundColor(Color(UIColor.systemBackground))
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-                .background(Capsule().fill(Color.primary))
-                .padding(.horizontal, 40)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
         }
+        .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+            scrollOffset = offset
+        }
+        .refreshable { await repo.fetchConversations() }
     }
 
-    private func deleteChat(peer: SlooshUser) {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-        let chatId = repo.getOrCreateChatId(peerUserId: peer.id)
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 6)
+    }
 
-        withAnimation(.easeInOut(duration: 0.22)) {
-            self.repo.removeConversationLocally(chatId: chatId)
-        }
-
-        Task {
-            _ = await repo.deleteChat(chatId: chatId, peerUserId: peer.id, deleteForEveryone: true)
-        }
+    @MainActor
+    private func searchPeople() async {
+        let requestedQuery = query
+        let userId = authRepo.currentUser?.id
+        foundUsers = []
+        isSearching = !requestedQuery.isEmpty && authRepo.isAuthenticated
+        guard isSearching else { return }
+        do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+        let results = await repo.searchUsers(query: requestedQuery.text, publishResults: false)
+        guard !Task.isCancelled, query == requestedQuery, authRepo.currentUser?.id == userId else { return }
+        foundUsers = results
+        isSearching = false
     }
 }
 
-// MARK: - Peak Channel Row View
+// MARK: - Conversation row
 
-public struct PeakChannelRow: View {
-    public let channel: ChannelModel
-    public let isOwner: Bool
-    public let onAction: () -> Void
-
-    public init(channel: ChannelModel, isOwner: Bool, onAction: @escaping () -> Void) {
-        self.channel = channel
-        self.isOwner = isOwner
-        self.onAction = onAction
-    }
-
-    public var body: some View {
-        HStack(spacing: 14) {
-            SlooshAvatarView(channel: channel, size: 56)
-
-            // Content
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .firstTextBaseline) {
-                    HStack(spacing: 6) {
-                        Text(channel.name)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-
-                        if isOwner {
-                            Image(systemName: "crown.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.primary)
-                        }
-                    }
-
-                    Spacer()
-
-                    Text(formatTime(ms: channel.lastPostTimestampMs ?? channel.updatedAtMs))
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-
-                HStack(alignment: .bottom) {
-                    Text(channel.lastPostText ?? (channel.description.isEmpty ? "Канал создан" : channel.description))
-                        .font(.system(size: 15))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-
-                    Spacer()
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .contextMenu {
-            if isOwner {
-                Button(role: .destructive) {
-                    onAction()
-                } label: {
-                    Label("Удалить канал", systemImage: "trash")
-                }
-                .tint(.red)
-            } else {
-                Button(role: .destructive) {
-                    onAction()
-                } label: {
-                    Label("Отписаться", systemImage: "arrow.uturn.backward")
-                }
-                .tint(.red)
-            }
-        }
-    }
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
-
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "dd.MM"
-        return formatter
-    }()
-
-    private func formatTime(ms: Int64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
-        if Calendar.current.isDateInToday(date) {
-            return Self.timeFormatter.string(from: date)
-        } else {
-            return Self.dateFormatter.string(from: date)
-        }
-    }
-}
-
-// MARK: - Public Channel Search Row
-
-public struct PublicChannelSearchRow: View {
-    public let channel: ChannelModel
-
-    public init(channel: ChannelModel) {
-        self.channel = channel
-    }
-
-    public var body: some View {
-        HStack(spacing: 14) {
-            SlooshAvatarView(channel: channel, size: 56)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(channel.name)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Text(channel.displayTag)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.secondary)
-
-                    Text("•")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-
-                    Text(channel.formattedSubscriberCount)
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.secondary.opacity(0.5))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Peak Chat Row View (Peak Messenger Style)
-
-private struct PeakChatRow: View {
+private struct MessengerConversationRow: View {
     let chat: ChatConversation
-    var isEditing: Bool = false
-    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
-            if isEditing {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onDelete()
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
-            }
-
             SlooshAvatarView(user: chat.peerUser, size: 56, showOnline: true)
 
             // Content
@@ -741,14 +256,6 @@ private struct PeakChatRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
-        .contextMenu {
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Label("Удалить чат", systemImage: "trash")
-            }
-            .tint(.red)
-        }
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -773,9 +280,9 @@ private struct PeakChatRow: View {
     }
 }
 
-// MARK: - Peak User Search Row
+// MARK: - User search row
 
-private struct PeakUserSearchRow: View {
+private struct MessengerUserRow: View {
     let user: SlooshUser
 
     var body: some View {
@@ -847,137 +354,94 @@ public struct PeakDivider: View {
     }
 }
 
-// MARK: - New Chat Sheet (Direct Messaging User Picker)
+// MARK: - New message
 
 private struct NewChatSheet: View {
     let onSelectUser: (SlooshUser) -> Void
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var repo = MessengerRepository.shared
-    @State private var query: String = ""
-    @State private var isSearching: Bool = false
-    @State private var searchTask: Task<Void, Never>? = nil
+    @ObservedObject private var repo = MessengerRepository.shared
+    @State private var searchText = ""
+    @State private var results: [SlooshUser] = []
+    @State private var isSearching = false
     @State private var scrollOffset: CGFloat = 0
 
+    private var query: MessengerSearchQuery { MessengerSearchQuery(searchText) }
+
+    private var displayedUsers: [SlooshUser] {
+        if !query.isEmpty { return results }
+        // Only actual recent conversations, never a random cached user directory.
+        return repo.conversations.sorted { $0.updatedAtMs > $1.updatedAtMs }.map(\.peerUser)
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(UIColor.systemBackground).ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    if isSearching {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(Color.primary)
-                            Text("Поиск...")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+        ZStack {
+            Color.clear.ignoresSafeArea()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    if isSearching { ProgressView().padding(16) }
+                    if query.isEmpty && !displayedUsers.isEmpty {
+                        Text("Недавние собеседники")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
                     }
-
-                    let isQueryEmpty = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    let displayedUsers: [SlooshUser] = {
-                        if !isQueryEmpty {
-                            return repo.searchResults
-                        } else {
-                            let recent = repo.conversations.map { $0.peerUser }
-                            if !recent.isEmpty {
-                                return recent
-                            }
-                            return Array(repo.getLocalKnownUsers().values)
-                        }
-                    }()
-
-                    if displayedUsers.isEmpty && !isSearching {
-                        VStack(spacing: 12) {
-                            Spacer()
-                            Image(systemName: isQueryEmpty ? "person.2.fill" : "person.crop.circle.badge.questionmark")
-                                .font(.system(size: 48, weight: .thin))
-                                .foregroundColor(.secondary)
-                            Text(isQueryEmpty ? "Начните новый диалог" : "Пользователь не найден")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.primary)
-                            Text(isQueryEmpty ? "Введите имя или @тег пользователя в поиске выше." : "Проверьте правильность написания имени или @тега.")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                            Spacer()
-                        }
-                    } else {
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                if isQueryEmpty && !displayedUsers.isEmpty {
-                                    HStack {
-                                        Text("НЕДАВНИЕ КОНТАКТЫ")
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundColor(.secondary)
-                                        Spacer()
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.top, 12)
-                                    .padding(.bottom, 4)
-                                }
-
-                                ForEach(displayedUsers) { user in
-                                    Button {
-                                        dismiss()
-                                        onSelectUser(user)
-                                    } label: {
-                                        PeakUserSearchRow(user: user)
-                                    }
-                                    .buttonStyle(PeakPressButtonStyle())
-
-                                    PeakDivider()
-                                        .padding(.leading, 86)
-                                }
-                            }
-                        }
-                        .scrollContentBackground(.hidden)
-                        .scrollDismissesKeyboard(.interactively)
-                        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                            geometry.contentOffset.y + geometry.contentInsets.top
-                        } action: { _, newOffset in
-                            scrollOffset = newOffset
-                        }
+                    ForEach(displayedUsers) { user in
+                        Button {
+                            onSelectUser(user)
+                            dismiss()
+                        } label: { MessengerUserRow(user: user) }
+                            .buttonStyle(PeakPressButtonStyle())
+                        PeakDivider().padding(.leading, 86)
                     }
                 }
             }
-            .navigationTitle("Новое сообщение")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "Имя или @тег пользователя")
-            .onChange(of: query) { _, newQ in
-                searchTask?.cancel()
-                scrollOffset = 0
-                let trimmed = newQ.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    isSearching = false
-                    repo.clearSearchResults()
-                    return
-                }
-                isSearching = true
-                searchTask = Task {
-                    try? await Task.sleep(nanoseconds: 180_000_000)
-                    if Task.isCancelled { return }
-                    _ = await repo.searchUsers(query: trimmed)
-                    if Task.isCancelled { return }
-                    await MainActor.run {
-                        isSearching = false
-                    }
+            .overlay {
+                if displayedUsers.isEmpty && !isSearching {
+                    AppEmptyStateView(
+                        icon: query.isEmpty ? "square.and.pencil" : "magnifyingglass",
+                        title: query.isEmpty ? "Кому напишем?" : "Пользователь не найден",
+                        description: query.isEmpty ? "Введите имя или @тег в поиске." : "Проверьте имя или @тег и попробуйте ещё раз."
+                    )
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                }
+            .scrollDismissesKeyboard(.interactively)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                scrollOffset = offset
             }
         }
-        .tint(Color.primary)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SlooshTopBar(
+                title: "Новое сообщение", scrollOffset: $scrollOffset,
+                leadingIcon: "xmark", leadingAction: { dismiss() },
+                tintColor: .clear, topPadding: 8, bottomPadding: 4, blurOverflow: -30,
+                trailing: { EmptyView() },
+                bottom: {
+                    SlooshSearchField(text: $searchText, prompt: "Имя или @тег")
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
+            )
+        }
+        .task(id: query.text) { await searchPeople() }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .tint(.primary)
+    }
+
+    @MainActor
+    private func searchPeople() async {
+        let requestedQuery = query
+        let userId = AuthRepository.shared.currentUser?.id
+        results = []
+        isSearching = !requestedQuery.isEmpty
+        guard isSearching else { return }
+        do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+        let users = await repo.searchUsers(query: requestedQuery.text, publishResults: false)
+        guard !Task.isCancelled, query == requestedQuery, AuthRepository.shared.currentUser?.id == userId else { return }
+        results = users
+        isSearching = false
     }
 }
-
