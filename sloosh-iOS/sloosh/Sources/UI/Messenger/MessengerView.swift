@@ -47,7 +47,6 @@ public struct MessengerView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .toolbarVisibility(.hidden, for: .tabBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             SlooshTopBar(
                 title: "Чаты",

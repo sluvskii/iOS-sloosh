@@ -115,6 +115,10 @@ preview text, punctuation and empty-tag false positives.
 
 Manual on-device checklist (not covered by the standalone query test):
 - Moments → Chats → back returns to the same feed; no Edit/proxy/camera controls.
+- Bottom tab bar stays available on the chat list (guest/authenticated). Opening an
+  individual conversation hides it; returning to the list restores it. Check both
+  an existing conversation and a newly selected peer from compose. Preserve the
+  user's global tab-bar minimize-on-scroll preference.
 - Guest can return or sign in; authenticated header has back + compose only.
 - Open an existing conversation, back to list, back to Moments; all back controls
   use the same standard glass chevron, no platter morphing between unrelated actions.
