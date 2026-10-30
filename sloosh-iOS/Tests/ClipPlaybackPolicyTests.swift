@@ -24,7 +24,7 @@ struct ClipPlaybackPolicyTests {
     @MainActor
     static func main() {
         // Exhaustive screen eligibility: only one of the 32 combinations may
-        // play. Covers hidden tab + foreground, navigation, sheets and movies.
+        // play. Covers hidden tab + foreground, navigation, blocking sheets and movies.
         var permitted = 0
         for mask in 0..<32 {
             let state = ClipPlaybackEligibility(
@@ -38,6 +38,49 @@ struct ClipPlaybackPolicyTests {
             if state.allowsPlayback { permitted += 1 }
         }
         precondition(permitted == 1)
+
+        // Exercise the same presentation mapping used by ClipsFeedView. Comments
+        // alone must not revoke a session; comments + any blocker must still stop.
+        var presentationCases = 0
+        for mask in 0..<128 {
+            let coverage = ClipPlaybackCoverage(
+                showsMessenger: mask & 1 != 0,
+                showsDetails: mask & 2 != 0,
+                showsAuthorProfile: mask & 4 != 0,
+                showsMainPlayer: mask & 8 != 0,
+                showsShareSheet: mask & 16 != 0,
+                showsDeleteConfirmation: mask & 32 != 0,
+                showsComments: mask & 64 != 0
+            )
+            let blocked = mask & 63 != 0
+            precondition(coverage.blocksPlayback == blocked, "Invalid presentation coverage: \(mask)")
+            for screen in 0..<32 {
+                let state = ClipPlaybackEligibility(
+                    isVisible: screen & 1 != 0,
+                    isSelected: screen & 2 != 0,
+                    isSceneActive: screen & 4 != 0,
+                    isCovered: screen & 8 != 0 || coverage.blocksPlayback,
+                    hasMainPlayer: screen & 16 != 0
+                )
+                precondition(state.allowsPlayback == (screen == 7 && !blocked),
+                             "Comments must not bypass lifecycle/focus: screen=\(screen), presentation=\(mask)")
+                presentationCases += 1
+            }
+        }
+
+        var commentSession = ClipPlaybackSession()
+        commentSession.setEnabled(true)
+        let playingGeneration = commentSession.generation
+        for commentsOpen in [true, false, true, false] {
+            let coverage = ClipPlaybackCoverage(showsComments: commentsOpen)
+            let state = ClipPlaybackEligibility(
+                isVisible: true, isSelected: true, isSceneActive: true,
+                isCovered: coverage.blocksPlayback, hasMainPlayer: false
+            )
+            commentSession.setEnabled(state.allowsPlayback)
+            precondition(commentSession.accepts(playingGeneration),
+                         "Opening/closing comments must preserve the active playback session")
+        }
 
         var session = ClipPlaybackSession()
         let initial = session.generation
@@ -88,6 +131,6 @@ struct ClipPlaybackPolicyTests {
         modal.setPlaybackEnabled(false)
         precondition(!focus.ownsMoment(modal))
 
-        print("Clip playback regression tests passed (32 eligibility states, session invalidation, exclusive focus).")
+        print("Clip playback regression tests passed (32 eligibility states, \(presentationCases) presentation/lifecycle combinations, comments session continuity, session invalidation, exclusive focus).")
     }
 }

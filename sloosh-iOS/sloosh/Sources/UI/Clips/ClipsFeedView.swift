@@ -693,9 +693,15 @@ public struct ClipsFeedView: View {
             isVisible: isScreenVisible,
             isSelected: isSelected,
             isSceneActive: scenePhase == .active,
-            isCovered: showsMessenger || selectedDetailsMedia != nil || selectedAuthorUser != nil
-                || fullPlayerConfig != nil || showCommentsForClip != nil || sharingClip != nil
-                || showDeleteConfirmation,
+            isCovered: ClipPlaybackCoverage(
+                showsMessenger: showsMessenger,
+                showsDetails: selectedDetailsMedia != nil,
+                showsAuthorProfile: selectedAuthorUser != nil,
+                showsMainPlayer: fullPlayerConfig != nil,
+                showsShareSheet: sharingClip != nil,
+                showsDeleteConfirmation: showDeleteConfirmation,
+                showsComments: showCommentsForClip != nil
+            ).blocksPlayback,
             hasMainPlayer: playbackFocus.hasMainPlayer
         ).allowsPlayback
     }
