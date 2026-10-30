@@ -128,10 +128,12 @@ struct slooshApp: App {
                         AppDiagnostics.shared.markGracefulExit()
                         UserPresenceService.shared.setOffline()
                         PlaybackProgressStore.shared.scheduleCloudProgressPush(force: true)
+                        MessengerRepository.shared.stopConversationsPolling()
                     } else if newPhase == .active {
                         AppDiagnostics.shared.markRunning()
                         UserPresenceService.shared.startHeartbeat()
                         PlaybackAnalyticsService.shared.sendSessionHeartbeat()
+                        MessengerRepository.shared.startConversationsPolling()
                         Task {
                             await MoviesApi.shared.loadRemoteConfigIfNeeded()
                             await CloudSyncService.shared.syncAllDataAsync()

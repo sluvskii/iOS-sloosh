@@ -15,6 +15,7 @@ public final class WatchPartyRepository: ObservableObject {
     @Published public private(set) var isHost: Bool = false
     @Published public private(set) var lastStatusToast: String? = nil
     @Published public var incomingInvite: WatchPartyInvitePayload? = nil
+    @Published public var pendingDirectPlayPayload: MediaCardPayload? = nil
 
     // Callback hooks for PlayerViewModel
     public var onRemotePlay: (() -> Void)?
@@ -85,6 +86,7 @@ public final class WatchPartyRepository: ObservableObject {
         guard let user = AuthRepository.shared.currentUser else { return nil }
 
         let partyId = "wp_\(UUID().uuidString.prefix(10).lowercased())"
+        let chatId = MessengerRepository.shared.getOrCreateChatId(peerUserId: invitee.id)
         let playback = WatchPartyPlayback(
             isPlaying: isPlaying,
             positionSec: currentPosition,
@@ -97,6 +99,7 @@ public final class WatchPartyRepository: ObservableObject {
 
         let session = WatchPartySession(
             id: partyId,
+            chatId: chatId,
             hostUid: user.id,
             hostName: user.displayName ?? "Хост",
             hostAvatarUrl: user.photoURL,
@@ -115,24 +118,34 @@ public final class WatchPartyRepository: ObservableObject {
             status: .active
         )
 
-        // 1. Upload to Firebase RTDB
-        guard let url = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") else {
-            return nil
+        // 1. Primary storage: chats/{chatId}/watch_party
+        // In live Firebase RTDB rules, chats/{chatId} is guaranteed to allow read/write for both users.
+        if let chatPartyUrl = URL(string: "\(databaseBaseURL)/chats/\(chatId)/watch_party.json\(authQueryParam)"),
+           let encodedData = try? JSONEncoder().encode(session) {
+            var req = URLRequest(url: chatPartyUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = encodedData
+            do {
+                let (_, resp) = try await URLSession.shared.data(for: req)
+                if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    AppDiagnostics.shared.log("WatchPartyRepository: Failed to write to chats/\(chatId)/watch_party: \(http.statusCode)")
+                }
+            } catch {
+                AppDiagnostics.shared.log("WatchPartyRepository: Error writing to chats/\(chatId)/watch_party: \(error)")
+            }
         }
 
-        var req = URLRequest(url: url)
-        req.httpMethod = "PUT"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            req.httpBody = try JSONEncoder().encode(session)
-            let (_, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return nil
+        // Mirror to /watch_parties/{partyId} (best-effort background task)
+        if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)"),
+           let encodedData = try? JSONEncoder().encode(session) {
+            Task {
+                var req = URLRequest(url: rootUrl)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = encodedData
+                _ = try? await URLSession.shared.data(for: req)
             }
-        } catch {
-            AppDiagnostics.shared.log("WatchPartyRepository: Failed to create session: \(error)")
-            return nil
         }
 
         // 2. Send invite into friend's private chat
@@ -144,7 +157,7 @@ public final class WatchPartyRepository: ObservableObject {
         self.peerUser = invitee
         self.isConnected = true
 
-        startObservingSession(partyId: partyId)
+        startObservingSession(chatId: chatId, partyId: partyId)
         showToast("Приглашение отправлено \(invitee.displayTitle)")
 
         return session
@@ -152,62 +165,113 @@ public final class WatchPartyRepository: ObservableObject {
 
     // MARK: - Join Session (Guest)
 
-    public func joinSession(partyId: String) async -> WatchPartySession? {
+    public func joinSession(chatId: String? = nil, partyId: String) async -> WatchPartySession? {
         guard let user = AuthRepository.shared.currentUser else { return nil }
-        guard let url = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") else {
+
+        // Candidate URLs: chats/{chatId}/watch_party first, then fallback to watch_parties/{partyId}
+        var candidateUrls: [URL] = []
+        if let cid = chatId, !cid.isEmpty,
+           let url = URL(string: "\(databaseBaseURL)/chats/\(cid)/watch_party.json\(authQueryParam)") {
+            candidateUrls.append(url)
+        }
+        if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") {
+            candidateUrls.append(rootUrl)
+        }
+
+        var fetchedSession: WatchPartySession?
+        var activeTargetUrl: URL?
+
+        for url in candidateUrls {
+            do {
+                let (data, resp) = try await URLSession.shared.data(from: url)
+                guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else { continue }
+                if data.isEmpty || String(data: data, encoding: .utf8) == "null" { continue }
+                if let decoded = try? JSONDecoder().decode(WatchPartySession.self, from: data) {
+                    fetchedSession = decoded
+                    activeTargetUrl = url
+                    break
+                }
+            } catch {
+                continue
+            }
+        }
+
+        guard var session = fetchedSession, let targetUrl = activeTargetUrl else {
+            showToast("Не удалось подключиться к сессии")
             return nil
         }
 
-        do {
-            let (data, resp) = try await URLSession.shared.data(from: url)
-            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                return nil
-            }
+        guard session.status == .active else {
+            showToast("Совместный просмотр уже завершён")
+            return nil
+        }
 
-            var session = try JSONDecoder().decode(WatchPartySession.self, from: data)
-            guard session.status == .active else {
-                showToast("Совместный просмотр уже завершён")
-                return nil
-            }
+        let resolvedChatId = session.chatId ?? chatId ?? MessengerRepository.shared.getOrCreateChatId(peerUserId: session.hostUid)
+        session.chatId = resolvedChatId
 
-            // Update guest info if missing
-            if session.guestUid == nil || session.guestUid == user.id {
-                session.guestUid = user.id
-                session.guestName = user.displayName ?? "Гость"
-                session.guestAvatarUrl = user.photoURL
-                
-                var patchReq = URLRequest(url: url)
+        // Update guest info if missing
+        if session.guestUid == nil || session.guestUid == user.id {
+            session.guestUid = user.id
+            session.guestName = user.displayName ?? "Гость"
+            session.guestAvatarUrl = user.photoURL
+
+            let patchDict: [String: Any] = [
+                "guestUid": user.id,
+                "guestName": user.displayName ?? "Гость",
+                "guestAvatarUrl": user.photoURL as Any
+            ]
+            if let patchData = try? JSONSerialization.data(withJSONObject: patchDict) {
+                var patchReq = URLRequest(url: targetUrl)
                 patchReq.httpMethod = "PATCH"
                 patchReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                let patchDict: [String: Any] = [
-                    "guestUid": user.id,
-                    "guestName": user.displayName ?? "Гость",
-                    "guestAvatarUrl": user.photoURL as Any
-                ]
-                patchReq.httpBody = try? JSONSerialization.data(withJSONObject: patchDict)
+                patchReq.httpBody = patchData
                 _ = try? await URLSession.shared.data(for: patchReq)
             }
+        }
 
-            // Host becomes peer for guest
-            let hostPeer = SlooshUser(
-                id: session.hostUid,
-                displayName: session.hostName,
-                tag: nil,
-                avatarUrl: session.hostAvatarUrl
-            )
+        // Host becomes peer for guest
+        let hostPeer = SlooshUser(
+            id: session.hostUid,
+            displayName: session.hostName,
+            tag: nil,
+            avatarUrl: session.hostAvatarUrl
+        )
 
-            self.activeSession = session
-            self.isHost = false
-            self.peerUser = hostPeer
-            self.isConnected = true
+        self.activeSession = session
+        self.isHost = false
+        self.peerUser = hostPeer
+        self.isConnected = true
 
-            startObservingSession(partyId: partyId)
-            showToast("Вы подключились к просмотру с \(session.hostName)")
+        startObservingSession(chatId: resolvedChatId, partyId: session.id)
+        showToast("Вы подключились к просмотру с \(session.hostName)")
 
-            return session
+        return session
+    }
+
+    /// Fast one-tap join directly from an incoming invite or conversation in chat.
+    public func acceptInviteFromChat(chatId: String) async {
+        guard let url = URL(string: "\(databaseBaseURL)/chats/\(chatId)/watch_party.json\(authQueryParam)") else { return }
+        do {
+            let (data, resp) = try await URLSession.shared.data(from: url)
+            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+            guard let session = try? JSONDecoder().decode(WatchPartySession.self, from: data), session.status == .active else { return }
+
+            if let joined = await joinSession(chatId: chatId, partyId: session.id) {
+                let payload = MediaCardPayload(
+                    mediaId: joined.mediaId,
+                    type: joined.mediaType,
+                    title: joined.title,
+                    posterUrl: joined.posterUrl,
+                    rating: nil,
+                    year: nil,
+                    season: joined.season,
+                    episode: joined.episode,
+                    translationName: joined.translationName
+                )
+                self.pendingDirectPlayPayload = payload
+            }
         } catch {
-            AppDiagnostics.shared.log("WatchPartyRepository: Failed to join session: \(error)")
-            return nil
+            AppDiagnostics.shared.log("WatchPartyRepository: Failed to accept invite from chat: \(error)")
         }
     }
 
@@ -216,6 +280,7 @@ public final class WatchPartyRepository: ObservableObject {
     public func leaveSession(reason: WatchPartyActionType = .leave) {
         guard let session = activeSession else { return }
         let partyId = session.id
+        let chatId = session.chatId
         let myId = currentUserId
         let myName = currentUserName
 
@@ -223,12 +288,6 @@ public final class WatchPartyRepository: ObservableObject {
         pollingTask = nil
 
         Task {
-            guard let url = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") else { return }
-            var req = URLRequest(url: url)
-            req.httpMethod = "PATCH"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-            // Mark session as closed so old invite cards in chat cannot be reused
             let patchDict: [String: Any] = [
                 "status": WatchPartyStatus.closed.rawValue,
                 "updatedAtMs": Int64(Date().timeIntervalSince1970 * 1000),
@@ -236,8 +295,24 @@ public final class WatchPartyRepository: ObservableObject {
                 "playback/lastActionByUid": myId,
                 "playback/lastActionByName": myName
             ]
-            req.httpBody = try? JSONSerialization.data(withJSONObject: patchDict)
-            _ = try? await URLSession.shared.data(for: req)
+            let patchData = try? JSONSerialization.data(withJSONObject: patchDict)
+
+            if let cid = chatId,
+               let url = URL(string: "\(databaseBaseURL)/chats/\(cid)/watch_party.json\(authQueryParam)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") {
+                var req = URLRequest(url: rootUrl)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                _ = try? await URLSession.shared.data(for: req)
+            }
         }
 
         self.activeSession = nil
@@ -259,6 +334,7 @@ public final class WatchPartyRepository: ObservableObject {
         guard !isApplyingRemoteAction else { return }
 
         let partyId = session.id
+        let chatId = session.chatId
         let myId = currentUserId
         let myName = currentUserName
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -285,12 +361,24 @@ public final class WatchPartyRepository: ObservableObject {
         )
 
         Task {
-            guard let url = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId)/playback.json\(authQueryParam)") else { return }
-            var req = URLRequest(url: url)
-            req.httpMethod = "PATCH"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: playbackDict)
-            _ = try? await URLSession.shared.data(for: req)
+            let playbackData = try? JSONSerialization.data(withJSONObject: playbackDict)
+
+            if let cid = chatId,
+               let url = URL(string: "\(databaseBaseURL)/chats/\(cid)/watch_party/playback.json\(authQueryParam)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = playbackData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId)/playback.json\(authQueryParam)") {
+                var req = URLRequest(url: rootUrl)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = playbackData
+                _ = try? await URLSession.shared.data(for: req)
+            }
         }
     }
 
@@ -301,6 +389,7 @@ public final class WatchPartyRepository: ObservableObject {
         guard !isApplyingRemoteAction else { return }
 
         let partyId = session.id
+        let chatId = session.chatId
         let myId = currentUserId
         let myName = currentUserName
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -322,33 +411,49 @@ public final class WatchPartyRepository: ObservableObject {
         self.activeSession?.episode = episode
 
         Task {
-            guard let url = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") else { return }
-            var req = URLRequest(url: url)
-            req.httpMethod = "PATCH"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: patchDict)
-            _ = try? await URLSession.shared.data(for: req)
+            let patchData = try? JSONSerialization.data(withJSONObject: patchDict)
+
+            if let cid = chatId,
+               let url = URL(string: "\(databaseBaseURL)/chats/\(cid)/watch_party.json\(authQueryParam)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") {
+                var req = URLRequest(url: rootUrl)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                _ = try? await URLSession.shared.data(for: req)
+            }
         }
     }
 
     // MARK: - Polling & Real-time Observation
 
-    private func startObservingSession(partyId: String) {
+    private func startObservingSession(chatId: String, partyId: String) {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.pollSessionState(partyId: partyId)
+                await self?.pollSessionState(chatId: chatId, partyId: partyId)
                 // Poll cadence: 1.0 second during active session for smooth clock sync
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
     }
 
-    private func pollSessionState(partyId: String) async {
-        guard let url = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") else { return }
+    private func pollSessionState(chatId: String, partyId: String) async {
+        // Poll primary chat path first
+        let primaryUrl = URL(string: "\(databaseBaseURL)/chats/\(chatId)/watch_party.json\(authQueryParam)")
+        let fallbackUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)")
+
+        guard let targetUrl = primaryUrl ?? fallbackUrl else { return }
 
         do {
-            let (data, resp) = try await URLSession.shared.data(from: url)
+            let (data, resp) = try await URLSession.shared.data(from: targetUrl)
             guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
             guard let remote = try? JSONDecoder().decode(WatchPartySession.self, from: data) else { return }
 

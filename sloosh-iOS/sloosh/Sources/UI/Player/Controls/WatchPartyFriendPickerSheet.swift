@@ -41,6 +41,9 @@ struct WatchPartyFriendPickerSheet: View {
         .presentationDetents([.medium, .fraction(0.65)])
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
+        .task {
+            await messengerRepo.fetchConversations()
+        }
     }
 
     // MARK: - Row

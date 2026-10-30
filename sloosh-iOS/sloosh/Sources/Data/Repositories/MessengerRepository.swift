@@ -915,6 +915,24 @@ public final class MessengerRepository: ObservableObject {
 
     // MARK: - Conversations
 
+    private var conversationsPollingTask: Task<Void, Never>?
+
+    public func startConversationsPolling() {
+        guard conversationsPollingTask == nil else { return }
+        conversationsPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                if Task.isCancelled { break }
+                await self?.fetchConversations()
+            }
+        }
+    }
+
+    public func stopConversationsPolling() {
+        conversationsPollingTask?.cancel()
+        conversationsPollingTask = nil
+    }
+
     public func fetchConversations() async {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else {
             self.conversations = []
@@ -954,12 +972,13 @@ public final class MessengerRepository: ObservableObject {
             }
 
             let chatsDict = try JSONDecoder().decode([String: RawChatEntry].self, from: data)
+            let previousConvs = self.conversations
             let list = chatsDict.values.map { raw -> ChatConversation in
                 let cachedMsgs = self.loadMessagesFromDisk(chatId: raw.chatId)
                 let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
                 let hasUnreadIncoming = cachedMsgs.contains(where: { $0.senderId != currentUserId && $0.isRead != true })
-
-                let finalUnread = hasUnreadIncoming ? (raw.unreadCount ?? 0) : 0
+                let serverUnread = raw.unreadCount ?? 0
+                let finalUnread = serverUnread > 0 ? serverUnread : (hasUnreadIncoming ? 1 : 0)
 
                 return ChatConversation(
                     chatId: raw.chatId,
@@ -972,6 +991,29 @@ public final class MessengerRepository: ObservableObject {
 
             self.conversations = list
             saveConversationsToDisk(list)
+
+            // Check for new incoming Watch Party invite
+            for item in list {
+                if item.unreadCount > 0, item.lastMessageText.contains("🍿 Смотреть вместе") {
+                    let prev = previousConvs.first(where: { $0.chatId == item.chatId })
+                    if prev == nil || item.updatedAtMs > (prev?.updatedAtMs ?? 0) {
+                        let senderName = item.peerUser.displayName
+                        let targetChatId = item.chatId
+                        ToastManager.shared.show(
+                            title: "Смотреть вместе",
+                            subtitle: "\(senderName) приглашает вас к просмотру",
+                            icon: "shareplay",
+                            iconColor: .green,
+                            duration: 8.0,
+                            action: {
+                                Task {
+                                    await WatchPartyRepository.shared.acceptInviteFromChat(chatId: targetChatId)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
 
             for item in list {
                 UserPresenceService.shared.updateCache(
@@ -1206,13 +1248,14 @@ public final class MessengerRepository: ObservableObject {
         party: WatchPartySession
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
-        let chatId = getOrCreateChatId(peerUserId: peerUser.id)
+        let chatId = party.chatId ?? getOrCreateChatId(peerUserId: peerUser.id)
         let lastDiskTs = loadMessagesFromDisk(chatId: chatId).map(\.timestampMs).max() ?? 0
         let monotonicTs = generateMonotonicTimestamp(after: lastDiskTs)
         let msgId = "msg_\(monotonicTs)_\(UUID().uuidString.prefix(8).lowercased())"
 
         let payload = WatchPartyInvitePayload(
             partyId: party.id,
+            chatId: chatId,
             mediaId: party.mediaId,
             mediaType: party.mediaType,
             title: party.title,

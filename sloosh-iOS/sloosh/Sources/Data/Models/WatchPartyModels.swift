@@ -70,6 +70,7 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
 
 public struct WatchPartySession: Identifiable, Codable, Sendable, Equatable, Hashable {
     public var id: String // partyId
+    public var chatId: String?
     public var hostUid: String
     public var hostName: String
     public var hostAvatarUrl: String?
@@ -92,6 +93,7 @@ public struct WatchPartySession: Identifiable, Codable, Sendable, Equatable, Has
 
     public init(
         id: String = UUID().uuidString,
+        chatId: String? = nil,
         hostUid: String,
         hostName: String,
         hostAvatarUrl: String? = nil,
@@ -113,6 +115,7 @@ public struct WatchPartySession: Identifiable, Codable, Sendable, Equatable, Has
         updatedAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000)
     ) {
         self.id = id
+        self.chatId = chatId
         self.hostUid = hostUid
         self.hostName = hostName
         self.hostAvatarUrl = hostAvatarUrl
@@ -151,6 +154,7 @@ public struct WatchPartySession: Identifiable, Codable, Sendable, Equatable, Has
 public struct WatchPartyInvitePayload: Identifiable, Codable, Sendable, Equatable, Hashable {
     public var id: String { partyId }
     public let partyId: String
+    public let chatId: String?
     public let mediaId: String
     public let mediaType: String
     public let title: String
@@ -162,6 +166,7 @@ public struct WatchPartyInvitePayload: Identifiable, Codable, Sendable, Equatabl
 
     public init(
         partyId: String,
+        chatId: String? = nil,
         mediaId: String,
         mediaType: String,
         title: String,
@@ -172,6 +177,7 @@ public struct WatchPartyInvitePayload: Identifiable, Codable, Sendable, Equatabl
         status: WatchPartyStatus = .active
     ) {
         self.partyId = partyId
+        self.chatId = chatId
         self.mediaId = mediaId
         self.mediaType = mediaType
         self.title = title

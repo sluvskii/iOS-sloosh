@@ -16,8 +16,12 @@ struct ContentView: View {
     @ObservedObject private var deepLinkManager = DeepLinkManager.shared
     @ObservedObject private var authRepo = AuthRepository.shared
     @ObservedObject private var messengerRepo = MessengerRepository.shared
+    @ObservedObject private var watchPartyRepo = WatchPartyRepository.shared
     @State private var loadedAvatarImage: UIImage? = resolveInitialAvatar(for: AuthRepository.shared.currentUser)
     @State private var avatarVersion: Int = 0
+    @State private var activePartyPayload: MediaCardPayload? = nil
+    @State private var pendingPlayerConfig: PlayerConfig? = nil
+    @State private var activePlayerConfig: PlayerConfig? = nil
 
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
@@ -137,6 +141,37 @@ struct ContentView: View {
                 }
             }
             .withToasts()
+            .sheet(item: $activePartyPayload, onDismiss: {
+                if let pending = pendingPlayerConfig {
+                    pendingPlayerConfig = nil
+                    DispatchQueue.main.async {
+                        activePlayerConfig = pending
+                    }
+                }
+            }) { media in
+                HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title) { config in
+                    pendingPlayerConfig = config
+                    activePartyPayload = nil
+                }
+            }
+            .fullScreenCover(item: $activePlayerConfig, onDismiss: {
+                activePlayerConfig = nil
+            }) { config in
+                PlayerView(config: config)
+                    .preferredColorScheme(.dark)
+                    .environment(\.colorScheme, .dark)
+            }
+            .onReceive(watchPartyRepo.$pendingDirectPlayPayload) { payload in
+                if let payload = payload {
+                    activePartyPayload = payload
+                    watchPartyRepo.pendingDirectPlayPayload = nil
+                }
+            }
+            .onAppear {
+                if authRepo.isAuthenticated {
+                    messengerRepo.startConversationsPolling()
+                }
+            }
             .task {
                 CloudSyncService.shared.syncAllData()
             }
@@ -146,7 +181,9 @@ struct ContentView: View {
             .onChange(of: authRepo.isAuthenticated) { _, isAuth in
                 if !isAuth {
                     loadedAvatarImage = nil
+                    messengerRepo.stopConversationsPolling()
                 } else {
+                    messengerRepo.startConversationsPolling()
                     Task {
                         await loadAvatarImage()
                     }

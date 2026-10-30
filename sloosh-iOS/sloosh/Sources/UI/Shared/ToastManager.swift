@@ -1,34 +1,59 @@
 import SwiftUI
 
-struct Toast: Equatable {
-    let title: String
-    let subtitle: String?
-    let icon: String
-    let iconColor: Color?
+public struct Toast: Equatable {
+    public let title: String
+    public let subtitle: String?
+    public let icon: String
+    public let iconColor: Color?
+    public let action: (() -> Void)?
     
-    init(title: String, subtitle: String? = nil, icon: String = "checkmark.circle.fill", iconColor: Color? = nil) {
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        icon: String = "checkmark.circle.fill",
+        iconColor: Color? = nil,
+        action: (() -> Void)? = nil
+    ) {
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
         self.iconColor = iconColor
+        self.action = action
+    }
+
+    public static func == (lhs: Toast, rhs: Toast) -> Bool {
+        lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.icon == rhs.icon
     }
 }
 
-class ToastManager: ObservableObject {
-    static let shared = ToastManager()
+public class ToastManager: ObservableObject {
+    public static let shared = ToastManager()
     
-    @Published var currentToast: Toast?
+    @Published public var currentToast: Toast?
     
     private var dismissTask: Task<Void, Never>?
     
     private init() {}
     
     @MainActor
-    func show(title: String, subtitle: String? = nil, icon: String = "checkmark.circle.fill", iconColor: Color? = nil, duration: TimeInterval = 3.0) {
+    public func show(
+        title: String,
+        subtitle: String? = nil,
+        icon: String = "checkmark.circle.fill",
+        iconColor: Color? = nil,
+        duration: TimeInterval = 3.0,
+        action: (() -> Void)? = nil
+    ) {
         dismissTask?.cancel()
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            self.currentToast = Toast(title: title, subtitle: subtitle, icon: icon, iconColor: iconColor)
+            self.currentToast = Toast(
+                title: title,
+                subtitle: subtitle,
+                icon: icon,
+                iconColor: iconColor,
+                action: action
+            )
         }
         
         dismissTask = Task {
@@ -44,7 +69,7 @@ class ToastManager: ObservableObject {
     }
     
     @MainActor
-    func dismiss() {
+    public func dismiss() {
         dismissTask?.cancel()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             self.currentToast = nil
@@ -95,6 +120,12 @@ struct ToastView: View {
                 }
             }
             Spacer(minLength: 0)
+
+            if toast.action != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -122,7 +153,9 @@ struct ToastView: View {
                 }
         )
         .onTapGesture {
+            let act = toast.action
             ToastManager.shared.dismiss()
+            act?()
         }
     }
 }
