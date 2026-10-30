@@ -209,7 +209,7 @@ struct SourceSelectionView: View {
             if isSelectingQuality {
                 Text("Качество видео")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .backdropForeground()
                     .lineLimit(1)
                     .frame(maxWidth: 220)
                     .transition(.opacity)
@@ -277,7 +277,7 @@ struct SourceSelectionView: View {
     private var fallbackHeaderTitle: some View {
         Text(currentTitle)
             .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(.primary)
+            .backdropForeground()
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(maxWidth: 220)

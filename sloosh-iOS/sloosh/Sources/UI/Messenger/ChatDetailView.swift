@@ -137,14 +137,14 @@ public struct ChatDetailView: View {
                 VStack(spacing: 1) {
                     Text(peerUser.displayTitle)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.primary)
+                        .backdropForeground()
                         .lineLimit(1)
 
                     if isPeerTyping {
                         HStack(spacing: 4) {
                             Text("печатает...")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .backdropForeground(opacity: 0.65)
                         }
                         .transition(.opacity)
                     } else {
@@ -154,7 +154,7 @@ public struct ChatDetailView: View {
 
                         Text(statusText)
                             .font(.system(size: 12, weight: online ? .medium : .regular))
-                            .foregroundColor(online ? .primary : .secondary)
+                            .backdropForeground(opacity: online ? 0.9 : 0.65)
                             .transition(.opacity)
                     }
                 }

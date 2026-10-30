@@ -6,6 +6,7 @@ import UIKit
 /// Фон — VariableBlurView, плавно проявляющийся при скролле.
 struct SlooshTopBar<Trailing: View, Bottom: View>: View {
     private let title: String
+    private let blendsTitle: Bool
     @Binding private var scrollOffset: CGFloat
     private let leadingIcon: String?
     private let leadingAction: (() -> Void)?
@@ -24,6 +25,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
 
     init(
         title: String = "",
+        blendsTitle: Bool = true,
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
@@ -41,6 +43,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
         @ViewBuilder bottom: @escaping () -> Bottom
     ) {
         self.title = title
+        self.blendsTitle = blendsTitle
         self._scrollOffset = scrollOffset
         self.leadingIcon = leadingIcon
         self.leadingAction = leadingAction
@@ -72,7 +75,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
                 } else if !title.isEmpty {
                     Text(title)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .backdropForeground(isEnabled: blendsTitle)
                         .lineLimit(1)
                         .frame(maxWidth: titleMaxWidth)
                 }
@@ -112,6 +115,7 @@ struct SlooshTopBar<Trailing: View, Bottom: View>: View {
 extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
     init(
         title: String = "",
+        blendsTitle: Bool = true,
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
@@ -127,6 +131,7 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
     ) {
         self.init(
             title: title,
+            blendsTitle: blendsTitle,
             scrollOffset: scrollOffset,
             leadingIcon: leadingIcon,
             leadingAction: leadingAction,
@@ -149,6 +154,7 @@ extension SlooshTopBar where Trailing == EmptyView, Bottom == EmptyView {
 extension SlooshTopBar where Bottom == EmptyView {
     init(
         title: String = "",
+        blendsTitle: Bool = true,
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
@@ -165,6 +171,7 @@ extension SlooshTopBar where Bottom == EmptyView {
     ) {
         self.init(
             title: title,
+            blendsTitle: blendsTitle,
             scrollOffset: scrollOffset,
             leadingIcon: leadingIcon,
             leadingAction: leadingAction,
@@ -187,6 +194,7 @@ extension SlooshTopBar where Bottom == EmptyView {
 extension SlooshTopBar where Trailing == EmptyView {
     init(
         title: String = "",
+        blendsTitle: Bool = true,
         scrollOffset: Binding<CGFloat>,
         leadingIcon: String? = "chevron.left",
         leadingAction: (() -> Void)? = nil,
@@ -203,6 +211,7 @@ extension SlooshTopBar where Trailing == EmptyView {
     ) {
         self.init(
             title: title,
+            blendsTitle: blendsTitle,
             scrollOffset: scrollOffset,
             leadingIcon: leadingIcon,
             leadingAction: leadingAction,

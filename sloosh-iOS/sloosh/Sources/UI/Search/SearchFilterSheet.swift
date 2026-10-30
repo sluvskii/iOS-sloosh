@@ -100,7 +100,7 @@ struct SearchFilterSheet: View {
         ZStack {
             Text("Фильтры")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
+                .backdropForeground()
                 .lineLimit(1)
                 .frame(maxWidth: 200)
 

@@ -974,7 +974,7 @@ public struct ClipsFeedView: View {
 
                 Text("Моменты")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .backdropForeground()
                     .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 2)
                     .allowsHitTesting(false)
 
@@ -1759,7 +1759,7 @@ public struct ClipsFeedView: View {
     private func fallbackTitleText(clip: MovieClip) -> some View {
         Text(clip.title)
             .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(.white)
+            .backdropForeground()
             .lineLimit(1)
     }
 
@@ -1948,7 +1948,7 @@ public struct ClipsFeedView: View {
 
             Text("\(clip.likesCount)")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
+                .backdropForeground()
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: clip.likesCount)
                 .contentShape(Rectangle())
@@ -1979,7 +1979,7 @@ public struct ClipsFeedView: View {
 
             Text("\(clip.commentsCount)")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white)
+                .backdropForeground()
                 .contentShape(Rectangle())
                 .onTapGesture {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -2006,7 +2006,7 @@ public struct ClipsFeedView: View {
 
             Text("Поделиться")
                 .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(.white)
+                .backdropForeground()
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: true, vertical: false)
@@ -2035,7 +2035,7 @@ public struct ClipsFeedView: View {
 
             Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                 .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(.white)
+                .backdropForeground()
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)

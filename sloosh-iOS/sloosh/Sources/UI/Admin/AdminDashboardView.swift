@@ -147,7 +147,7 @@ public struct AdminDashboardView: View {
             ZStack {
                 Text("Панель управления")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .backdropForeground()
                     .allowsHitTesting(false)
 
                 HStack {
@@ -196,14 +196,11 @@ public struct AdminDashboardView: View {
     ) -> some View {
         let isDark = colorScheme == .dark
         let opacity = isSelected ? (isDark ? 0.95 : 0.9) : (isDark ? 0.45 : 0.4)
-        let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
-        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
 
         return Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.6)
-            .foregroundStyle(color)
-            .blendMode(blendMode)
+            .backdropForeground(opacity: opacity)
     }
 
     private var tabSelector: some View {

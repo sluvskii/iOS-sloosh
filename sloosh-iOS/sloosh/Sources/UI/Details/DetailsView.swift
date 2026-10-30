@@ -559,6 +559,7 @@ struct RemoteLogoView: View {
         AsyncCachedImage(url: url) {
             Text(fallbackTitle)
                 .font(.system(size: isTopBar ? 17 : 30, weight: isTopBar ? .bold : .heavy))
+                .backdropForeground()
                 .lineLimit(isTopBar ? 1 : 2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
@@ -576,12 +577,12 @@ struct RemoteLogoView: View {
         } fallback: {
             Text(fallbackTitle)
                 .font(.system(size: isTopBar ? 17 : 30, weight: isTopBar ? .bold : .heavy))
+                .backdropForeground()
                 .lineLimit(isTopBar ? 1 : 2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
                 .frame(maxWidth: isTopBar ? nil : 300, maxHeight: isTopBar ? 32 : 110, alignment: alignment)
                 .frame(maxWidth: .infinity, alignment: alignment)
-                .foregroundStyle(Color.white)
                 .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
         }
         .id(url?.absoluteString ?? fallbackTitle)
@@ -1583,7 +1584,7 @@ struct DetailsView: View {
                         if showOriginalTitle, let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
                                 .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .backdropForeground(opacity: 0.65)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                                 .padding(.top, -8)
@@ -1767,7 +1768,7 @@ struct DetailsView: View {
                                 if showOriginalTitle, let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                                     Text(originalTitle)
                                         .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(.secondary)
+                                        .backdropForeground(opacity: 0.65)
                                         .multilineTextAlignment(.center)
                                         .padding(.horizontal)
                                         .padding(.top, -8)
@@ -2118,14 +2119,17 @@ private struct DetailsPrimaryMetadataRow: View {
 
             if let year = details.year, year > 0 {
                 Text(String(year))
+                    .backdropForeground(opacity: 0.65)
             }
 
             if let country = details.countries?.first, !country.isEmpty {
                 Text(CountryLocalizer.format(country))
+                    .backdropForeground(opacity: 0.65)
             }
 
             if let duration = details.duration, duration > 0 {
                 Text("\(duration) мин")
+                    .backdropForeground(opacity: 0.65)
             }
         }
         .font(.system(size: 15, weight: .semibold))
@@ -2158,6 +2162,7 @@ private struct DetailsInfoSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Жанры")
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
 
                     FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
@@ -2183,6 +2188,7 @@ private struct DetailsInfoSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(details.type == "tv" && !networks.isEmpty ? "Платформа" : "Студия")
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
 
                     FlowLayout(spacing: 8) {
                         if !companies.isEmpty {
@@ -2219,6 +2225,7 @@ private struct DetailsInfoSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(brand.isNetwork ? "Платформа" : "Студия")
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
 
                     FlowLayout(spacing: 8) {
                         NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
@@ -2240,14 +2247,16 @@ private struct DetailsInfoSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(budget != nil && revenue != nil ? "Бюджет и сборы" : (budget != nil ? "Бюджет" : "Сборы"))
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
 
                     HStack(spacing: 8) {
                         if let b = budget {
                             HStack(spacing: 4) {
                                 Text("Бюджет:")
-                                    .foregroundColor(.secondary)
+                                    .backdropForeground(opacity: 0.65)
                                 Text(b)
                                     .fontWeight(.semibold)
+                                    .backdropForeground(opacity: 0.85)
                             }
                         }
                         if budget != nil && revenue != nil {
@@ -2257,9 +2266,10 @@ private struct DetailsInfoSection: View {
                         if let r = revenue {
                             HStack(spacing: 4) {
                                 Text("Сборы:")
-                                    .foregroundColor(.secondary)
+                                    .backdropForeground(opacity: 0.65)
                                 Text(r)
                                     .fontWeight(.semibold)
+                                    .backdropForeground(opacity: 0.85)
                             }
                         }
                     }
@@ -2271,11 +2281,11 @@ private struct DetailsInfoSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Описание")
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
 
                     ZStack(alignment: .bottomLeading) {
                         Text(description)
                             .font(.system(size: 15, weight: .regular))
-                            .foregroundColor(.primary.opacity(0.85))
                             .lineSpacing(4)
                             .lineLimit(isDescriptionExpanded ? nil : 4)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2309,6 +2319,7 @@ private struct DetailsInfoSection: View {
                                     }
                                 }
                             )
+                            .backdropForeground(opacity: 0.85)
                     }
                     .background(
                         Text(description)
@@ -3224,6 +3235,7 @@ struct InlineEpisodesSection: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Сезоны и серии")
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
                 .padding(.horizontal, horizontalPadding)
 
             if viewModel.isFetchingInlineSeasons && allSeasons.isEmpty {
@@ -3851,6 +3863,7 @@ private struct CrewSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Создатели")
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -3960,6 +3973,7 @@ private struct ActorsSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Актёры")
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -4069,6 +4083,7 @@ private struct TrailersSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Трейлеры")
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -4169,10 +4184,11 @@ private struct FranchiseCollectionSection: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Все части франшизы")
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
                     if let name = collection.name, !name.isEmpty {
                         Text(name)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .backdropForeground(opacity: 0.65)
                     }
                 }
                 .padding(.horizontal)
@@ -4219,6 +4235,7 @@ private struct RelatedStudioSection: View {
                 HStack(spacing: 8) {
                     Text("Другие релизы")
                         .font(.system(size: 18, weight: .bold))
+                        .backdropForeground()
                     if let label = response.label, !label.isEmpty {
                         NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? label, studioName: label)) {
                             Text(label)
@@ -4274,6 +4291,7 @@ private struct SimilarMediaSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.system(size: 18, weight: .bold))
+                .backdropForeground()
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {

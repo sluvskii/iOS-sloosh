@@ -119,7 +119,7 @@ struct ProfileView: View {
                     ZStack {
                         Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTag.isEmpty == false ? authRepo.currentUser!.displayTag : authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .backdropForeground()
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
@@ -492,14 +492,11 @@ private struct ProfileCategoryTextTabs: View {
     ) -> some View {
         let isDark = colorScheme == .dark
         let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.4)
-        let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
-        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
         
         return Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
-            .foregroundStyle(color)
-            .blendMode(blendMode)
+            .backdropForeground(opacity: opacity)
     }
 
     var body: some View {

@@ -222,11 +222,11 @@ public struct ChannelDetailView: View {
                 VStack(spacing: 1) {
                     Text(currentChannel.name)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.primary)
+                        .backdropForeground()
                         .lineLimit(1)
                     Text(currentChannel.formattedSubscriberCount)
                         .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                        .backdropForeground(opacity: 0.65)
                 }
                 .frame(maxWidth: 200)
             }

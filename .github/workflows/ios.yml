@@ -58,6 +58,9 @@ jobs:
       - name: Test remote campaigns
         run: bash sloosh-iOS/Tests/run-campaign-tests.sh
 
+      - name: Test backdrop foreground appearance
+        run: bash sloosh-iOS/Tests/run-backdrop-foreground-tests.sh
+
       - name: Install XcodeGen
         run: |
           if ! which xcodegen > /dev/null 2>&1; then
