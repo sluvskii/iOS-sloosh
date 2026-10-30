@@ -461,6 +461,17 @@ struct PlayerContainerView: View {
         }
     }
 
+    private func scheduleLockAutoHide() {
+        lockHideTask?.cancel()
+        lockHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.22)) {
+                showLockOverlay = false
+            }
+        }
+    }
+
     private func setupWatchPartySync() {
         watchPartyRepo.onRemotePlay = { [weak vm] in
             guard let vm else { return }
