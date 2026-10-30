@@ -99,7 +99,7 @@ public final class WatchPartyRepository: ObservableObject {
             id: partyId,
             hostUid: user.id,
             hostName: user.displayName ?? "Хост",
-            hostAvatarUrl: user.avatarUrl,
+            hostAvatarUrl: user.photoURL,
             guestUid: invitee.id,
             guestName: invitee.displayTitle,
             guestAvatarUrl: invitee.avatarUrl,
@@ -174,7 +174,7 @@ public final class WatchPartyRepository: ObservableObject {
             if session.guestUid == nil || session.guestUid == user.id {
                 session.guestUid = user.id
                 session.guestName = user.displayName ?? "Гость"
-                session.guestAvatarUrl = user.avatarUrl
+                session.guestAvatarUrl = user.photoURL
                 
                 var patchReq = URLRequest(url: url)
                 patchReq.httpMethod = "PATCH"
@@ -182,7 +182,7 @@ public final class WatchPartyRepository: ObservableObject {
                 let patchDict: [String: Any] = [
                     "guestUid": user.id,
                     "guestName": user.displayName ?? "Гость",
-                    "guestAvatarUrl": user.avatarUrl as Any
+                    "guestAvatarUrl": user.photoURL as Any
                 ]
                 patchReq.httpBody = try? JSONSerialization.data(withJSONObject: patchDict)
                 _ = try? await URLSession.shared.data(for: patchReq)
