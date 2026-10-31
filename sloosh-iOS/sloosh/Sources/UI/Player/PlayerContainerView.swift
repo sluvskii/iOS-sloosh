@@ -479,6 +479,9 @@ struct PlayerContainerView: View {
     }
 
     private func setupWatchPartySync() {
+        watchPartyRepo.localPlaybackTimeProvider = { [weak vm] in
+            vm?.currentTime ?? 0
+        }
         watchPartyRepo.onRemotePlay = { [weak vm] in
             vm?.applyRemotePlay()
         }
@@ -489,10 +492,13 @@ struct PlayerContainerView: View {
             vm?.applyRemoteSeek(to: targetSec)
         }
         watchPartyRepo.onRemoteRateChange = { [weak vm] rate in
-            vm?.player?.rate = rate
+            vm?.applyRemoteRate(rate)
         }
         watchPartyRepo.onRemoteEpisodeChange = { [weak vm] season, episode in
             vm?.selectEpisode(season: season, episode: episode, isRemote: true)
+        }
+        watchPartyRepo.onRemoteVoiceoverChange = { [weak vm] voiceName in
+            vm?.switchVoiceover(to: voiceName)
         }
     }
 }

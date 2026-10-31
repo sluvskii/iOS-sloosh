@@ -1452,24 +1452,35 @@ class PlayerViewModel: ObservableObject {
         updateNowPlaying()
     }
 
+    func applyRemoteRate(_ rate: Float) {
+        guard let player, isPlaying, !isPausedByUser else { return }
+        if player.rate != rate {
+            player.rate = rate
+        }
+    }
+
     func applyRemoteSeek(to seconds: Double) {
         seek(to: seconds, isRemote: true)
     }
 
     func togglePlayPause() {
         guard let player else { return }
+        let rawPos = player.currentTime().seconds
+        let effectivePos = (rawPos.isFinite && !rawPos.isNaN && rawPos >= 0) ? rawPos : currentTime
         if isPlaying || player.rate > 0 || player.timeControlStatus == .playing {
             player.pause()
             isPlaying = false
             isBuffering = false
             isPausedByUser = true
+            currentTime = effectivePos
             saveCurrentProgress()
-            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: false, positionSec: currentTime, action: .pause)
+            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: false, positionSec: effectivePos, action: .pause)
         } else {
             isPausedByUser = false
             player.play()
             isPlaying = true
-            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: true, positionSec: currentTime, action: .play)
+            currentTime = effectivePos
+            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: true, positionSec: effectivePos, action: .play)
         }
         updateNowPlaying()
     }
@@ -1504,7 +1515,9 @@ class PlayerViewModel: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.isUserSeeking = false
-                self.saveCurrentProgress()
+                if !WatchPartyRepository.shared.isConnected {
+                    self.saveCurrentProgress()
+                }
                 if !isRemote {
                     WatchPartyRepository.shared.sendPlaybackAction(isPlaying: self.isPlaying, positionSec: effectiveSeconds, action: .seek, targetTime: effectiveSeconds)
                 }
@@ -1933,11 +1946,22 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
+        let effectiveVoiceoverName: String = {
+            if let targetTranslation {
+                return self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, targetTranslation.name, exactOnly: true) })
+                    ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, targetTranslation.name, exactOnly: false) })
+                    ?? canonicalName
+            }
+            return canonicalName
+        }()
+
+        if WatchPartyRepository.shared.isConnected {
+            WatchPartyRepository.shared.sendVoiceoverChange(translationName: effectiveVoiceoverName)
+        }
+
         // 2. Если найдена отдельная translation в seriesResult:
         if let translation = targetTranslation {
-            let matchedCanonical = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, translation.name, exactOnly: true) })
-                ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, translation.name, exactOnly: false) })
-                ?? canonicalName
+            let matchedCanonical = effectiveVoiceoverName
             logDebug("switchVoiceover: matched targetTranslation='\(matchedCanonical)', iframeUrl='\(translation.iframeUrl)'")
             _currentTranslationName = matchedCanonical
             targetVoiceover = matchedCanonical
@@ -2100,7 +2124,7 @@ class PlayerViewModel: ObservableObject {
             positionSec: pos,
             durationSec: dur,
             voiceover: _currentTranslationName,
-            forceDiskSave: true
+            forceDiskSave: !WatchPartyRepository.shared.isConnected
         )
     }
 
@@ -2968,7 +2992,7 @@ class PlayerViewModel: ObservableObject {
                         localCurrentTime: t,
                         duration: self.currentDuration,
                         localIsPlaying: self.isPlaying,
-                        isBuffering: self.isBuffering,
+                        isBuffering: self.isBuffering || (self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate),
                         isUserSeeking: self.isUserSeeking
                     )
                     if !self.activeSubtitleCues.isEmpty {

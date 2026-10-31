@@ -23,7 +23,9 @@ public final class WatchPartyRepository: ObservableObject {
     public var onRemoteSeek: ((Double) -> Void)?
     public var onRemoteRateChange: ((Float) -> Void)?
     public var onRemoteEpisodeChange: ((Int, Int) -> Void)?
+    public var onRemoteVoiceoverChange: ((String) -> Void)?
     public var onSessionEnded: (() -> Void)?
+    public var localPlaybackTimeProvider: (() -> Double)?
 
     // MARK: - Private State
 
@@ -34,6 +36,37 @@ public final class WatchPartyRepository: ObservableObject {
     private var lastHardSeekTime: Date = .distantPast
     private var lastDriftEvaluationTime: Date = .distantPast
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
+
+    // MARK: - Server Clock Synchronization (NTP compensation)
+    private static let httpDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss z"
+        return formatter
+    }()
+
+    public private(set) var serverClockOffsetMs: Int64 = 0
+
+    public func syncServerTime(from response: URLResponse?) {
+        guard let httpResp = response as? HTTPURLResponse,
+              let dateStr = (httpResp.allHeaderFields["Date"] ?? httpResp.allHeaderFields["date"]) as? String,
+              let serverDate = Self.httpDateFormatter.date(from: dateStr) else {
+            return
+        }
+        let serverMs = Int64(serverDate.timeIntervalSince1970 * 1000)
+        let localMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let offset = serverMs - localMs
+        if self.serverClockOffsetMs == 0 {
+            self.serverClockOffsetMs = offset
+        } else {
+            self.serverClockOffsetMs = (self.serverClockOffsetMs * 3 + offset) / 4
+        }
+    }
+
+    public var calibratedNowMs: Int64 {
+        Int64(Date().timeIntervalSince1970 * 1000) + serverClockOffsetMs
+    }
 
     private init() {}
 
@@ -98,7 +131,7 @@ public final class WatchPartyRepository: ObservableObject {
         let playback = WatchPartyPlayback(
             isPlaying: isPlaying,
             positionSec: currentPosition,
-            updatedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+            updatedAtMs: calibratedNowMs,
             lastActionByUid: user.id,
             lastActionByName: user.displayName ?? "Хост",
             actionType: isPlaying ? .play : .pause,
@@ -303,7 +336,7 @@ public final class WatchPartyRepository: ObservableObject {
         Task {
             let patchDict: [String: Any] = [
                 "status": WatchPartyStatus.closed.rawValue,
-                "updatedAtMs": Int64(Date().timeIntervalSince1970 * 1000),
+                "updatedAtMs": calibratedNowMs,
                 "playback/actionType": reason.rawValue,
                 "playback/lastActionByUid": myId,
                 "playback/lastActionByName": myName
@@ -350,7 +383,9 @@ public final class WatchPartyRepository: ObservableObject {
         let chatId = session.chatId
         let myId = currentUserId
         let myName = currentUserName
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowMs = calibratedNowMs
+
+        AppDiagnostics.shared.log("[WatchParty] sendPlaybackAction: action=\(action.rawValue), isPlaying=\(isPlaying), pos=\(positionSec)")
 
         let playbackDict: [String: Any] = [
             "isPlaying": isPlaying,
@@ -372,6 +407,7 @@ public final class WatchPartyRepository: ObservableObject {
             actionType: action,
             actionTargetTime: targetTime ?? positionSec
         )
+        self.lastProcessedPlaybackUpdatedAtMs = nowMs
 
         Task {
             let playbackData = try? JSONSerialization.data(withJSONObject: playbackDict)
@@ -382,7 +418,9 @@ public final class WatchPartyRepository: ObservableObject {
                 req.httpMethod = "PATCH"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = playbackData
-                _ = try? await URLSession.shared.data(for: req)
+                if let (_, resp) = try? await URLSession.shared.data(for: req) {
+                    syncServerTime(from: resp)
+                }
             }
 
             if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId)/playback.json\(authQueryParam)") {
@@ -390,7 +428,9 @@ public final class WatchPartyRepository: ObservableObject {
                 req.httpMethod = "PATCH"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = playbackData
-                _ = try? await URLSession.shared.data(for: req)
+                if let (_, resp) = try? await URLSession.shared.data(for: req) {
+                    syncServerTime(from: resp)
+                }
             }
         }
     }
@@ -405,7 +445,7 @@ public final class WatchPartyRepository: ObservableObject {
         let chatId = session.chatId
         let myId = currentUserId
         let myName = currentUserName
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowMs = calibratedNowMs
 
         let patchDict: [String: Any] = [
             "season": season,
@@ -432,7 +472,9 @@ public final class WatchPartyRepository: ObservableObject {
                 req.httpMethod = "PATCH"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = patchData
-                _ = try? await URLSession.shared.data(for: req)
+                if let (_, resp) = try? await URLSession.shared.data(for: req) {
+                    syncServerTime(from: resp)
+                }
             }
 
             if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") {
@@ -440,7 +482,56 @@ public final class WatchPartyRepository: ObservableObject {
                 req.httpMethod = "PATCH"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = patchData
-                _ = try? await URLSession.shared.data(for: req)
+                if let (_, resp) = try? await URLSession.shared.data(for: req) {
+                    syncServerTime(from: resp)
+                }
+            }
+        }
+    }
+
+    // MARK: - Send Voiceover Change
+
+    public func sendVoiceoverChange(translationName: String) {
+        guard let session = activeSession, isConnected else { return }
+        guard !isApplyingRemoteAction else { return }
+
+        let partyId = session.id
+        let chatId = session.chatId
+        let nowMs = calibratedNowMs
+        let myId = currentUserId
+        let myName = currentUserName
+
+        AppDiagnostics.shared.log("[WatchParty] sendVoiceoverChange: translationName=\(translationName)")
+        self.activeSession?.translationName = translationName
+
+        Task {
+            let patchDict: [String: Any] = [
+                "translationName": translationName,
+                "updatedAtMs": nowMs,
+                "playback/lastActionByUid": myId,
+                "playback/lastActionByName": myName
+            ]
+            let patchData = try? JSONSerialization.data(withJSONObject: patchDict)
+
+            if let cid = chatId,
+               let url = URL(string: "\(databaseBaseURL)/chats/\(cid)/watch_party.json\(authQueryParam)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                if let (_, resp) = try? await URLSession.shared.data(for: req) {
+                    syncServerTime(from: resp)
+                }
+            }
+
+            if let rootUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)") {
+                var req = URLRequest(url: rootUrl)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                if let (_, resp) = try? await URLSession.shared.data(for: req) {
+                    syncServerTime(from: resp)
+                }
             }
         }
     }
@@ -467,6 +558,7 @@ public final class WatchPartyRepository: ObservableObject {
         if let primaryUrl {
             do {
                 let (data, resp) = try await URLSession.shared.data(from: primaryUrl)
+                syncServerTime(from: resp)
                 if let http = resp as? HTTPURLResponse {
                     if http.statusCode == 401 {
                         _ = await AuthRepository.shared.ensureFreshToken(force: true)
@@ -481,6 +573,7 @@ public final class WatchPartyRepository: ObservableObject {
         if fetchedData == nil, let fallbackUrl {
             do {
                 let (data, resp) = try await URLSession.shared.data(from: fallbackUrl)
+                syncServerTime(from: resp)
                 if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
                     fetchedData = data
                 }
@@ -499,6 +592,7 @@ public final class WatchPartyRepository: ObservableObject {
         if remote.status == .closed {
             let friendName = peerUser?.displayTitle ?? "Друг"
             showToast("\(friendName) вышел из совместного просмотра")
+            AppDiagnostics.shared.log("[WatchParty] Remote session closed by \(friendName)")
             self.activeSession = nil
             self.peerUser = nil
             self.isConnected = false
@@ -512,6 +606,7 @@ public final class WatchPartyRepository: ObservableObject {
         if isHost && activeSession?.guestUid == nil, let gUid = remote.guestUid, !gUid.isEmpty {
             let gName = remote.guestName ?? peerUser?.displayTitle ?? "Друг"
             showToast("\(gName) подключился к просмотру")
+            AppDiagnostics.shared.log("[WatchParty] Guest connected: \(gName) (\(gUid))")
             self.activeSession?.guestUid = gUid
             self.activeSession?.guestName = gName
             self.activeSession?.guestAvatarUrl = remote.guestAvatarUrl
@@ -527,7 +622,7 @@ public final class WatchPartyRepository: ObservableObject {
         isApplyingRemoteAction = true
         defer { isApplyingRemoteAction = false }
 
-        // 3. Check for episode changes in serials
+        // 4. Check for episode changes in serials
         if let newSeason = remote.season, let newEpisode = remote.episode {
             if let oldSeason = activeSession?.season, let oldEpisode = activeSession?.episode {
                 if newSeason != oldSeason || newEpisode != oldEpisode {
@@ -535,13 +630,27 @@ public final class WatchPartyRepository: ObservableObject {
                     activeSession?.episode = newEpisode
                     lastProcessedPlaybackUpdatedAtMs = action.updatedAtMs
                     showToast("\(action.lastActionByName) переключил(а) на \(newEpisode) серию")
+                    AppDiagnostics.shared.log("[WatchParty] Remote episode changed to S\(newSeason)E\(newEpisode)")
                     onRemoteEpisodeChange?(newSeason, newEpisode)
                     return
                 }
             }
         }
 
-        // 4. Check if this playback action was ALREADY processed!
+        // 5. Check for voiceover changes
+        if let newVoice = remote.translationName, !newVoice.isEmpty {
+            let oldVoice = activeSession?.translationName
+            if let oldVoice, oldVoice != newVoice {
+                activeSession?.translationName = newVoice
+                showToast("Озвучка изменена на: \(newVoice)")
+                AppDiagnostics.shared.log("[WatchParty] Remote voiceover changed to \(newVoice)")
+                onRemoteVoiceoverChange?(newVoice)
+            } else if oldVoice == nil {
+                activeSession?.translationName = newVoice
+            }
+        }
+
+        // 6. Check if this playback action was ALREADY processed!
         // Prevents endless re-triggering of seek/play on every 1-second polling tick.
         guard action.updatedAtMs > lastProcessedPlaybackUpdatedAtMs else {
             self.activeSession = remote
@@ -549,21 +658,33 @@ public final class WatchPartyRepository: ObservableObject {
         }
         lastProcessedPlaybackUpdatedAtMs = action.updatedAtMs
 
-        // 5. Handle Play / Pause / Seek events (only once per user action)
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        // 7. Handle Play / Pause / Seek events with buffer protection
+        let nowMs = calibratedNowMs
         let targetPos = action.targetPosition(at: nowMs)
+        let localTime = localPlaybackTimeProvider?() ?? 0
+
+        AppDiagnostics.shared.log("[WatchParty] processRemoteAction: type=\(action.actionType.rawValue), isPlaying=\(action.isPlaying), remotePos=\(action.positionSec), targetPos=\(targetPos), localTime=\(localTime)")
 
         if action.actionType == .pause && action.isPlaying == false {
             showToast("\(action.lastActionByName) поставил(а) на паузу")
             onRemotePause?()
-            onRemoteSeek?(action.positionSec)
+            // ONLY seek on pause if difference is significant (> 2.5s) to avoid buffer discard and jump
+            if abs(localTime - action.positionSec) >= 2.5 {
+                AppDiagnostics.shared.log("[WatchParty] Aligning pause position from \(localTime) to \(action.positionSec)")
+                onRemoteSeek?(action.positionSec)
+            }
         } else if action.actionType == .play && action.isPlaying == true {
             showToast("\(action.lastActionByName) возобновил(а) просмотр")
-            onRemoteSeek?(targetPos)
+            // ONLY seek on play if desync is massive (> 3.5s); otherwise start playing immediately from current buffer
+            if abs(localTime - targetPos) >= 3.5 {
+                AppDiagnostics.shared.log("[WatchParty] Seeking on play from \(localTime) to \(targetPos)")
+                onRemoteSeek?(targetPos)
+            }
             onRemotePlay?()
         } else if action.actionType == .seek {
             let timeStr = formatSecondsToTime(targetPos)
             showToast("\(action.lastActionByName) перемотал(а) на \(timeStr)")
+            // Explicit seek: always jump to target
             onRemoteSeek?(targetPos)
         }
 
@@ -596,9 +717,12 @@ public final class WatchPartyRepository: ObservableObject {
             return
         }
 
-        guard playback.isPlaying && localIsPlaying else { return }
+        // Only calibrate drift when BOTH are actively playing
+        guard playback.isPlaying && localIsPlaying else {
+            return
+        }
 
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowMs = calibratedNowMs
         var targetPos = playback.targetPosition(at: nowMs)
 
         // Clamp target position to duration if known to avoid seeking past end of video
@@ -611,21 +735,22 @@ public final class WatchPartyRepository: ObservableObject {
 
         let drift = localCurrentTime - targetPos // positive = local ahead, negative = local behind
 
-        if abs(drift) > 3.0 {
-            // Hard drift: soft seek only with an 8-second cooldown to prevent ping-pong loops
-            if now.timeIntervalSince(lastHardSeekTime) >= 8.0 {
+        if abs(drift) > 6.0 {
+            // Massive drift (> 6 seconds): hard seek only with 15-second cooldown to avoid buffer thrashing
+            if now.timeIntervalSince(lastHardSeekTime) >= 15.0 {
                 lastHardSeekTime = now
+                AppDiagnostics.shared.log("[WatchParty] Hard drift detected (\(drift)s), seeking to \(targetPos)s")
                 isApplyingRemoteAction = true
                 onRemoteSeek?(targetPos)
                 onRemoteRateChange?(1.0)
                 isApplyingRemoteAction = false
             }
-        } else if abs(drift) > 0.4 {
-            // Soft drift: micro-adjust playback rate (1.03x or 0.97x) to silently align buffers
+        } else if abs(drift) > 0.35 {
+            // Soft drift (0.35s to 6.0s): micro-adjust playback rate (1.03x or 0.97x) to silently align without flushing buffer
             let targetRate: Float = drift < 0 ? 1.03 : 0.97
             onRemoteRateChange?(targetRate)
         } else {
-            // In sync: ensure rate is standard 1.0x
+            // In sync (< 0.35s): ensure rate is standard 1.0x
             onRemoteRateChange?(1.0)
         }
     }

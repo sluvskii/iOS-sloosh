@@ -115,7 +115,7 @@ enum WatchPartyPlayerResolver {
             ? (targetSeason != nil && targetEpisode != nil ? (wrapper.collapsResult?.episodeSubtitles[EpisodeKey(season: targetSeason!, episode: targetEpisode!)] ?? []) : (wrapper.collapsResult?.movieSubtitles ?? []))
             : []
 
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowMs = WatchPartyRepository.shared.calibratedNowMs
         let syncTime = session.playback.targetPosition(at: nowMs)
 
         return PlayerConfig(
