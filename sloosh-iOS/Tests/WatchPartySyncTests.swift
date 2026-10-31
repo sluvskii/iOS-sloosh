@@ -45,21 +45,86 @@ struct WatchPartySyncTests {
         let driftBehind = playingPlayback.drift(localCurrentTime: 104.5, currentTimestampMs: 1_005_000)
         check(abs(driftBehind - (-0.5)) < 0.001, "Negative drift indicates local player is behind")
 
-        // Test 4: Rate adjustment thresholds
-        func recommendRate(drift: Double) -> Float {
-            if abs(drift) > 2.0 {
-                return 1.0 // hard seek triggered
-            } else if abs(drift) > 0.35 {
-                return drift < 0 ? 1.04 : 0.96
+        // Test 3b: Speed-aware target position advances proportionally to speed
+        let speedPlayback = WatchPartyPlayback(
+            isPlaying: true,
+            positionSec: 100.0,
+            updatedAtMs: 1_000_000,
+            lastActionByUid: "u1",
+            lastActionByName: "Alice",
+            actionType: .changeSpeed,
+            speed: 1.5
+        )
+        // At 1.5x speed, 10 seconds elapsed (10,000ms) = 15 seconds media progress
+        check(abs(speedPlayback.targetPosition(at: 1_010_000) - 115.0) < 0.001, "Target position at 1.5x advances 15s after 10000ms")
+
+        let slowPlayback = WatchPartyPlayback(
+            isPlaying: true,
+            positionSec: 100.0,
+            updatedAtMs: 1_000_000,
+            lastActionByUid: "u1",
+            lastActionByName: "Alice",
+            actionType: .changeSpeed,
+            speed: 0.5
+        )
+        // At 0.5x speed, 10 seconds elapsed = 5 seconds media progress
+        check(abs(slowPlayback.targetPosition(at: 1_010_000) - 105.0) < 0.001, "Target position at 0.5x advances 5s after 10000ms")
+
+        // Test 4: Sub-frame Precision P-Controller rate recommendation
+        func recommendRate(drift: Double, baseSpeed: Float = 1.0) -> Float {
+            let absDrift = abs(drift)
+            if absDrift <= 0.020 {
+                return baseSpeed
+            } else if absDrift <= 0.150 {
+                let pGain: Float = 0.15
+                let delta = Float(-drift) * pGain
+                let clampedDelta = max(-0.018, min(0.018, delta))
+                return baseSpeed * (1.0 + clampedDelta)
+            } else if absDrift <= 0.800 {
+                let adjustment: Float = 0.05
+                return drift < 0 ? (baseSpeed * (1.0 + adjustment)) : (baseSpeed * (1.0 - adjustment))
+            } else if absDrift <= 2.0 {
+                let adjustment: Float = 0.10
+                return drift < 0 ? (baseSpeed * (1.0 + adjustment)) : (baseSpeed * (1.0 - adjustment))
             } else {
-                return 1.0
+                return baseSpeed // frame-accurate hard seek triggered
             }
         }
-        check(recommendRate(drift: 0.1) == 1.0, "In-sync drift (<0.35s) maintains normal rate 1.0")
-        check(recommendRate(drift: -0.1) == 1.0, "In-sync negative drift maintains normal rate 1.0")
-        check(recommendRate(drift: -0.8) == 1.04, "Behind by 0.8s accelerates rate to 1.04")
-        check(recommendRate(drift: 0.8) == 0.96, "Ahead by 0.8s slows rate to 0.96")
-        check(recommendRate(drift: 3.5) == 1.0, "Large drift (>2.0s) triggers seek rather than rate change")
+
+        check(recommendRate(drift: 0.015) == 1.0, "Sub-frame lockstep (<=20ms) maintains exact base speed")
+        check(recommendRate(drift: -0.010) == 1.0, "Sub-frame lockstep negative maintains exact base speed")
+
+        // Micro-slew at 50ms ahead (drift = +0.05s): delta = -0.15 * 0.05 = -0.0075 -> 0.9925x
+        let slewAhead = recommendRate(drift: 0.05)
+        check(abs(slewAhead - 0.9925) < 0.0001, "Micro-slew slows slightly by 0.75% for 50ms drift")
+
+        // Micro-slew at 100ms behind (drift = -0.10s): delta = +0.15 * 0.10 = +0.015 -> 1.015x
+        let slewBehind = recommendRate(drift: -0.10)
+        check(abs(slewBehind - 1.015) < 0.0001, "Micro-slew accelerates smoothly by 1.5% for 100ms drift")
+
+        // Catch-up at 400ms: +/- 5%
+        check(abs(recommendRate(drift: -0.4) - 1.05) < 0.001, "Catch-up accelerates by 5% at 400ms behind")
+        check(abs(recommendRate(drift: 0.4) - 0.95) < 0.001, "Catch-up slows by 5% at 400ms ahead")
+
+        // Slew around custom base speed (e.g. 1.5x)
+        let customBaseSlew = recommendRate(drift: -0.10, baseSpeed: 1.5)
+        check(abs(customBaseSlew - (1.5 * 1.015)) < 0.001, "Slew correctly modulates around 1.5x base speed")
+
+        // Test 4b: Backwards-compatible JSON decoding without speed field
+        let legacyJson = """
+        {
+            "isPlaying": true,
+            "positionSec": 42.0,
+            "updatedAtMs": 1000000,
+            "lastActionByUid": "legacy",
+            "lastActionByName": "Bob",
+            "actionType": "play"
+        }
+        """.data(using: .utf8)!
+
+        let legacyDecoded = try! JSONDecoder().decode(WatchPartyPlayback.self, from: legacyJson)
+        check(legacyDecoded.speed == 1.0, "Missing speed in payload defaults safely to 1.0")
+        check(legacyDecoded.positionSec == 42.0, "Legacy position decoded correctly")
 
         // Test 5: WatchPartySession encoding and decoding round-trip
         let session = WatchPartySession(

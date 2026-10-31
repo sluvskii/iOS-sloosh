@@ -496,6 +496,9 @@ struct PlayerContainerView: View {
         watchPartyRepo.onRemoteRateChange = { [weak vm] rate in
             vm?.applyRemoteRate(rate)
         }
+        watchPartyRepo.onRemoteSpeedChange = { [weak vm] speed in
+            vm?.applyRemoteSpeed(speed)
+        }
         watchPartyRepo.onRemoteEpisodeChange = { [weak vm] season, episode in
             vm?.selectEpisode(season: season, episode: episode, isRemote: true)
         }

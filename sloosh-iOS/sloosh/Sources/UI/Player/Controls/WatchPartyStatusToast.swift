@@ -10,6 +10,7 @@ struct WatchPartyStatusToast: View {
         if message.contains("возобновил") { return "play.fill" }
         if message.contains("перемотал") { return "goforward" }
         if message.contains("серию") { return "rectangle.stack" }
+        if message.contains("скорость") { return "gauge.with.dots.needle.bottom.50percent" }
         if message.contains("вышел") || message.contains("завершён") { return "xmark.circle" }
         if message.contains("Не удалось") { return "exclamationmark.circle" }
         return "shareplay"
@@ -21,6 +22,9 @@ struct WatchPartyStatusToast: View {
         }
         if message.contains("паузу") {
             return Color.orange
+        }
+        if message.contains("скорость") {
+            return Color.cyan
         }
         return Color.green
     }

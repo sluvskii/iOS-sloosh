@@ -18,6 +18,7 @@ public enum WatchPartyActionType: String, Codable, Sendable, Equatable, Hashable
     case pause = "pause"
     case seek = "seek"
     case changeEpisode = "change_episode"
+    case changeSpeed = "change_speed"
     case leave = "leave"
 }
 
@@ -32,6 +33,7 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
     public var actionType: WatchPartyActionType
     public var actionTargetTime: Double?
     public var scheduledStartMs: Int64?
+    public var speed: Float
 
     public init(
         isPlaying: Bool,
@@ -41,7 +43,8 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
         lastActionByName: String = "",
         actionType: WatchPartyActionType = .play,
         actionTargetTime: Double? = nil,
-        scheduledStartMs: Int64? = nil
+        scheduledStartMs: Int64? = nil,
+        speed: Float = 1.0
     ) {
         self.isPlaying = isPlaying
         self.positionSec = positionSec
@@ -51,6 +54,45 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
         self.actionType = actionType
         self.actionTargetTime = actionTargetTime
         self.scheduledStartMs = scheduledStartMs
+        self.speed = speed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isPlaying
+        case positionSec
+        case updatedAtMs
+        case lastActionByUid
+        case lastActionByName
+        case actionType
+        case actionTargetTime
+        case scheduledStartMs
+        case speed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.isPlaying = try container.decode(Bool.self, forKey: .isPlaying)
+        self.positionSec = try container.decode(Double.self, forKey: .positionSec)
+        self.updatedAtMs = try container.decode(Int64.self, forKey: .updatedAtMs)
+        self.lastActionByUid = try container.decodeIfPresent(String.self, forKey: .lastActionByUid) ?? ""
+        self.lastActionByName = try container.decodeIfPresent(String.self, forKey: .lastActionByName) ?? ""
+        self.actionType = try container.decodeIfPresent(WatchPartyActionType.self, forKey: .actionType) ?? .play
+        self.actionTargetTime = try container.decodeIfPresent(Double.self, forKey: .actionTargetTime)
+        self.scheduledStartMs = try container.decodeIfPresent(Int64.self, forKey: .scheduledStartMs)
+        self.speed = try container.decodeIfPresent(Float.self, forKey: .speed) ?? 1.0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(isPlaying, forKey: .isPlaying)
+        try container.encode(positionSec, forKey: .positionSec)
+        try container.encode(updatedAtMs, forKey: .updatedAtMs)
+        try container.encode(lastActionByUid, forKey: .lastActionByUid)
+        try container.encode(lastActionByName, forKey: .lastActionByName)
+        try container.encode(actionType, forKey: .actionType)
+        try container.encodeIfPresent(actionTargetTime, forKey: .actionTargetTime)
+        try container.encodeIfPresent(scheduledStartMs, forKey: .scheduledStartMs)
+        try container.encode(speed, forKey: .speed)
     }
 
     /// Computes the exact target position at a given current timestamp (Clock Sync formula).
@@ -63,7 +105,8 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
             return max(0, positionSec)
         }
         let elapsedSec = max(0, Double(currentTimestampMs - effectiveStartMs) / 1000.0)
-        return max(0, positionSec + elapsedSec)
+        let effectiveSpeed = Double(speed > 0 ? speed : 1.0)
+        return max(0, positionSec + (elapsedSec * effectiveSpeed))
     }
 
     /// Calculates drift between local player position and calculated target position.

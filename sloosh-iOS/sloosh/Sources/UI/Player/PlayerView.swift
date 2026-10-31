@@ -537,7 +537,15 @@ class PlayerViewModel: ObservableObject {
     }
 
     var targetQualityPreference: VideoQualityPreference?
-    var seriesResult: AllohaApiResult?
+    var seriesResult: AllohaApiResult? {
+        didSet {
+            if let pending = pendingRemoteEpisode {
+                pendingRemoteEpisode = nil
+                selectEpisode(season: pending.season, episode: pending.episode, isRemote: true)
+            }
+        }
+    }
+    private var pendingRemoteEpisode: (season: Int, episode: Int)?
     private var hasStartedLoading = false
     private var playbackRetryCount = 0
     private let maxPlaybackRetries = 3
@@ -1459,6 +1467,14 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
+    func applyRemoteSpeed(_ speed: Float) {
+        playbackRate = speed
+        if isPlaying, !isPausedByUser {
+            player?.rate = speed
+        }
+        updateNowPlaying()
+    }
+
     func applyRemoteSeek(to seconds: Double) {
         seek(to: seconds, isRemote: true)
     }
@@ -1750,6 +1766,9 @@ class PlayerViewModel: ObservableObject {
         playbackRate = rate
         player?.rate = rate
         updateNowPlaying()
+        if WatchPartyRepository.shared.isConnected {
+            WatchPartyRepository.shared.sendSpeedChange(speed: rate)
+        }
     }
 
     func setSubtitle(_ subtitle: PlaybackSubtitle?) {
@@ -3099,7 +3118,9 @@ class PlayerViewModel: ObservableObject {
                         duration: self.currentDuration,
                         localIsPlaying: self.isPlaying,
                         isBuffering: self.isBuffering || (self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate),
-                        isUserSeeking: self.isUserSeeking
+                        isUserSeeking: self.isUserSeeking,
+                        localSeason: self.currentSeason,
+                        localEpisode: self.currentEpisode
                     )
                     if !self.activeSubtitleCues.isEmpty {
                         self.updateSubtitleCue(at: t)
@@ -3383,20 +3404,29 @@ class PlayerViewModel: ObservableObject {
 
     func playNextEpisode() {
         guard let nextEpisode = nextEpisodeCandidate() else { return }
-        playEpisode(nextEpisode)
+        selectEpisode(season: nextEpisode.season, episode: nextEpisode.episode, isRemote: false)
     }
 
     func playPreviousEpisode() {
         guard let prevEpisode = previousEpisodeCandidate() else { return }
-        playEpisode(prevEpisode)
+        selectEpisode(season: prevEpisode.season, episode: prevEpisode.episode, isRemote: false)
     }
 
     func selectEpisode(season: Int, episode: Int, isRemote: Bool = false) {
-        guard let seriesResult,
-              let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
-              let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else { return }
+        guard let seriesResult else {
+            if isRemote {
+                pendingRemoteEpisode = (season, episode)
+                logDebug("selectEpisode: seriesResult not yet ready, stored pendingRemoteEpisode S\(season)E\(episode)")
+            }
+            return
+        }
+        guard let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
+              let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else {
+            logDebug("selectEpisode: episode S\(season)E\(episode) not found in seriesResult")
+            return
+        }
         guard let translation = preferredTranslation(in: epObj) else { return }
-        if !isRemote {
+        if !isRemote && WatchPartyRepository.shared.isConnected {
             WatchPartyRepository.shared.sendEpisodeChange(season: season, episode: episode)
         }
         playEpisode((season: season, episode: episode, translation: translation))
