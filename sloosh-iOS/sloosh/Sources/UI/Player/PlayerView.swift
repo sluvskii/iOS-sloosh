@@ -850,10 +850,10 @@ class PlayerViewModel: ObservableObject {
         self.isAdvancingToNextEpisode = false
         self.playbackRetryCount = 0
         self.wasPlayingBeforeReload = true
-        if self.isInitialSeekPending, let initSeek = self.pendingSeekPosition, initSeek > 0 {
+        if self.isInitialSeekPending, let initSeek = self.pendingSeekPosition {
             self.currentTime = initSeek
             logDebug("beginLoad: preserved explicit initial seek to \(initSeek)s")
-        } else if let mediaId = self.currentMediaId {
+        } else if !WatchPartyRepository.shared.isConnected, let mediaId = self.currentMediaId {
             var saved = PlaybackProgressStore.shared.load(mediaId: mediaId)
             if saved <= 2, let root = self.rootMediaKey {
                 if let tmdb = self.tmdbId, tmdb > 0 {
@@ -1346,6 +1346,7 @@ class PlayerViewModel: ObservableObject {
         guard !isCleaningUp else { return }
         isCleaningUp = true
         PlaybackAnalyticsService.shared.stopWatching()
+        WatchPartyRepository.shared.leaveSession()
 
         // Читаем параметры прогресса до обнуления
         let mediaId = currentMediaId
@@ -2528,13 +2529,13 @@ class PlayerViewModel: ObservableObject {
 
         let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
         let targetSeek: Double = {
-            if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
+            if self.isInitialSeekPending, let pending = self.pendingSeekPosition {
                 return pending
             }
             if self.currentTime > 2 {
                 return self.currentTime
             }
-            if let mediaId = self.currentMediaId {
+            if !WatchPartyRepository.shared.isConnected, let mediaId = self.currentMediaId {
                 let s = PlaybackProgressStore.shared.load(mediaId: mediaId)
                 if s > 2 { return s }
             }
@@ -2871,13 +2872,13 @@ class PlayerViewModel: ObservableObject {
 
         let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
         let targetSeek: Double = {
-            if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
+            if self.isInitialSeekPending, let pending = self.pendingSeekPosition {
                 return pending
             }
             if self.currentTime > 2 {
                 return self.currentTime
             }
-            if let mediaId = self.currentMediaId {
+            if !WatchPartyRepository.shared.isConnected, let mediaId = self.currentMediaId {
                 let s = PlaybackProgressStore.shared.load(mediaId: mediaId)
                 if s > 2 { return s }
             }
@@ -2965,6 +2966,7 @@ class PlayerViewModel: ObservableObject {
                     }
                     WatchPartyRepository.shared.evaluateDrift(
                         localCurrentTime: t,
+                        duration: self.currentDuration,
                         localIsPlaying: self.isPlaying,
                         isBuffering: self.isBuffering,
                         isUserSeeking: self.isUserSeeking

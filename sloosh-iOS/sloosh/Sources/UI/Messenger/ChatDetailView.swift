@@ -76,12 +76,6 @@ public struct ChatDetailView: View {
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
-        .onReceive(WatchPartyRepository.shared.$activePartyPlayerConfig) { config in
-            if let config {
-                activePlayerConfig = config
-                WatchPartyRepository.shared.activePartyPlayerConfig = nil
-            }
-        }
         .fullScreenCover(item: $selectedClipForPlayback, onDismiss: {
             selectedClipForPlayback = nil
         }) { clip in

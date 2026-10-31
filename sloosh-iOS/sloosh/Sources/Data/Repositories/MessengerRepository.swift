@@ -994,7 +994,7 @@ public final class MessengerRepository: ObservableObject {
 
             // Check for new incoming Watch Party invite
             for item in list {
-                if item.unreadCount > 0, item.lastMessageText.contains("🍿 Смотреть вместе") {
+                if item.unreadCount > 0 && (item.lastMessageText.contains("Смотреть вместе") || item.lastMessageText.contains("Приглашение")) {
                     let prev = previousConvs.first(where: { $0.chatId == item.chatId })
                     if prev == nil || item.updatedAtMs > (prev?.updatedAtMs ?? 0) {
                         let senderName = item.peerUser.displayName

@@ -51,7 +51,11 @@ public final class WatchPartyRepository: ObservableObject {
     }
 
     private var currentUserName: String {
-        AuthRepository.shared.currentUser?.displayName ?? "Гость"
+        let name = AuthRepository.shared.currentUser?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let name, !name.isEmpty { return name }
+        let email = AuthRepository.shared.currentUser?.email?.components(separatedBy: "@").first
+        if let email, !email.isEmpty { return email }
+        return isHost ? "Хост" : "Друг"
     }
 
     // MARK: - Toast Banner
@@ -107,9 +111,9 @@ public final class WatchPartyRepository: ObservableObject {
             hostUid: user.id,
             hostName: user.displayName ?? "Хост",
             hostAvatarUrl: user.photoURL,
-            guestUid: invitee.id,
-            guestName: invitee.displayTitle,
-            guestAvatarUrl: invitee.avatarUrl,
+            guestUid: nil,
+            guestName: nil,
+            guestAvatarUrl: nil,
             mediaId: mediaId,
             mediaType: mediaType,
             title: title,
@@ -455,28 +459,38 @@ public final class WatchPartyRepository: ObservableObject {
     }
 
     private func pollSessionState(chatId: String, partyId: String) async {
-        // Poll primary chat path first
+        // Poll primary chat path first, fallback to watch_parties/{partyId}
         let primaryUrl = URL(string: "\(databaseBaseURL)/chats/\(chatId)/watch_party.json\(authQueryParam)")
         let fallbackUrl = URL(string: "\(databaseBaseURL)/watch_parties/\(partyId).json\(authQueryParam)")
 
-        guard let targetUrl = primaryUrl ?? fallbackUrl else { return }
-
-        do {
-            let (data, resp) = try await URLSession.shared.data(from: targetUrl)
-            if let http = resp as? HTTPURLResponse {
-                if http.statusCode == 401 {
-                    _ = await AuthRepository.shared.ensureFreshToken(force: true)
-                    return
+        var fetchedData: Data?
+        if let primaryUrl {
+            do {
+                let (data, resp) = try await URLSession.shared.data(from: primaryUrl)
+                if let http = resp as? HTTPURLResponse {
+                    if http.statusCode == 401 {
+                        _ = await AuthRepository.shared.ensureFreshToken(force: true)
+                        return
+                    }
+                    if (200...299).contains(http.statusCode) && !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
+                        fetchedData = data
+                    }
                 }
-                guard (200...299).contains(http.statusCode) else { return }
-            }
-            guard let remote = try? JSONDecoder().decode(WatchPartySession.self, from: data) else { return }
+            } catch {}
+        }
+        if fetchedData == nil, let fallbackUrl {
+            do {
+                let (data, resp) = try await URLSession.shared.data(from: fallbackUrl)
+                if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
+                    fetchedData = data
+                }
+            } catch {}
+        }
 
-            await MainActor.run {
-                self.processRemoteSessionUpdate(remote)
-            }
-        } catch {
-            // Transient network error
+        guard let data = fetchedData, let remote = try? JSONDecoder().decode(WatchPartySession.self, from: data) else { return }
+
+        await MainActor.run {
+            self.processRemoteSessionUpdate(remote)
         }
     }
 
@@ -560,6 +574,7 @@ public final class WatchPartyRepository: ObservableObject {
     /// Safely throttled to avoid endless seek loops while buffering.
     public func evaluateDrift(
         localCurrentTime: Double,
+        duration: Double = 0,
         localIsPlaying: Bool,
         isBuffering: Bool = false,
         isUserSeeking: Bool = false
@@ -584,7 +599,16 @@ public final class WatchPartyRepository: ObservableObject {
         guard playback.isPlaying && localIsPlaying else { return }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let targetPos = playback.targetPosition(at: nowMs)
+        var targetPos = playback.targetPosition(at: nowMs)
+
+        // Clamp target position to duration if known to avoid seeking past end of video
+        if duration > 10.0 {
+            if targetPos >= duration - 2.0 {
+                return
+            }
+            targetPos = min(targetPos, duration - 2.0)
+        }
+
         let drift = localCurrentTime - targetPos // positive = local ahead, negative = local behind
 
         if abs(drift) > 3.0 {

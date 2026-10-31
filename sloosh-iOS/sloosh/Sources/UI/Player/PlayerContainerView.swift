@@ -134,7 +134,9 @@ struct PlayerContainerView: View {
             hideTask?.cancel()
             tapTask?.cancel()
             lockHideTask?.cancel()
-            watchPartyRepo.leaveSession()
+            if !(vm.pipController?.isPictureInPictureActive == true) {
+                watchPartyRepo.leaveSession()
+            }
         }
         .onChange(of: vm.isPlaying) { _, playing in
             if playing {

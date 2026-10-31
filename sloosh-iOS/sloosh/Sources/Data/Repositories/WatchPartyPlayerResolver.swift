@@ -76,6 +76,7 @@ enum WatchPartyPlayerResolver {
                 ?? result.seasons.first?.episodes.first
             let translations = epObj?.translations ?? []
             chosenTranslation = translations.first(where: { t in
+                if let tId = session.translationId, t.id == String(tId) { return true }
                 guard let targetVoice else { return false }
                 return allohaTranslationNamesMatch(t.name, targetVoice, exactOnly: true)
             }) ?? translations.first(where: { t in
@@ -85,6 +86,7 @@ enum WatchPartyPlayerResolver {
         } else {
             let translations = result.movie?.translations ?? result.seasons.first?.episodes.first?.translations ?? []
             chosenTranslation = translations.first(where: { t in
+                if let tId = session.translationId, t.id == String(tId) { return true }
                 guard let targetVoice else { return false }
                 return allohaTranslationNamesMatch(t.name, targetVoice, exactOnly: true)
             }) ?? translations.first(where: { t in
