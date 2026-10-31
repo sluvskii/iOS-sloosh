@@ -21,8 +21,10 @@ struct TopBarView: View {
                 // Логотип проекта или название фильма строго по центру на оси кнопок (высота 44)
                 centerLogoView
                     .frame(height: 44)
-                    .padding(.horizontal, 148)
+                    .padding(.leading, 156)
+                    .padding(.trailing, watchPartyRepo.isConnected ? 208 : 156)
                     .allowsHitTesting(false)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.82), value: watchPartyRepo.isConnected)
 
                 // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент + блокировка (высота 44)
                 HStack(alignment: .center, spacing: 8) {
@@ -30,6 +32,7 @@ struct TopBarView: View {
                     dualActionsGroup
                     Spacer()
                     watchPartyButton
+                        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: watchPartyRepo.isConnected)
                     clipButton
                     lockButton
                 }
@@ -214,7 +217,14 @@ struct TopBarView: View {
     private var watchPartyButton: some View {
         if watchPartyRepo.isConnected, let peer = watchPartyRepo.peerUser {
             Menu {
-                Text("Совместно с \(peer.displayTitle)")
+                Section {
+                    Text("Совместный просмотр")
+                    if watchPartyRepo.activeSession?.guestUid != nil {
+                        Label("Подключён: \(peer.displayTitle)", systemImage: "checkmark.circle.fill")
+                    } else {
+                        Label("Ожидание: \(peer.displayTitle)", systemImage: "clock")
+                    }
+                }
                 Button(role: .destructive) {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     watchPartyRepo.leaveSession()
@@ -222,30 +232,28 @@ struct TopBarView: View {
                     Label("Завершить просмотр", systemImage: "xmark.circle")
                 }
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: 0) {
                     Image(systemName: "shareplay")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Color.green)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
 
-                    if let avatar = peer.avatarUrl, let url = URL(string: avatar) {
-                        AsyncCachedImage(url: url) {
-                            Circle().fill(Color.white.opacity(0.15))
-                        } content: { image in
-                            Image(uiImage: image).resizable().scaledToFill()
-                        } fallback: {
-                            Circle().fill(Color.white.opacity(0.15))
-                        }
-                        .frame(width: 20, height: 20)
-                        .clipShape(Circle())
-                    }
+                    SlooshAvatarView(user: peer, size: 28, showOnline: true)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        )
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 2)
                 .frame(height: 44)
                 .contentShape(Capsule())
             }
             .buttonStyle(.glassPress)
             .glassEffect(.regular.interactive(), in: .capsule)
-            .accessibilityLabel("Управление совместным просмотром")
+            .accessibilityLabel("Управление совместным просмотром: \(peer.displayTitle)")
         } else {
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
