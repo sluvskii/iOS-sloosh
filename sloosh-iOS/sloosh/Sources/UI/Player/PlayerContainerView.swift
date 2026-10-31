@@ -109,13 +109,17 @@ struct PlayerContainerView: View {
 
                 // 9. Оверлей статуса совместного просмотра (Liquid Glass Toast)
                 if let toast = watchPartyRepo.lastStatusToast {
+                    let hasSeasonButton = !vm.isMovie && vm.currentSeason != nil && vm.currentEpisode != nil
+                    let toastTopPadding: CGFloat = hasSeasonButton ? 108 : 80
+
                     VStack {
                         WatchPartyStatusToast(message: toast)
-                            .padding(.top, 16)
+                            .padding(.top, toastTopPadding)
                         Spacer()
                     }
                     .zIndex(20)
                     .allowsHitTesting(false)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
         }
