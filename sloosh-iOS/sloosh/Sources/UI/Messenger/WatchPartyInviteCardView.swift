@@ -98,13 +98,23 @@ struct WatchPartyInviteCardView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 9)
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(12)
         .frame(maxWidth: 290)
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture {
+            if isPartyActive {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onJoin(payload)
+            }
+        }
     }
 }

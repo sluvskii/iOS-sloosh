@@ -100,40 +100,49 @@ struct ToastView: View {
     @State private var dragOffset: CGFloat = 0
     
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: toast.icon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(toast.iconColor ?? .primary)
-                .frame(width: 28, height: 28, alignment: .center)
-                .contentTransition(.symbolEffect(.replace))
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(toast.title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.primary)
+        Button {
+            let act = toast.action
+            ToastManager.shared.dismiss()
+            act?()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: toast.icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(toast.iconColor ?? .primary)
+                    .frame(width: 28, height: 28, alignment: .center)
+                    .contentTransition(.symbolEffect(.replace))
                 
-                if let subtitle = toast.subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 13, weight: .medium))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(toast.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.primary)
+                    
+                    if let subtitle = toast.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
+
+                if toast.action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.secondary)
-                        .lineLimit(2)
                 }
             }
-            Spacer(minLength: 0)
-
-            if toast.action != nil {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.secondary)
-            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .contentShape(Capsule())
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .buttonStyle(.plain)
         .glassEffect(in: Capsule())
+        .contentShape(Capsule())
         .padding(.horizontal, 24)
         .offset(y: dragOffset)
-        .gesture(
-            DragGesture()
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 15)
                 .onChanged { value in
                     if value.translation.height < 0 {
                         dragOffset = value.translation.height
@@ -152,11 +161,6 @@ struct ToastView: View {
                     }
                 }
         )
-        .onTapGesture {
-            let act = toast.action
-            ToastManager.shared.dismiss()
-            act?()
-        }
     }
 }
 

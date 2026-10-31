@@ -1524,7 +1524,8 @@ class PlayerViewModel: ObservableObject {
         let minTime: Double = isCollapsStream ? 3.5 : 0.0
         let effectiveSeconds = max(minTime, seconds)
         let time = CMTime(seconds: effectiveSeconds, preferredTimescale: 600)
-        let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
+        let isParty = WatchPartyRepository.shared.isConnected || isRemote
+        let tolerance = isParty ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
         let wasPlaying = !isPausedByUser
         isUserSeeking = true
         lastSeekTimestamp = Date()
@@ -2578,10 +2579,22 @@ class PlayerViewModel: ObservableObject {
 
         self.player?.automaticallyWaitsToMinimizeStalling = true
         self.player?.rate = playbackRate
-        self.isPausedByUser = false
+        if WatchPartyRepository.shared.isConnected,
+           let session = WatchPartyRepository.shared.activeSession {
+            self.isPausedByUser = !session.playback.isPlaying
+            self.isPlaying = session.playback.isPlaying
+        } else if !self.isPausedByUser {
+            self.isPausedByUser = false
+        }
 
         let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
         let targetSeek: Double = {
+            if WatchPartyRepository.shared.isConnected,
+               let session = WatchPartyRepository.shared.activeSession {
+                let nowMs = WatchPartyRepository.shared.calibratedNowMs
+                let live = session.playback.targetPosition(at: nowMs)
+                if live > 0.5 { return live }
+            }
             if self.isInitialSeekPending, let pending = self.pendingSeekPosition {
                 return pending
             }
@@ -2595,11 +2608,12 @@ class PlayerViewModel: ObservableObject {
             return minStartTime
         }()
 
-        if targetSeek > 2 {
+        let initialThreshold: Double = WatchPartyRepository.shared.isConnected ? 0.5 : 2.0
+        if targetSeek > initialThreshold {
             self.isInitialSeekPending = true
             self.pendingSeekPosition = targetSeek
             self.logDebug("setupPlayer: pre-queuing initial seek to \(targetSeek)s for \(self.currentMediaId ?? "")")
-            let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
+            let tolerance = WatchPartyRepository.shared.isConnected ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
             self.player?.seek(
                 to: CMTime(seconds: targetSeek, preferredTimescale: 600),
                 toleranceBefore: tolerance,
@@ -2614,7 +2628,18 @@ class PlayerViewModel: ObservableObject {
                         self.updateSubtitleCue(at: targetSeek)
                         self.logDebug("setupPlayer: pre-queued seek to \(targetSeek)s completed")
                     }
-                    if !self.isPausedByUser {
+                    if WatchPartyRepository.shared.isConnected,
+                       let session = WatchPartyRepository.shared.activeSession {
+                        if session.playback.isPlaying {
+                            self.isPausedByUser = false
+                            self.player?.play()
+                            self.isPlaying = true
+                        } else {
+                            self.isPausedByUser = true
+                            self.player?.pause()
+                            self.isPlaying = false
+                        }
+                    } else if !self.isPausedByUser {
                         self.player?.play()
                     }
                     self.updateNowPlaying()
@@ -2643,7 +2668,18 @@ class PlayerViewModel: ObservableObject {
         self.isLoading = false
         self.startTrackingProgress()
         if !self.isInitialSeekPending {
-            self.player?.play()
+            if WatchPartyRepository.shared.isConnected,
+               let session = WatchPartyRepository.shared.activeSession {
+                if session.playback.isPlaying {
+                    self.player?.play()
+                    self.isPlaying = true
+                } else {
+                    self.player?.pause()
+                    self.isPlaying = false
+                }
+            } else if !self.isPausedByUser {
+                self.player?.play()
+            }
         }
     }
     
@@ -2925,6 +2961,12 @@ class PlayerViewModel: ObservableObject {
 
         let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
         let targetSeek: Double = {
+            if WatchPartyRepository.shared.isConnected,
+               let session = WatchPartyRepository.shared.activeSession {
+                let nowMs = WatchPartyRepository.shared.calibratedNowMs
+                let live = session.playback.targetPosition(at: nowMs)
+                if live > 0.5 { return live }
+            }
             if self.isInitialSeekPending, let pending = self.pendingSeekPosition {
                 return pending
             }
@@ -2938,20 +2980,44 @@ class PlayerViewModel: ObservableObject {
             return minStartTime
         }()
 
-        guard targetSeek > 2 else {
+        let threshold: Double = WatchPartyRepository.shared.isConnected ? 0.5 : 2.0
+        guard targetSeek > threshold else {
             self.isInitialSeekPending = false
             self.pendingSeekPosition = nil
-            if !self.isPausedByUser {
+            if WatchPartyRepository.shared.isConnected,
+               let session = WatchPartyRepository.shared.activeSession {
+                if session.playback.isPlaying {
+                    self.isPausedByUser = false
+                    self.player?.play()
+                    self.isPlaying = true
+                } else {
+                    self.isPausedByUser = true
+                    self.player?.pause()
+                    self.isPlaying = false
+                }
+            } else if !self.isPausedByUser {
                 self.player?.play()
             }
             return
         }
 
         let currentPos = player.currentTime().seconds
-        if currentPos.isFinite && abs(currentPos - targetSeek) < 1.0 {
+        let matchTolerance: Double = WatchPartyRepository.shared.isConnected ? 0.25 : 1.0
+        if currentPos.isFinite && abs(currentPos - targetSeek) < matchTolerance {
             self.isInitialSeekPending = false
             self.pendingSeekPosition = nil
-            if !self.isPausedByUser {
+            if WatchPartyRepository.shared.isConnected,
+               let session = WatchPartyRepository.shared.activeSession {
+                if session.playback.isPlaying {
+                    self.isPausedByUser = false
+                    self.player?.play()
+                    self.isPlaying = true
+                } else {
+                    self.isPausedByUser = true
+                    self.player?.pause()
+                    self.isPlaying = false
+                }
+            } else if !self.isPausedByUser {
                 self.player?.play()
             }
             return
@@ -2960,7 +3026,7 @@ class PlayerViewModel: ObservableObject {
         self.isInitialSeekPending = true
         self.pendingSeekPosition = targetSeek
         self.logDebug("applySeekIfNeeded: seeking to \(targetSeek)s for \(self.currentMediaId ?? "")")
-        let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
+        let tolerance = WatchPartyRepository.shared.isConnected ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
         player.seek(
             to: CMTime(seconds: targetSeek, preferredTimescale: 600),
             toleranceBefore: tolerance,
@@ -2975,7 +3041,18 @@ class PlayerViewModel: ObservableObject {
                     self.updateSubtitleCue(at: targetSeek)
                     self.logDebug("applySeekIfNeeded: seek to \(targetSeek)s completed successfully")
                 }
-                if !self.isPausedByUser {
+                if WatchPartyRepository.shared.isConnected,
+                   let session = WatchPartyRepository.shared.activeSession {
+                    if session.playback.isPlaying {
+                        self.isPausedByUser = false
+                        self.player?.play()
+                        self.isPlaying = true
+                    } else {
+                        self.isPausedByUser = true
+                        self.player?.pause()
+                        self.isPlaying = false
+                    }
+                } else if !self.isPausedByUser {
                     self.player?.play()
                 }
                 self.updateNowPlaying()

@@ -289,6 +289,10 @@ public final class WatchPartyRepository: ObservableObject {
         self.peerUser = hostPeer
         self.isConnected = true
         self.lastProcessedPlaybackUpdatedAtMs = session.playback.updatedAtMs
+        self.smoothedDrift = 0.0
+        self.currentAppliedRate = 1.0
+        self.lastDriftEvaluationTime = .distantPast
+        self.lastRateChangeTime = .distantPast
 
         startObservingSession(chatId: resolvedChatId, partyId: session.id)
         showToast("Вы подключились к просмотру с \(session.hostName)")
@@ -865,6 +869,14 @@ public final class WatchPartyRepository: ObservableObject {
             smoothedDrift = (smoothedDrift * 0.65) + (instantaneousDrift * 0.35)
         }
         let absDrift = abs(smoothedDrift)
+
+        // If drift is massive (> 3.0s, e.g. severe stall or backgrounding), perform immediate seek to resync
+        if absDrift > 3.0 {
+            AppDiagnostics.shared.log("[WatchParty] Massive drift detected (\(String(format: "%.2f", absDrift))s) > 3.0s, resyncing seek to \(targetPos)")
+            smoothedDrift = 0.0
+            onRemoteSeek?(targetPos)
+            return
+        }
 
         // Smooth rate slew without hard seeks or stutters during playback:
         var desiredRate: Float = 1.0
