@@ -31,6 +31,7 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
     public var lastActionByName: String
     public var actionType: WatchPartyActionType
     public var actionTargetTime: Double?
+    public var scheduledStartMs: Int64?
 
     public init(
         isPlaying: Bool,
@@ -39,7 +40,8 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
         lastActionByUid: String = "",
         lastActionByName: String = "",
         actionType: WatchPartyActionType = .play,
-        actionTargetTime: Double? = nil
+        actionTargetTime: Double? = nil,
+        scheduledStartMs: Int64? = nil
     ) {
         self.isPlaying = isPlaying
         self.positionSec = positionSec
@@ -48,6 +50,7 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
         self.lastActionByName = lastActionByName
         self.actionType = actionType
         self.actionTargetTime = actionTargetTime
+        self.scheduledStartMs = scheduledStartMs
     }
 
     /// Computes the exact target position at a given current timestamp (Clock Sync formula).
@@ -55,7 +58,11 @@ public struct WatchPartyPlayback: Codable, Sendable, Equatable, Hashable {
         if !isPlaying {
             return max(0, positionSec)
         }
-        let elapsedSec = max(0, Double(currentTimestampMs - updatedAtMs) / 1000.0)
+        let effectiveStartMs = scheduledStartMs ?? updatedAtMs
+        if currentTimestampMs < effectiveStartMs {
+            return max(0, positionSec)
+        }
+        let elapsedSec = max(0, Double(currentTimestampMs - effectiveStartMs) / 1000.0)
         return max(0, positionSec + elapsedSec)
     }
 

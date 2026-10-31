@@ -29,12 +29,16 @@ public final class WatchPartyRepository: ObservableObject {
 
     // MARK: - Private State
 
+    private var realtimeStreamTask: Task<Void, Never>?
     private var pollingTask: Task<Void, Never>?
     private var toastDismissTask: Task<Void, Never>?
     private var isApplyingRemoteAction: Bool = false
     private var lastProcessedPlaybackUpdatedAtMs: Int64 = 0
     private var lastHardSeekTime: Date = .distantPast
     private var lastDriftEvaluationTime: Date = .distantPast
+    private var smoothedDrift: Double = 0.0
+    private var lastRateChangeTime: Date = .distantPast
+    private var currentAppliedRate: Float = 1.0
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
 
     // MARK: - Server Clock Synchronization (NTP compensation)
@@ -330,8 +334,12 @@ public final class WatchPartyRepository: ObservableObject {
         let myId = currentUserId
         let myName = currentUserName
 
+        realtimeStreamTask?.cancel()
+        realtimeStreamTask = nil
         pollingTask?.cancel()
         pollingTask = nil
+        smoothedDrift = 0.0
+        currentAppliedRate = 1.0
 
         Task {
             let patchDict: [String: Any] = [
@@ -374,7 +382,8 @@ public final class WatchPartyRepository: ObservableObject {
         isPlaying: Bool,
         positionSec: Double,
         action: WatchPartyActionType,
-        targetTime: Double? = nil
+        targetTime: Double? = nil,
+        scheduledStartMs: Int64? = nil
     ) {
         guard let session = activeSession, isConnected else { return }
         guard !isApplyingRemoteAction else { return }
@@ -385,29 +394,40 @@ public final class WatchPartyRepository: ObservableObject {
         let myName = currentUserName
         let nowMs = calibratedNowMs
 
-        AppDiagnostics.shared.log("[WatchParty] sendPlaybackAction: action=\(action.rawValue), isPlaying=\(isPlaying), pos=\(positionSec)")
+        let effectiveStartMs: Int64? = {
+            if isPlaying && (action == .play || action == .seek) {
+                return scheduledStartMs ?? (nowMs + 250)
+            }
+            return nil
+        }()
 
-        let playbackDict: [String: Any] = [
+        AppDiagnostics.shared.log("[WatchParty] sendPlaybackAction: action=\(action.rawValue), isPlaying=\(isPlaying), pos=\(positionSec), scheduledStartMs=\(String(describing: effectiveStartMs))")
+
+        var playbackDict: [String: Any] = [
             "isPlaying": isPlaying,
             "positionSec": positionSec,
-            "updatedAtMs": nowMs,
+            "updatedAtMs": effectiveStartMs ?? nowMs,
             "lastActionByUid": myId,
             "lastActionByName": myName,
             "actionType": action.rawValue,
             "actionTargetTime": targetTime ?? positionSec
         ]
+        if let effectiveStartMs {
+            playbackDict["scheduledStartMs"] = effectiveStartMs
+        }
 
         // Optimistically update local activeSession model
         self.activeSession?.playback = WatchPartyPlayback(
             isPlaying: isPlaying,
             positionSec: positionSec,
-            updatedAtMs: nowMs,
+            updatedAtMs: effectiveStartMs ?? nowMs,
             lastActionByUid: myId,
             lastActionByName: myName,
             actionType: action,
-            actionTargetTime: targetTime ?? positionSec
+            actionTargetTime: targetTime ?? positionSec,
+            scheduledStartMs: effectiveStartMs
         )
-        self.lastProcessedPlaybackUpdatedAtMs = nowMs
+        self.lastProcessedPlaybackUpdatedAtMs = effectiveStartMs ?? nowMs
 
         Task {
             let playbackData = try? JSONSerialization.data(withJSONObject: playbackDict)
@@ -539,13 +559,91 @@ public final class WatchPartyRepository: ObservableObject {
     // MARK: - Polling & Real-time Observation
 
     private func startObservingSession(chatId: String, partyId: String) {
+        realtimeStreamTask?.cancel()
         pollingTask?.cancel()
+
+        // 1. High-speed Real-Time SSE Stream (Sub-50ms latency)
+        realtimeStreamTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { break }
+                let urlString = "\(self.databaseBaseURL)/chats/\(chatId)/watch_party.json\(self.authQueryParam)"
+                guard let streamUrl = URL(string: urlString) else { break }
+
+                var req = URLRequest(url: streamUrl)
+                req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                req.timeoutInterval = 300
+
+                do {
+                    let (asyncBytes, response) = try await URLSession.shared.bytes(for: req)
+                    self.syncServerTime(from: response)
+
+                    var currentEvent = ""
+                    for try await line in asyncBytes.lines {
+                        if Task.isCancelled { break }
+                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.hasPrefix("event: ") {
+                            currentEvent = String(trimmed.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+                        } else if trimmed.hasPrefix("data: ") {
+                            let dataStr = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                            if currentEvent == "put" || currentEvent == "patch" {
+                                await self.handleStreamPayload(dataStr, chatId: chatId, partyId: partyId)
+                            }
+                        }
+                    }
+                } catch {
+                    // SSE connection reset or network switch
+                }
+
+                if Task.isCancelled { break }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+
+        // 2. Fallback polling loop (every 3.0s) for redundancy and server clock calibration
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.pollSessionState(chatId: chatId, partyId: partyId)
-                // Poll cadence: 1.0 second during active session for smooth clock sync
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
+        }
+    }
+
+    private func handleStreamPayload(_ jsonString: String, chatId: String, partyId: String) async {
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = json["path"] as? String else {
+            return
+        }
+
+        let rawData = json["data"]
+
+        if path == "/" {
+            if let dict = rawData as? [String: Any],
+               let encoded = try? JSONSerialization.data(withJSONObject: dict),
+               let remote = try? JSONDecoder().decode(WatchPartySession.self, from: encoded) {
+                await MainActor.run {
+                    self.processRemoteSessionUpdate(remote)
+                }
+            } else if rawData is NSNull {
+                await MainActor.run {
+                    self.leaveSession()
+                }
+            }
+        } else if path == "/playback" || path.hasPrefix("/playback") {
+            if let dict = rawData as? [String: Any],
+               let encoded = try? JSONSerialization.data(withJSONObject: dict),
+               let playback = try? JSONDecoder().decode(WatchPartyPlayback.self, from: encoded) {
+                await MainActor.run {
+                    if var current = self.activeSession {
+                        current.playback = playback
+                        self.processRemoteSessionUpdate(current)
+                    }
+                }
+            } else {
+                await self.pollSessionState(chatId: chatId, partyId: partyId)
+            }
+        } else {
+            await self.pollSessionState(chatId: chatId, partyId: partyId)
         }
     }
 
@@ -675,19 +773,35 @@ public final class WatchPartyRepository: ObservableObject {
             }
         } else if action.actionType == .play && action.isPlaying == true {
             showToast("\(action.lastActionByName) возобновил(а) просмотр")
-            // Align play position if difference is significant (> 2.0s)
-            if abs(localTime - targetPos) >= 2.0 {
-                AppDiagnostics.shared.log("[WatchParty] Seeking on play from \(localTime) to \(targetPos)")
+            // Align play position if difference is noticeable (> 0.25s)
+            if abs(localTime - targetPos) > 0.25 {
+                AppDiagnostics.shared.log("[WatchParty] Aligning play position from \(localTime) to \(targetPos)")
                 onRemoteSeek?(targetPos)
             }
-            onRemotePlay?()
+            if let scheduledStart = action.scheduledStartMs {
+                let delayMs = max(0, scheduledStart - nowMs)
+                let delaySec = Double(delayMs) / 1000.0
+                DispatchQueue.main.asyncAfter(deadline: .now() + delaySec) { [weak self] in
+                    self?.onRemotePlay?()
+                }
+            } else {
+                onRemotePlay?()
+            }
         } else if action.actionType == .seek {
             let timeStr = formatSecondsToTime(targetPos)
             showToast("\(action.lastActionByName) перемотал(а) на \(timeStr)")
             // Explicit seek: jump to target and match play/pause state
             onRemoteSeek?(targetPos)
             if action.isPlaying {
-                onRemotePlay?()
+                if let scheduledStart = action.scheduledStartMs {
+                    let delayMs = max(0, scheduledStart - nowMs)
+                    let delaySec = Double(delayMs) / 1000.0
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delaySec) { [weak self] in
+                        self?.onRemotePlay?()
+                    }
+                } else {
+                    onRemotePlay?()
+                }
             } else {
                 onRemotePause?()
             }
@@ -724,6 +838,10 @@ public final class WatchPartyRepository: ObservableObject {
 
         // Only calibrate drift when BOTH are actively playing
         guard playback.isPlaying && localIsPlaying else {
+            if currentAppliedRate != 1.0 {
+                currentAppliedRate = 1.0
+                onRemoteRateChange?(1.0)
+            }
             return
         }
 
@@ -738,40 +856,40 @@ public final class WatchPartyRepository: ObservableObject {
             targetPos = min(targetPos, duration - 2.0)
         }
 
-        let drift = localCurrentTime - targetPos // positive = local ahead, negative = local behind
-        let absDrift = abs(drift)
+        let instantaneousDrift = localCurrentTime - targetPos // positive = local ahead, negative = local behind
 
-        if absDrift > 5.0 {
-            // Massive drift (> 5 seconds): hard seek only with 10-second cooldown to avoid buffer thrashing
-            if now.timeIntervalSince(lastHardSeekTime) >= 10.0 {
-                lastHardSeekTime = now
-                AppDiagnostics.shared.log("[WatchParty] Hard drift detected (\(drift)s), seeking to \(targetPos)s")
-                isApplyingRemoteAction = true
-                onRemoteSeek?(targetPos)
-                onRemoteRateChange?(1.0)
-                isApplyingRemoteAction = false
-            }
-        } else if absDrift > 0.15 {
-            // Multi-tier proportional adaptive rate slew:
-            // 0.15s - 0.6s:  1.025x / 0.975x (subtle, inaudible)
-            // 0.6s  - 1.5s:  1.05x  / 0.95x  (fast sync: closes 1s in ~20s)
-            // 1.5s  - 3.0s:  1.08x  / 0.92x  (rapid sync: closes 2s in ~25s)
-            // 3.0s  - 5.0s:  1.12x  / 0.88x  (aggressive sync)
-            let factor: Float
-            if absDrift > 3.0 {
-                factor = 0.12
-            } else if absDrift > 1.5 {
-                factor = 0.08
-            } else if absDrift > 0.6 {
-                factor = 0.05
-            } else {
-                factor = 0.025
-            }
-            let targetRate: Float = drift < 0 ? (1.0 + factor) : (1.0 - factor)
-            onRemoteRateChange?(targetRate)
+        // Exponential Moving Average to smooth out timer and packet jitter
+        if smoothedDrift == 0.0 {
+            smoothedDrift = instantaneousDrift
         } else {
-            // In sync (<= 0.15s, within ~4 video frames): keep standard 1.0x
-            onRemoteRateChange?(1.0)
+            smoothedDrift = (smoothedDrift * 0.65) + (instantaneousDrift * 0.35)
+        }
+        let absDrift = abs(smoothedDrift)
+
+        // Smooth rate slew without hard seeks or stutters during playback:
+        var desiredRate: Float = 1.0
+
+        if absDrift > 0.15 {
+            // Slew factor:
+            // 0.15s - 1.0s: 2.5% adjustment (1.025x / 0.975x) — completely inaudible, pitch-perfect
+            // > 1.0s:       5.0% adjustment (1.05x  / 0.95x)  — smooth, fast catch-up without any buffer starvation
+            let adjustment: Float = absDrift > 1.0 ? 0.05 : 0.025
+            desiredRate = smoothedDrift < 0 ? (1.0 + adjustment) : (1.0 - adjustment)
+        } else {
+            // In sync (within 0.15s = ~4 video frames): keep standard 1.0x
+            desiredRate = 1.0
+        }
+
+        // Only change player rate if it actually differs and after a 3.0s cooldown
+        // to avoid repeatedly perturbing AVPlayer's audio/video clock:
+        if desiredRate != currentAppliedRate {
+            let elapsedSinceRateChange = now.timeIntervalSince(lastRateChangeTime)
+            if desiredRate == 1.0 || elapsedSinceRateChange >= 3.0 {
+                lastRateChangeTime = now
+                currentAppliedRate = desiredRate
+                AppDiagnostics.shared.log("[WatchParty] Smooth rate slew: drift=\(String(format: "%.3f", smoothedDrift))s, rate=\(desiredRate)x")
+                onRemoteRateChange?(desiredRate)
+            }
         }
     }
 

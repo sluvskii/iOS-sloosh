@@ -1477,10 +1477,28 @@ class PlayerViewModel: ObservableObject {
             WatchPartyRepository.shared.sendPlaybackAction(isPlaying: false, positionSec: effectivePos, action: .pause)
         } else {
             isPausedByUser = false
-            player.play()
-            isPlaying = true
             currentTime = effectivePos
-            WatchPartyRepository.shared.sendPlaybackAction(isPlaying: true, positionSec: effectivePos, action: .play)
+            if WatchPartyRepository.shared.isConnected {
+                let scheduledStartMs = WatchPartyRepository.shared.calibratedNowMs + 250
+                WatchPartyRepository.shared.sendPlaybackAction(
+                    isPlaying: true,
+                    positionSec: effectivePos,
+                    action: .play,
+                    scheduledStartMs: scheduledStartMs
+                )
+                let delayMs = max(0, scheduledStartMs - WatchPartyRepository.shared.calibratedNowMs)
+                let delaySec = Double(delayMs) / 1000.0
+                DispatchQueue.main.asyncAfter(deadline: .now() + delaySec) { [weak self] in
+                    guard let self, !self.isPausedByUser else { return }
+                    self.player?.play()
+                    self.isPlaying = true
+                    self.updateNowPlaying()
+                }
+            } else {
+                player.play()
+                isPlaying = true
+                WatchPartyRepository.shared.sendPlaybackAction(isPlaying: true, positionSec: effectivePos, action: .play)
+            }
         }
         updateNowPlaying()
     }
@@ -1520,11 +1538,13 @@ class PlayerViewModel: ObservableObject {
                     self.saveCurrentProgress()
                 }
                 if !isRemote {
+                    let scheduledStartMs: Int64? = wasPlaying ? (WatchPartyRepository.shared.calibratedNowMs + 250) : nil
                     WatchPartyRepository.shared.sendPlaybackAction(
                         isPlaying: wasPlaying,
                         positionSec: effectiveSeconds,
                         action: .seek,
-                        targetTime: effectiveSeconds
+                        targetTime: effectiveSeconds,
+                        scheduledStartMs: scheduledStartMs
                     )
                 }
                 if wasPlaying {
