@@ -1507,6 +1507,7 @@ class PlayerViewModel: ObservableObject {
         let effectiveSeconds = max(minTime, seconds)
         let time = CMTime(seconds: effectiveSeconds, preferredTimescale: 600)
         let tolerance = CMTime(seconds: 1.5, preferredTimescale: 600)
+        let wasPlaying = !isPausedByUser
         isUserSeeking = true
         lastSeekTimestamp = Date()
         currentTime = effectiveSeconds
@@ -1519,10 +1520,16 @@ class PlayerViewModel: ObservableObject {
                     self.saveCurrentProgress()
                 }
                 if !isRemote {
-                    WatchPartyRepository.shared.sendPlaybackAction(isPlaying: self.isPlaying, positionSec: effectiveSeconds, action: .seek, targetTime: effectiveSeconds)
+                    WatchPartyRepository.shared.sendPlaybackAction(
+                        isPlaying: wasPlaying,
+                        positionSec: effectiveSeconds,
+                        action: .seek,
+                        targetTime: effectiveSeconds
+                    )
                 }
-                if !self.isPausedByUser {
+                if wasPlaying {
                     self.player?.play()
+                    self.isPlaying = true
                 }
             }
         }
@@ -2240,6 +2247,7 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
+        playerItem.audioTimePitchAlgorithm = .timeDomain
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
         playerItem.preferredMaximumResolution = preferredMaximumResolution
         playerItem.preferredForwardBufferDuration = 0.0
@@ -2531,6 +2539,7 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
+        playerItem.audioTimePitchAlgorithm = .timeDomain
         playerItem.preferredForwardBufferDuration = 0.0
         if let currentKey = currentQualityKey, currentKey != "Авто" {
             let res = targetResolution(for: currentKey)

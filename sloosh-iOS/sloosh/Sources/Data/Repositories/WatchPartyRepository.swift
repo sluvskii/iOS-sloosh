@@ -668,15 +668,15 @@ public final class WatchPartyRepository: ObservableObject {
         if action.actionType == .pause && action.isPlaying == false {
             showToast("\(action.lastActionByName) поставил(а) на паузу")
             onRemotePause?()
-            // ONLY seek on pause if difference is significant (> 2.5s) to avoid buffer discard and jump
-            if abs(localTime - action.positionSec) >= 2.5 {
+            // Always align to the exact paused frame if difference is noticeable (> 0.25s)
+            if abs(localTime - action.positionSec) > 0.25 {
                 AppDiagnostics.shared.log("[WatchParty] Aligning pause position from \(localTime) to \(action.positionSec)")
                 onRemoteSeek?(action.positionSec)
             }
         } else if action.actionType == .play && action.isPlaying == true {
             showToast("\(action.lastActionByName) возобновил(а) просмотр")
-            // ONLY seek on play if desync is massive (> 3.5s); otherwise start playing immediately from current buffer
-            if abs(localTime - targetPos) >= 3.5 {
+            // Align play position if difference is significant (> 2.0s)
+            if abs(localTime - targetPos) >= 2.0 {
                 AppDiagnostics.shared.log("[WatchParty] Seeking on play from \(localTime) to \(targetPos)")
                 onRemoteSeek?(targetPos)
             }
@@ -684,8 +684,13 @@ public final class WatchPartyRepository: ObservableObject {
         } else if action.actionType == .seek {
             let timeStr = formatSecondsToTime(targetPos)
             showToast("\(action.lastActionByName) перемотал(а) на \(timeStr)")
-            // Explicit seek: always jump to target
+            // Explicit seek: jump to target and match play/pause state
             onRemoteSeek?(targetPos)
+            if action.isPlaying {
+                onRemotePlay?()
+            } else {
+                onRemotePause?()
+            }
         }
 
         self.activeSession = remote
@@ -704,9 +709,9 @@ public final class WatchPartyRepository: ObservableObject {
         guard !isApplyingRemoteAction else { return }
         guard !isBuffering && !isUserSeeking else { return }
 
-        // Throttle drift checks to at most once every 3.0 seconds
+        // Throttle drift checks to at most once every 1.5 seconds for snappy sync
         let now = Date()
-        guard now.timeIntervalSince(lastDriftEvaluationTime) >= 3.0 else { return }
+        guard now.timeIntervalSince(lastDriftEvaluationTime) >= 1.5 else { return }
         lastDriftEvaluationTime = now
 
         let playback = session.playback
@@ -734,10 +739,11 @@ public final class WatchPartyRepository: ObservableObject {
         }
 
         let drift = localCurrentTime - targetPos // positive = local ahead, negative = local behind
+        let absDrift = abs(drift)
 
-        if abs(drift) > 6.0 {
-            // Massive drift (> 6 seconds): hard seek only with 15-second cooldown to avoid buffer thrashing
-            if now.timeIntervalSince(lastHardSeekTime) >= 15.0 {
+        if absDrift > 5.0 {
+            // Massive drift (> 5 seconds): hard seek only with 10-second cooldown to avoid buffer thrashing
+            if now.timeIntervalSince(lastHardSeekTime) >= 10.0 {
                 lastHardSeekTime = now
                 AppDiagnostics.shared.log("[WatchParty] Hard drift detected (\(drift)s), seeking to \(targetPos)s")
                 isApplyingRemoteAction = true
@@ -745,12 +751,26 @@ public final class WatchPartyRepository: ObservableObject {
                 onRemoteRateChange?(1.0)
                 isApplyingRemoteAction = false
             }
-        } else if abs(drift) > 0.35 {
-            // Soft drift (0.35s to 6.0s): micro-adjust playback rate (1.03x or 0.97x) to silently align without flushing buffer
-            let targetRate: Float = drift < 0 ? 1.03 : 0.97
+        } else if absDrift > 0.15 {
+            // Multi-tier proportional adaptive rate slew:
+            // 0.15s - 0.6s:  1.025x / 0.975x (subtle, inaudible)
+            // 0.6s  - 1.5s:  1.05x  / 0.95x  (fast sync: closes 1s in ~20s)
+            // 1.5s  - 3.0s:  1.08x  / 0.92x  (rapid sync: closes 2s in ~25s)
+            // 3.0s  - 5.0s:  1.12x  / 0.88x  (aggressive sync)
+            let factor: Float
+            if absDrift > 3.0 {
+                factor = 0.12
+            } else if absDrift > 1.5 {
+                factor = 0.08
+            } else if absDrift > 0.6 {
+                factor = 0.05
+            } else {
+                factor = 0.025
+            }
+            let targetRate: Float = drift < 0 ? (1.0 + factor) : (1.0 - factor)
             onRemoteRateChange?(targetRate)
         } else {
-            // In sync (< 0.35s): ensure rate is standard 1.0x
+            // In sync (<= 0.15s, within ~4 video frames): keep standard 1.0x
             onRemoteRateChange?(1.0)
         }
     }

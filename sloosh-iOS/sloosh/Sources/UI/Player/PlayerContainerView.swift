@@ -480,7 +480,9 @@ struct PlayerContainerView: View {
 
     private func setupWatchPartySync() {
         watchPartyRepo.localPlaybackTimeProvider = { [weak vm] in
-            vm?.currentTime ?? 0
+            guard let player = vm?.player else { return vm?.currentTime ?? 0 }
+            let t = player.currentTime().seconds
+            return (t.isFinite && !t.isNaN && t >= 0) ? t : (vm?.currentTime ?? 0)
         }
         watchPartyRepo.onRemotePlay = { [weak vm] in
             vm?.applyRemotePlay()
