@@ -12,14 +12,6 @@ enum WatchPartyPlayerResolver {
         let mediaType = session.mediaType
         let fallbackTitle = session.title
 
-        ToastManager.shared.show(
-            title: "Смотреть вместе",
-            subtitle: "Подключение к просмотру «\(fallbackTitle)»...",
-            icon: "shareplay",
-            iconColor: .green,
-            duration: 3.0
-        )
-
         await vm.loadDetails(id: movieId, type: mediaType)
         let resolvedKpId = vm.details?.ids?.kp ?? vm.details?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.replacingOccurrences(of: "kp_", with: "")) : nil) ?? 0
         let resolvedTmdbId = vm.details?.externalIds?.tmdb ?? vm.details?.ids?.tmdb ?? (movieId.hasPrefix("tmdb_") ? Int(movieId.replacingOccurrences(of: "tmdb_", with: "")) : Int(movieId))

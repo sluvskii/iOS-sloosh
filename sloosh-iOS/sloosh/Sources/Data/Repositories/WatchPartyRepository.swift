@@ -13,6 +13,7 @@ public final class WatchPartyRepository: ObservableObject {
     @Published public private(set) var isConnected: Bool = false
     @Published public private(set) var peerUser: SlooshUser? = nil
     @Published public private(set) var isHost: Bool = false
+    @Published public private(set) var isJoiningParty: Bool = false
     @Published public private(set) var lastStatusToast: String? = nil
     @Published public var incomingInvite: WatchPartyInvitePayload? = nil
     @Published var activePartyPlayerConfig: PlayerConfig? = nil
@@ -302,8 +303,11 @@ public final class WatchPartyRepository: ObservableObject {
 
     /// Fast one-tap join directly from an incoming invite or conversation in chat.
     public func acceptInviteFromChat(partyId: String, chatId: String) {
+        guard !isJoiningParty else { return }
         incomingInvite = nil
+        isJoiningParty = true
         Task { @MainActor in
+            defer { self.isJoiningParty = false }
             if let joined = await joinSession(chatId: chatId, partyId: partyId) {
                 if let config = await WatchPartyPlayerResolver.resolveConfig(for: joined) {
                     self.activePartyPlayerConfig = config
@@ -313,6 +317,15 @@ public final class WatchPartyRepository: ObservableObject {
     }
 
     public func acceptInviteFromChat(chatId: String) async {
+        guard !isJoiningParty else { return }
+        await MainActor.run {
+            self.isJoiningParty = true
+        }
+        defer {
+            Task { @MainActor in
+                self.isJoiningParty = false
+            }
+        }
         guard let url = URL(string: "\(databaseBaseURL)/chats/\(chatId)/watch_party.json\(authQueryParam)") else { return }
         do {
             let (data, resp) = try await URLSession.shared.data(from: url)
@@ -321,7 +334,9 @@ public final class WatchPartyRepository: ObservableObject {
 
             if let joined = await joinSession(chatId: chatId, partyId: session.id) {
                 if let config = await WatchPartyPlayerResolver.resolveConfig(for: joined) {
-                    self.activePartyPlayerConfig = config
+                    await MainActor.run {
+                        self.activePartyPlayerConfig = config
+                    }
                 }
             }
         } catch {

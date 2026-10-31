@@ -27,6 +27,7 @@ public final class MessengerRepository: ObservableObject {
         return stored?.int64Value ?? 0
     }()
     private var serverClockOffsetMs: Int64 = 0
+    private var notifiedWatchPartyTimestamps: [String: Int64] = [:]
 
     public var totalUnreadCount: Int {
         conversations.reduce(0) { $0 + $1.unreadCount }
@@ -995,8 +996,9 @@ public final class MessengerRepository: ObservableObject {
             // Check for new incoming Watch Party invite
             for item in list {
                 if item.unreadCount > 0 && (item.lastMessageText.contains("Смотреть вместе") || item.lastMessageText.contains("Приглашение")) {
-                    let prev = previousConvs.first(where: { $0.chatId == item.chatId })
-                    if prev == nil || item.updatedAtMs > (prev?.updatedAtMs ?? 0) {
+                    let lastNotified = self.notifiedWatchPartyTimestamps[item.chatId] ?? 0
+                    if item.updatedAtMs > lastNotified {
+                        self.notifiedWatchPartyTimestamps[item.chatId] = item.updatedAtMs
                         let senderName = item.peerUser.displayName
                         let targetChatId = item.chatId
                         ToastManager.shared.show(
@@ -1005,7 +1007,18 @@ public final class MessengerRepository: ObservableObject {
                             icon: "shareplay",
                             iconColor: .green,
                             duration: 8.0,
-                            action: {
+                            action: { [weak self] in
+                                self?.notifiedWatchPartyTimestamps[targetChatId] = Int64.max
+                                if let idx = self?.conversations.firstIndex(where: { $0.chatId == targetChatId }) {
+                                    let old = self!.conversations[idx]
+                                    self?.conversations[idx] = ChatConversation(
+                                        chatId: old.chatId,
+                                        peerUser: old.peerUser,
+                                        lastMessageText: old.lastMessageText,
+                                        unreadCount: 0,
+                                        updatedAtMs: old.updatedAtMs
+                                    )
+                                }
                                 Task {
                                     await WatchPartyRepository.shared.acceptInviteFromChat(chatId: targetChatId)
                                 }
