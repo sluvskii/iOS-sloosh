@@ -136,7 +136,8 @@ enum WatchPartyPlayerResolver {
             logoUrl: vm.details?.displayLogoUrl,
             source: effectiveSource,
             episodeSubtitles: effectiveSource == .source2 ? (wrapper.collapsResult?.episodeSubtitles ?? [:]) : [:],
-            initialPlaybackTime: syncTime
+            initialPlaybackTime: syncTime,
+            isInitiallyPaused: !session.playback.isPlaying
         )
     }
 }

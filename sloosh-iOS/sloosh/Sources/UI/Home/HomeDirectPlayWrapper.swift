@@ -22,6 +22,7 @@ struct PlayerConfig: Identifiable {
     let source: MediaStreamSource
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
     let initialPlaybackTime: Double?
+    let isInitiallyPaused: Bool
 
     init(
         iframeUrl: String?,
@@ -43,7 +44,8 @@ struct PlayerConfig: Identifiable {
         logoUrl: String? = nil,
         source: MediaStreamSource = .source1,
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:],
-        initialPlaybackTime: Double? = nil
+        initialPlaybackTime: Double? = nil,
+        isInitiallyPaused: Bool = false
     ) {
         self.iframeUrl = iframeUrl
         self.title = title
@@ -65,6 +67,7 @@ struct PlayerConfig: Identifiable {
         self.source = source
         self.episodeSubtitles = episodeSubtitles
         self.initialPlaybackTime = initialPlaybackTime
+        self.isInitiallyPaused = isInitiallyPaused
     }
 }
 

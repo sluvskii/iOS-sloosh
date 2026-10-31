@@ -8,6 +8,11 @@ struct WatchPartyInviteCardView: View {
     let onJoin: (WatchPartyInvitePayload) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var isClosed: Bool = false
+
+    private var isPartyActive: Bool {
+        payload.status == .active && !isClosed
+    }
 
     private var subtitleText: String? {
         var parts: [String] = []
@@ -26,15 +31,15 @@ struct WatchPartyInviteCardView: View {
             HStack(spacing: 6) {
                 Image(systemName: "shareplay")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(payload.status == .active ? Color.green : Color.secondary)
+                    .foregroundColor(isPartyActive ? Color.green : Color.secondary)
 
-                Text(payload.status == .active ? "Совместный просмотр" : "Просмотр завершён")
+                Text(isPartyActive ? "Совместный просмотр" : "Просмотр завершён")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(payload.status == .active ? (colorScheme == .dark ? .white : .primary) : .secondary)
+                    .foregroundColor(isPartyActive ? (colorScheme == .dark ? .white : .primary) : .secondary)
 
                 Spacer()
 
-                if payload.status == .active {
+                if isPartyActive {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 7, height: 7)
@@ -79,7 +84,7 @@ struct WatchPartyInviteCardView: View {
             }
 
             // Action button
-            if payload.status == .active {
+            if isPartyActive {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onJoin(payload)

@@ -96,6 +96,7 @@ struct PlayerView: View {
     let streamSource: MediaStreamSource
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
     let initialPlaybackTime: Double?
+    let isInitiallyPaused: Bool
 
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.dismiss) private var dismissEnv
@@ -120,7 +121,8 @@ struct PlayerView: View {
         logoUrl: String? = nil,
         streamSource: MediaStreamSource = .source1,
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:],
-        initialPlaybackTime: Double? = nil
+        initialPlaybackTime: Double? = nil,
+        isInitiallyPaused: Bool = false
     ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
@@ -142,6 +144,7 @@ struct PlayerView: View {
         self.streamSource = streamSource
         self.episodeSubtitles = episodeSubtitles
         self.initialPlaybackTime = initialPlaybackTime
+        self.isInitiallyPaused = isInitiallyPaused
     }
 
     init(config: PlayerConfig) {
@@ -165,7 +168,8 @@ struct PlayerView: View {
             logoUrl: config.logoUrl,
             streamSource: config.source,
             episodeSubtitles: config.episodeSubtitles,
-            initialPlaybackTime: config.initialPlaybackTime
+            initialPlaybackTime: config.initialPlaybackTime,
+            isInitiallyPaused: config.isInitiallyPaused
         )
     }
 
@@ -192,6 +196,11 @@ struct PlayerView: View {
             viewModel.logoUrl = logoUrl
             viewModel.streamSource = streamSource
             viewModel.episodeSubtitles = episodeSubtitles
+
+            if isInitiallyPaused {
+                viewModel.isPausedByUser = true
+                viewModel.isPlaying = false
+            }
 
             if let initTime = initialPlaybackTime, initTime > 0 {
                 viewModel.pendingSeekPosition = initTime

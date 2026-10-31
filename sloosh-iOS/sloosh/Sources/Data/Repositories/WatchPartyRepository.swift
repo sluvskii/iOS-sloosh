@@ -463,7 +463,13 @@ public final class WatchPartyRepository: ObservableObject {
 
         do {
             let (data, resp) = try await URLSession.shared.data(from: targetUrl)
-            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return }
+            if let http = resp as? HTTPURLResponse {
+                if http.statusCode == 401 {
+                    _ = await AuthRepository.shared.ensureFreshToken(force: true)
+                    return
+                }
+                guard (200...299).contains(http.statusCode) else { return }
+            }
             guard let remote = try? JSONDecoder().decode(WatchPartySession.self, from: data) else { return }
 
             await MainActor.run {
@@ -488,7 +494,16 @@ public final class WatchPartyRepository: ObservableObject {
             return
         }
 
-        // 2. Ignore actions originated by current user
+        // 2. Notify host when guest connects
+        if isHost && activeSession?.guestUid == nil, let gUid = remote.guestUid, !gUid.isEmpty {
+            let gName = remote.guestName ?? peerUser?.displayTitle ?? "Друг"
+            showToast("\(gName) подключился к просмотру")
+            self.activeSession?.guestUid = gUid
+            self.activeSession?.guestName = gName
+            self.activeSession?.guestAvatarUrl = remote.guestAvatarUrl
+        }
+
+        // 3. Ignore actions originated by current user
         let action = remote.playback
         if action.lastActionByUid == currentUserId {
             self.activeSession = remote

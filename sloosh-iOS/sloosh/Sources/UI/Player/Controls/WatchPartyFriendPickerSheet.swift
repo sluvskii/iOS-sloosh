@@ -5,30 +5,45 @@ import SwiftUI
 struct WatchPartyFriendPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var messengerRepo = MessengerRepository.shared
+    @State private var searchText = ""
     let onSelectFriend: (SlooshUser) -> Void
+
+    private var filteredConversations: [ChatConversation] {
+        let list = messengerRepo.conversations
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return list
+        }
+        return list.filter {
+            $0.peerUser.displayTitle.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color(UIColor.systemBackground).ignoresSafeArea()
 
                 if messengerRepo.conversations.isEmpty {
                     emptyStateView
+                } else if filteredConversations.isEmpty {
+                    searchEmptyStateView
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
-                            ForEach(messengerRepo.conversations) { conv in
+                            ForEach(filteredConversations) { conv in
                                 conversationRow(conv)
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 16)
+                        .padding(.top, 12)
                         .padding(.bottom, 32)
                     }
                 }
             }
             .navigationTitle("Смотреть вместе")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Поиск друга...")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Отмена") {
@@ -38,7 +53,7 @@ struct WatchPartyFriendPickerSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .fraction(0.65)])
+        .presentationDetents([.medium, .fraction(0.75)])
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .task {
@@ -55,25 +70,8 @@ struct WatchPartyFriendPickerSheet: View {
             onSelectFriend(conv.peerUser)
         } label: {
             HStack(spacing: 12) {
-                // Avatar
-                ZStack {
-                    if let urlStr = conv.peerUser.avatarUrl, let url = URL(string: urlStr) {
-                        AsyncCachedImage(url: url) {
-                            Circle().fill(Color.white.opacity(0.1))
-                        } content: { image in
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                        } fallback: {
-                            avatarPlaceholder(for: conv.peerUser)
-                        }
-                        .frame(width: 44, height: 44)
-                        .clipShape(Circle())
-                    } else {
-                        avatarPlaceholder(for: conv.peerUser)
-                            .frame(width: 44, height: 44)
-                    }
-                }
+                // Unified avatar with online status badge
+                SlooshAvatarView(user: conv.peerUser, size: 44, showOnline: true)
 
                 // Name & status
                 VStack(alignment: .leading, spacing: 3) {
@@ -82,39 +80,31 @@ struct WatchPartyFriendPickerSheet: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
 
-                    Text(conv.lastMessageText)
-                        .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.65))
-                        .lineLimit(1)
+                    if !conv.lastMessageText.isEmpty {
+                        Text(conv.lastMessageText)
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.65))
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer()
 
-                // SharePlay icon action pill
+                // SharePlay action icon
                 Image(systemName: "shareplay")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.white)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color.green)
                     .frame(width: 36, height: 36)
-                    .glassEffect(.regular, in: Circle())
+                    .glassEffect(.regular.interactive(), in: Circle())
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
-    private func avatarPlaceholder(for user: SlooshUser) -> some View {
-        Circle()
-            .fill(Color.white.opacity(0.12))
-            .overlay {
-                Text(String(user.displayTitle.prefix(1)).uppercased())
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white.opacity(0.85))
-            }
-    }
-
-    // MARK: - Empty State
+    // MARK: - Empty States
 
     private var emptyStateView: some View {
         VStack(spacing: 12) {
@@ -132,6 +122,24 @@ struct WatchPartyFriendPickerSheet: View {
                 .foregroundColor(.white.opacity(0.65))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+        }
+        .padding(.vertical, 40)
+    }
+
+    private var searchEmptyStateView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary)
+                .padding(.bottom, 4)
+
+            Text("Ничего не найдено")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+
+            Text("По запросу «\(searchText)» нет диалогов.")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
         }
         .padding(.vertical, 40)
     }
