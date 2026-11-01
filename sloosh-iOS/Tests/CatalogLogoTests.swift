@@ -32,7 +32,25 @@ struct CatalogLogoTests {
         let poster = "\(base)/api/v1/images/tmdb/w500/standard.jpg"
         let card = MediaDto(originalId: .string("tv_100088"), title: "Одни из нас", poster: poster, type: "tv")
         check(card.displayLogoUrl() == nil, "Missing TV logo must not synthesize an untyped numeric proxy")
-        check(card.displayPosterUrl(forLogoMode: true) == poster, "Missing textless asset preserves the correct standard poster")
+        let savedQuality = UserDefaults.standard.object(forKey: "posterQuality")
+        defer {
+            if let savedQuality { UserDefaults.standard.set(savedQuality, forKey: "posterQuality") }
+            else { UserDefaults.standard.removeObject(forKey: "posterQuality") }
+        }
+        for (quality, size) in [("high", "w500"), ("low", "w185")] {
+            UserDefaults.standard.set(quality, forKey: "posterQuality")
+            for id in ["tv_100088", "movie_100088", "tmdb_100088", "kp_100088", "100088"] {
+                let model = MediaDto(originalId: .string(id), poster: poster, type: "tv")
+                check(model.displayPosterUrl(forLogoMode: true) == "\(base)/api/v1/images/posters/100088/\(size)/textless",
+                      "Logo mode must retain textless-poster fallback: \(id), \(quality)")
+                check(model.displayPosterUrl(forLogoMode: false)?.contains("/standard.jpg") == true,
+                      "Logos-off mode still uses the standard poster")
+                check(model.displayLogoUrl() == nil, "Restoring poster fallback must not restore ambiguous logo fallback")
+            }
+        }
+        UserDefaults.standard.set("high", forKey: "posterQuality")
+        let noId = MediaDto(poster: poster)
+        check(noId.displayPosterUrl(forLogoMode: true) == poster, "Without an ID retain the supplied poster")
         let stale = MediaDto(originalId: .string("tv_100088"), type: "tv", logo: "\(base)/api/v1/images/logos/100088/small")
         check(stale.displayLogoUrl() == nil, "Reject a stale proxy stored in the DTO")
         let explicit = MediaDto(originalId: .string("tv_100088"), type: "tv", logo: "https://image.tmdb.org/t/p/original/tlou.png")
@@ -40,6 +58,9 @@ struct CatalogLogoTests {
         check(explicit.displayLogoUrl(isCompact: false) != nil, "Noncompact explicit logo still available")
         let textless = MediaDto(originalId: .string("tv_100088"), poster: poster, type: "tv", textlessPoster: "/textless.jpg")
         check(textless.displayPosterUrl(forLogoMode: true)?.contains("textless.jpg") == true, "Explicit textless poster retained")
+        MediaOverridesRepository.shared.items = [MediaArtworkOverride(mediaId: "tv_100088", textlessPosterUrl: "https://example.com/curated-textless.jpg")]
+        check(card.displayPosterUrl(forLogoMode: true) == "https://example.com/curated-textless.jpg", "Curated textless artwork still precedes the proxy")
+        MediaOverridesRepository.shared.items = []
         MediaOverridesRepository.shared.items = [MediaArtworkOverride(mediaId: "movie_100088", logoUrl: "/wrong.png")]
         check(card.displayLogoUrl() == nil, "Cross-type curated logo is not used")
         MediaOverridesRepository.shared.items = [MediaArtworkOverride(mediaId: "tv_100088", logoUrl: "\(base)/api/v1/images/tmdb/original/curated.png")]

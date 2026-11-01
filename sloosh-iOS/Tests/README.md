@@ -160,7 +160,17 @@ logo preference, coalescing, separate caches and missing-artwork fallback.
 
 Manual: check «Одни из нас» in both card styles; logo mode on/off; fast scrolling
 and repeated titles across shelves; no flash of another title's image. Confirm
-correct curated logos, no-logo text fallback, standard poster fallback, offline
+correct curated logos, no-logo text-title fallback, textless poster fallback, offline
 behavior, and reopening after old DTO/image caches exist. Backend artwork content
 cannot be visually verified by fixtures; the typed server response still must be
 correct. Existing numeric proxy cache entries are not reused by the new path.
+
+### Textless poster regression
+
+Logo mode must still request the established `/images/posters/:id/:size/textless`
+route when no explicit textless artwork is present. Production-model tests cover
+high/low quality, the existing ID formats, logos-off standard posters, missing IDs,
+explicit/curated textless precedence, and keeping the unsafe **logo** proxy disabled.
+On iPhone compare logo mode on/off in both card styles: title lettering baked into
+ordinary posters should not reappear merely because the DTO lacks textless fields.
+The actual server-provided artwork must still be checked visually.
