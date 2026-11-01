@@ -124,10 +124,11 @@ struct MediaDto: Codable, Identifiable {
     let poster_path: String?
     let backdrop: String?
     let backdrop_path: String?
+    let logo: String?
     
     enum CodingKeys: String, CodingKey {
         case originalId = "id"
-        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, countries, externalIds, name, poster_path, backdrop, backdrop_path
+        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, countries, externalIds, name, poster_path, backdrop, backdrop_path, logo
     }
 
     init(
@@ -148,7 +149,8 @@ struct MediaDto: Codable, Identifiable {
         name: String? = nil,
         poster_path: String? = nil,
         backdrop: String? = nil,
-        backdrop_path: String? = nil
+        backdrop_path: String? = nil,
+        logo: String? = nil
     ) {
         self.originalId = originalId
         self.title = title
@@ -168,6 +170,7 @@ struct MediaDto: Codable, Identifiable {
         self.poster_path = poster_path
         self.backdrop = backdrop
         self.backdrop_path = backdrop_path
+        self.logo = logo
     }
     
     // Identifiable requirement helper
@@ -222,6 +225,33 @@ struct MediaDto: Codable, Identifiable {
             return normalizeImageUrl(path: path, id: originalId?.stringValue, isBackdrop: true) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/\(targetSize)\(path)")
         }
         return displayPosterUrl
+    }
+
+    func displayLogoUrl(isCompact: Bool = true) -> String? {
+        let origId = originalId?.stringValue
+        
+        // 1. Check curated artwork overrides first
+        if let overrideLogo = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl,
+           !overrideLogo.isEmpty {
+            return isCompact ? adjustLogoUrl(urlStr: overrideLogo, targetSize: "w300") : overrideLogo
+        }
+        
+        // 2. Check if MediaDto has a logo property
+        if let l = logo, !l.isEmpty {
+            let normalized = normalizeImageUrl(path: l, id: origId) ?? l
+            return isCompact ? adjustLogoUrl(urlStr: normalized, targetSize: "w300") : normalized
+        }
+        
+        // 3. Fallback to server logo proxy: /api/v1/images/logos/:id/(small or original)
+        guard let validId = origId?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else {
+            return nil
+        }
+        let sizeSegment = isCompact ? "small" : "original"
+        return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/logos/\(validId)/\(sizeSegment)"
+    }
+
+    var displayLogoUrl: String? {
+        displayLogoUrl(isCompact: true)
     }
 
     var effectiveYear: Int? {
@@ -373,6 +403,42 @@ func adjustExternalImageUrl(urlStr: String, isLowQuality: Bool, isBackdrop: Bool
             result = result.replacingOccurrences(of: "/api/v1/images/kp/", with: "/api/v1/images/kp_small/")
         } else {
             result = result.replacingOccurrences(of: "/api/v1/images/kp_small/", with: "/api/v1/images/kp/")
+        }
+    }
+    
+    return result
+}
+
+func adjustLogoUrl(urlStr: String, targetSize: String = "w300") -> String {
+    var result = urlStr
+    let base = MoviesApi.activeImagesBaseURL
+    
+    // 0. Sanitize legacy / hardcoded domains to active base URL
+    if result.contains("api-sloosh.vercel.app") {
+        result = result.replacingOccurrences(of: "https://api-sloosh.vercel.app", with: base)
+            .replacingOccurrences(of: "http://api-sloosh.vercel.app", with: base)
+    }
+    if result.contains("image.tmdb.org/t/p/") {
+        result = result.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
+            .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
+    }
+    
+    // 1. TMDB Proxy (/api/v1/images/tmdb/<size>/<file>) -> replace with targetSize (e.g. w300)
+    if result.contains("/api/v1/images/tmdb/") {
+        let pattern = #"/api/v1/images/tmdb/(w\d+|original)/"#
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            let range = NSRange(result.startIndex..<result.endIndex, in: result)
+            result = regex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "/api/v1/images/tmdb/\(targetSize)/")
+        }
+    }
+    // 2. Server logo proxy: /api/v1/images/logos/:id/(original|small)
+    else if result.contains("/api/v1/images/logos/") {
+        let isSmall = (targetSize == "w300" || targetSize == "small" || targetSize == "w185" || targetSize == "w154")
+        let targetSegment = isSmall ? "small" : "original"
+        let pattern = #"/api/v1/images/logos/([^/]+)/(original|small|w\d+)"#
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            let range = NSRange(result.startIndex..<result.endIndex, in: result)
+            result = regex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "/api/v1/images/logos/$1/\(targetSegment)")
         }
     }
     

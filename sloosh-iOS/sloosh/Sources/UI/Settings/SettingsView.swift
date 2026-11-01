@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
+    @AppStorage("useLogosInCatalog") private var useLogosInCatalog = false
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @AppStorage("showOriginalTitle") private var showOriginalTitle = true
     @AppStorage("autoAdvanceBackdrops") private var autoAdvanceBackdrops = false
@@ -41,7 +42,7 @@ struct SettingsView: View {
                     
                     HStack(spacing: spacing) {
                         ForEach(0..<3, id: \.self) { _ in
-                            PreviewMoviePosterCard(style: cardStyle, width: cardWidth)
+                            PreviewMoviePosterCard(style: cardStyle, width: cardWidth, useLogos: useLogosInCatalog)
                         }
                     }
                     .frame(height: cardHeight)
@@ -50,6 +51,7 @@ struct SettingsView: View {
                 .padding(.vertical, 12)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardStyle)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardDensity)
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: useLogosInCatalog)
                 
                 // Отображение названий
                 VStack(alignment: .leading, spacing: 8) {
@@ -70,6 +72,29 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
+
+                // Логотипы вместо названий
+                Toggle(isOn: $useLogosInCatalog.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo.badge.checkmark")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Логотипы вместо названий")
+                                .font(.body)
+                            Text("Отображать логотипы фильмов в карточках вместо обычного текста при их наличии")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .tint(Color.slooshAccent)
+                .padding(.vertical, 4)
+                .onChange(of: useLogosInCatalog) { _, _ in
+                    NotificationCenter.default.post(name: .useLogosInCatalogDidChange, object: nil)
+                }
                 
                 // Плотность сетки
                 VStack(alignment: .leading, spacing: 8) {
@@ -456,6 +481,7 @@ struct SettingsView: View {
 struct PreviewMoviePosterCard: View {
     let style: CardStyle
     let width: CGFloat
+    var useLogos: Bool = false
     
     var body: some View {
         let cardHeight = style == .classic ? width * 1.5 + 34 : width * 1.5
@@ -464,13 +490,19 @@ struct PreviewMoviePosterCard: View {
                 .fill(Color.secondary.opacity(0.15))
                 .frame(width: width, height: width * 1.5)
                 .overlay(
-                    // Текст оверлея всегда в иерархии, меняется только прозрачность
+                    // Текст / логотип оверлея всегда в иерархии, меняется только прозрачность
                     VStack(alignment: .leading, spacing: 4) {
                         Spacer()
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.secondary.opacity(0.25))
-                            .frame(height: 12)
-                            .frame(width: width * 0.7)
+                        if useLogos {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.secondary.opacity(0.35))
+                                .frame(width: width * 0.55, height: 16)
+                        } else {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.secondary.opacity(0.25))
+                                .frame(height: 12)
+                                .frame(width: width * 0.7)
+                        }
                         
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.secondary.opacity(0.2))
@@ -482,12 +514,18 @@ struct PreviewMoviePosterCard: View {
                     .opacity(style == .overlay ? 1.0 : 0.0)
                 )
             
-            // Классический текст всегда в иерархии, плавно меняются высота и прозрачность
+            // Классический текст / логотип всегда в иерархии, плавно меняются высота и прозрачность
             VStack(alignment: .leading, spacing: 4) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.secondary.opacity(0.15))
-                    .frame(height: 12)
-                    .frame(width: width * 0.75)
+                if useLogos {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.secondary.opacity(0.22))
+                        .frame(width: width * 0.6, height: 16)
+                } else {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(height: 12)
+                        .frame(width: width * 0.75)
+                }
                 
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Color.secondary.opacity(0.1))

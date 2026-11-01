@@ -73,6 +73,9 @@ jobs:
       - name: Test poster quality
         run: bash sloosh-iOS/Tests/run-poster-quality-tests.sh
 
+      - name: Test catalog logo sizing and resolution
+        run: bash sloosh-iOS/Tests/run-catalog-logo-tests.sh
+
       - name: Install XcodeGen
         run: |
           if ! which xcodegen > /dev/null 2>&1; then

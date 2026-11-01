@@ -33,8 +33,29 @@ public final class ImageCache {
         cache.removeObject(forKey: key as NSString)
     }
     
+    private let failedLock = NSLock()
+    private var failedUrls = Set<String>()
+
+    public func isFailed(url: String) -> Bool {
+        failedLock.lock()
+        defer { failedLock.unlock() }
+        return failedUrls.contains(url)
+    }
+
+    public func markFailed(url: String) {
+        failedLock.lock()
+        defer { failedLock.unlock() }
+        if failedUrls.count > 1000 {
+            failedUrls.removeAll()
+        }
+        failedUrls.insert(url)
+    }
+
     public func clear() {
         cache.removeAllObjects()
+        failedLock.lock()
+        failedUrls.removeAll()
+        failedLock.unlock()
     }
 
     public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
@@ -196,6 +217,12 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 await loadImage()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .useLogosInCatalogDidChange)) { _ in
+            self.image = nil
+            Task {
+                await loadImage()
+            }
+        }
     }
 
     private func loadImage() async {
@@ -204,8 +231,15 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             return
         }
         
+        let urlKey = url.absoluteString
+        let rawKey = rawUrl.absoluteString
+        if ImageCache.shared.isFailed(url: urlKey) || ImageCache.shared.isFailed(url: rawKey) {
+            await loadFallbackImage()
+            return
+        }
+        
         // Check in-memory cache again (e.g. if loaded while task was scheduled)
-        if let cached = ImageCache.shared.image(forKey: url.absoluteString) ?? ImageCache.shared.image(forKey: rawUrl.absoluteString) {
+        if let cached = ImageCache.shared.image(forKey: urlKey) ?? ImageCache.shared.image(forKey: rawKey) {
             await MainActor.run {
                 self.image = cached
                 self.isLoading = false
@@ -246,6 +280,12 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             let (data, response) = try await URLSession.shared.data(for: request)
             let isSuccessful: Bool
             if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 404 {
+                    ImageCache.shared.markFailed(url: urlKey)
+                    ImageCache.shared.markFailed(url: rawKey)
+                    await loadFallbackImage()
+                    return
+                }
                 isSuccessful = httpResponse.statusCode == 200
             } else {
                 isSuccessful = true // For file:// URLs

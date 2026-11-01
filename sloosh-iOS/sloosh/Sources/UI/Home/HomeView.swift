@@ -519,6 +519,7 @@ struct MoviePosterCard: View {
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
+    @AppStorage("useLogosInCatalog") private var useLogosInCatalog: Bool = false
 
     var body: some View {
         switch cardStyle {
@@ -557,14 +558,7 @@ struct MoviePosterCard: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(movie.displayTitle)
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                    .tracking(-0.3)
-                    .allowsTightening(true)
-                    .truncationMode(.tail)
-                    .multilineTextAlignment(.leading)
-                    .foregroundColor(.primary)
+                MovieCardTitleOrLogoView(movie: movie, isOverlay: false, useLogos: useLogosInCatalog)
 
                 let yearStr = movie.displayYear
                 let genreStr = movie.genres?.first?.name?.capitalized
@@ -613,14 +607,7 @@ struct MoviePosterCard: View {
                 
                 // Metadata inside the poster
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(movie.displayTitle)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.95))
-                        .blendMode(.plusLighter)
-                        .lineLimit(1)
-                        .tracking(-0.3)
-                        .allowsTightening(true)
-                        .multilineTextAlignment(.leading)
+                    MovieCardTitleOrLogoView(movie: movie, isOverlay: true, useLogos: useLogosInCatalog)
                     
                     let yearStr = movie.displayYear
                     let genreStr = movie.genres?.first?.name?.capitalized
@@ -675,6 +662,59 @@ struct MoviePosterCard: View {
     }
 }
 
+struct MovieCardTitleOrLogoView: View {
+    let movie: MediaDto
+    let isOverlay: Bool
+    let useLogos: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        if useLogos, let logoUrlStr = movie.displayLogoUrl(isCompact: true), let logoUrl = URL(string: logoUrlStr) {
+            AsyncCachedImage(url: logoUrl) { image in
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+                    .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
+            } placeholder: {
+                titleText
+                    .opacity(0.85)
+            } fallback: {
+                titleText
+            }
+            .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+        } else {
+            titleText
+                .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+        }
+    }
+    
+    private var titleText: some View {
+        Group {
+            if isOverlay {
+                Text(movie.displayTitle)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.95))
+                    .blendMode(.plusLighter)
+                    .lineLimit(1)
+                    .tracking(-0.3)
+                    .allowsTightening(true)
+                    .truncationMode(.tail)
+                    .multilineTextAlignment(.leading)
+            } else {
+                Text(movie.displayTitle)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                    .tracking(-0.3)
+                    .allowsTightening(true)
+                    .truncationMode(.tail)
+                    .multilineTextAlignment(.leading)
+                    .foregroundColor(.primary)
+            }
+        }
+    }
+}
+
 struct FallbackPosterView: View {
     var cornerRadius: CGFloat = 12
     
@@ -692,6 +732,7 @@ struct FallbackPosterView: View {
 
 struct MoviePosterCardPlaceholder: View {
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
+    @AppStorage("useLogosInCatalog") private var useLogosInCatalog: Bool = false
     
     var body: some View {
         switch cardStyle {
@@ -706,7 +747,7 @@ struct MoviePosterCardPlaceholder: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Rectangle()
                         .fill(Color.gray.opacity(0.2))
-                        .frame(height: 14)
+                        .frame(width: useLogosInCatalog ? 75 : nil, height: 14)
                         .cornerRadius(4)
                         .shimmer()
                         
