@@ -78,7 +78,7 @@ This workspace contains the flagship native iOS client for **sloosh**:
 - **Moments right-rail exception**: The user rejected the solid/tinted white foreground added to the heart/comment/share/scale custom glass shapes. Keep their original `Color.white.opacity(0.001)` fills and no `.glassForeground()` on these four shapes; liked heart retains red at 0.92. Preserve the rest of app-wide foreground blending, rail captions/counts, avatars, glass geometry and callbacks.
 - **User Personalization Settings** (`@AppStorage`, Settings screen):
   - `appTheme` (system/light/dark), `posterQuality` (high/low), `showOriginalTitle`, `autoAdvanceBackdrops`.
-  - Catalog appearance: `cardStyle` (classic poster / overlay info), `cardDensity` (regular/compact grid).
+  - Catalog appearance: `cardStyle` (classic poster / overlay info), `cardDensity` (regular/compact grid). Overlay poster cards use a compact bottom-only progressive blur (radius 4.5, height 60pt, halo disabled); keep the existing dark tint at 0.82 for title/logo and metadata legibility. Do not change global/header blur settings when tuning cards.
   - Interface: `tabBarShowsLabels`, `tabBarMinimizeOnScroll`.
   - Playback: `preferredStreamSource`, `preferredVideoQuality` (ask/auto/1080p/720p/480p/360p), `autoplayNextEpisode`, `playerVolumeBrightnessGestures`, subtitle font size (`SubtitleSettings`: 18/24/30pt).
 - **Subtitles Typography & Motion (Apple TV / Native AVKit Style)**:

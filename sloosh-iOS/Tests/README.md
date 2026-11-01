@@ -140,3 +140,12 @@ Manual on-device checklist (not covered by the standalone query test):
   participants; cancel leaves the chat intact. Test destructive flow only with test accounts.
 - Existing send/reply/edit/reaction/retry/read/unread behavior and shared film/clip
   playback remain functional; no changes to message transport or player resolution.
+
+## Overlay poster card blur (manual, iPhone)
+
+- In overlay card style, check both title text and catalog logos, regular/compact
+  density, bright/dark posters and light/dark appearance. Bottom blur is now 60pt
+  at radius 4.5 (previously 72pt / 6); dark tint 0.82 and disabled halo are unchanged.
+- Poster artwork should remain clearer higher up; title/logo and year/genre must
+  stay legible. Classic cards, logo resolution/sizing, poster selection and header
+  blur should be unchanged. CI does not visually validate the UIKit blur filter.
