@@ -50,15 +50,18 @@ struct BottomRowView: View, Equatable {
 
     private var speedMenu: some View {
         Menu {
-            Picker("Скорость", selection: Binding(
-                get: { playbackRate },
-                set: { rate in
+            ForEach(speeds, id: \.self) { rate in
+                Button {
                     vm.setPlaybackRate(rate)
                     onInteraction?()
-                }
-            )) {
-                ForEach(speeds, id: \.self) { rate in
-                    Text(rateLabel(rate)).tag(rate)
+                } label: {
+                    HStack {
+                        Text(rateLabel(rate))
+                        if abs(playbackRate - rate) < 0.01 {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
                 }
             }
         } label: {

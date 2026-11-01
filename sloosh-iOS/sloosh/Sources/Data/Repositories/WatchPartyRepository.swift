@@ -53,6 +53,7 @@ public final class WatchPartyRepository: ObservableObject {
     }()
 
     public private(set) var serverClockOffsetMs: Int64 = 0
+    public private(set) var peerClockOffsetMs: Int64 = 0
 
     public func syncServerTime(from response: URLResponse?) {
         guard let httpResp = response as? HTTPURLResponse,
@@ -77,7 +78,8 @@ public final class WatchPartyRepository: ObservableObject {
     }
 
     public var calibratedNowMs: Int64 {
-        Int64(Date().timeIntervalSince1970 * 1000) + serverClockOffsetMs
+        let localMs = Int64(Date().timeIntervalSince1970 * 1000)
+        return localMs + serverClockOffsetMs + peerClockOffsetMs
     }
 
     private init() {}
@@ -401,6 +403,11 @@ public final class WatchPartyRepository: ObservableObject {
         self.peerUser = nil
         self.isHost = false
         self.isConnected = false
+        self.peerClockOffsetMs = 0
+        self.smoothedDrift = 0.0
+        self.lastProcessedPlaybackUpdatedAtMs = 0
+        self.lastDriftEvaluationTime = .distantPast
+        self.lastRateChangeTime = .distantPast
         onSessionEnded?()
     }
 
@@ -838,6 +845,24 @@ public final class WatchPartyRepository: ObservableObject {
 
         // 3. Ignore actions originated by current user
         let action = remote.playback
+
+        // Peer Clock Calibration:
+        // Host device is the gold time authority (isHost => peerClockOffsetMs == 0).
+        // The guest continuously phase-locks its clock to the host.
+        if !isHost && action.lastActionByUid != currentUserId && action.updatedAtMs > 0 {
+            let localNow = Int64(Date().timeIntervalSince1970 * 1000)
+            let estimatedTransitMs: Int64 = 45
+            let sampleOffset = (action.updatedAtMs + estimatedTransitMs) - localNow
+            if abs(sampleOffset) < 15_000 {
+                if peerClockOffsetMs == 0 {
+                    peerClockOffsetMs = sampleOffset
+                } else {
+                    peerClockOffsetMs = (peerClockOffsetMs * 7 + sampleOffset * 3) / 10
+                }
+                AppDiagnostics.shared.log("[WatchParty] Peer clock calibrated: offset=\(peerClockOffsetMs)ms (sample=\(sampleOffset)ms)")
+            }
+        }
+
         if action.lastActionByUid == currentUserId {
             self.activeSession = remote
             return
@@ -911,8 +936,9 @@ public final class WatchPartyRepository: ObservableObject {
             }
         } else if action.actionType == .play && action.isPlaying == true {
             showToast("\(action.lastActionByName) возобновил(а) просмотр")
-            // Align play position if difference is noticeable (> 0.08s)
-            if abs(localTime - targetPos) > 0.08 {
+            // Only seek on play resume if there is a massive jump (> 0.5s) to avoid unnecessary buffer stalls.
+            // For normal sub-second differences, the continuous P-controller seamlessly phase-locks without interruptions.
+            if abs(localTime - targetPos) > 0.50 {
                 AppDiagnostics.shared.log("[WatchParty] Aligning play position from \(localTime) to \(targetPos)")
                 onRemoteSeek?(targetPos)
             }
@@ -972,9 +998,9 @@ public final class WatchPartyRepository: ObservableObject {
             }
         }
 
-        // Throttle drift checks to at most once every 1.0 second for snappy sub-frame sync
+        // Throttle drift checks to at most once every 0.35 seconds for rapid phase-lock
         let now = Date()
-        guard now.timeIntervalSince(lastDriftEvaluationTime) >= 1.0 else { return }
+        guard now.timeIntervalSince(lastDriftEvaluationTime) >= 0.35 else { return }
         lastDriftEvaluationTime = now
 
         let playback = session.playback
@@ -1012,49 +1038,48 @@ public final class WatchPartyRepository: ObservableObject {
         if smoothedDrift == 0.0 {
             smoothedDrift = instantaneousDrift
         } else {
-            smoothedDrift = (smoothedDrift * 0.60) + (instantaneousDrift * 0.40)
+            smoothedDrift = (smoothedDrift * 0.70) + (instantaneousDrift * 0.30)
         }
         let absDrift = abs(smoothedDrift)
 
         // Sub-frame proportional rate controller:
         var desiredRate: Float = baseSpeed
 
-        if absDrift <= 0.020 {
-            // Tier 1: Sub-frame lockstep (<= 20ms = less than one video frame). In phase, zero echo.
+        if absDrift <= 0.025 {
+            // Tier 1: Sub-frame lockstep (<= 25ms = less than one video frame). Perfectly in phase!
             desiredRate = baseSpeed
         } else if absDrift <= 0.150 {
-            // Tier 2: Micro-slew (20ms - 150ms).
+            // Tier 2: Micro-slew (25ms - 150ms).
             // Proportional controller: e = smoothedDrift (positive = local ahead).
             // Rate adjustment = -P * e.
-            // Clamped to at most +/- 1.8% rate change.
-            // Completely imperceptible pitch, seamless closure of phase gap within 3-5s.
-            let pGain: Float = 0.15
+            // Clamped to at most +/- 3.5% rate change (completely inaudible, closes gap in 1.5 - 2s).
+            let pGain: Float = 0.25
             let delta = Float(-smoothedDrift) * pGain
-            let clampedDelta = max(-0.018, min(0.018, delta))
+            let clampedDelta = max(-0.035, min(0.035, delta))
             desiredRate = baseSpeed * (1.0 + clampedDelta)
-        } else if absDrift <= 0.800 {
-            // Tier 3: Catch-up zone (150ms - 800ms).
-            // Smooth +/- 5% rate slew to close gap quickly without buffering or freezing.
-            let adjustment: Float = 0.05
+        } else if absDrift <= 0.600 {
+            // Tier 3: Catch-up zone (150ms - 600ms).
+            // Smooth +/- 5.5% rate slew to close gap quickly without buffering or freezing.
+            let adjustment: Float = 0.055
             desiredRate = smoothedDrift < 0 ? (baseSpeed * (1.0 + adjustment)) : (baseSpeed * (1.0 - adjustment))
-        } else if absDrift <= 2.0 {
-            // Tier 4: Fast slew zone (800ms - 2.0s).
+        } else if absDrift <= 1.80 {
+            // Tier 4: Fast slew zone (600ms - 1.8s).
             // +/- 10% rate adjustment.
             let adjustment: Float = 0.10
             desiredRate = smoothedDrift < 0 ? (baseSpeed * (1.0 + adjustment)) : (baseSpeed * (1.0 - adjustment))
         } else {
-            // Tier 5: Frame-accurate seek (> 2.0s, e.g. after long stall or app backgrounding).
-            AppDiagnostics.shared.log("[WatchParty] Drift > 2.0s (\(String(format: "%.2f", absDrift))s), resyncing seek to \(targetPos)")
+            // Tier 5: Frame-accurate seek (> 1.8s, e.g. after long stall or app backgrounding).
+            AppDiagnostics.shared.log("[WatchParty] Drift > 1.8s (\(String(format: "%.2f", absDrift))s), resyncing seek to \(targetPos)")
             smoothedDrift = 0.0
             currentAppliedRate = baseSpeed
             onRemoteSeek?(targetPos)
             return
         }
 
-        // Apply rate if changed by >= 0.3% or snapped back to baseSpeed
-        if abs(desiredRate - currentAppliedRate) >= 0.003 || (desiredRate == baseSpeed && currentAppliedRate != baseSpeed) {
+        // Apply rate if changed by >= 0.2% or snapped back to baseSpeed
+        if abs(desiredRate - currentAppliedRate) >= 0.002 || (desiredRate == baseSpeed && currentAppliedRate != baseSpeed) {
             let elapsedSinceRateChange = now.timeIntervalSince(lastRateChangeTime)
-            if desiredRate == baseSpeed || elapsedSinceRateChange >= 1.5 {
+            if desiredRate == baseSpeed || elapsedSinceRateChange >= 0.35 {
                 lastRateChangeTime = now
                 currentAppliedRate = desiredRate
                 AppDiagnostics.shared.log("[WatchParty] Precision P-controller slew: drift=\(String(format: "%.3f", smoothedDrift))s, rate=\(desiredRate)x, base=\(baseSpeed)x")

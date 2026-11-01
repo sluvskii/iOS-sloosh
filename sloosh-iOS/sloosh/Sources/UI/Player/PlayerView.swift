@@ -1443,12 +1443,18 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - Playback actions
 
-    func applyRemotePlay() {
+    func playAtCurrentRate() {
         guard let player else { return }
-        isPausedByUser = false
-        player.play()
+        let targetRate = (playbackRate > 0) ? playbackRate : 1.0
+        player.defaultRate = targetRate
+        player.rate = targetRate
         isPlaying = true
+        isPausedByUser = false
         updateNowPlaying()
+    }
+
+    func applyRemotePlay() {
+        playAtCurrentRate()
     }
 
     func applyRemotePause() {
@@ -1469,6 +1475,7 @@ class PlayerViewModel: ObservableObject {
 
     func applyRemoteSpeed(_ speed: Float) {
         playbackRate = speed
+        player?.defaultRate = speed
         if isPlaying, !isPausedByUser {
             player?.rate = speed
         }
@@ -1494,8 +1501,10 @@ class PlayerViewModel: ObservableObject {
         } else {
             isPausedByUser = false
             currentTime = effectivePos
+            let activeRate = (playbackRate > 0) ? playbackRate : 1.0
+            player.defaultRate = activeRate
             if WatchPartyRepository.shared.isConnected {
-                let scheduledStartMs = WatchPartyRepository.shared.calibratedNowMs + 250
+                let scheduledStartMs = WatchPartyRepository.shared.calibratedNowMs + 200
                 WatchPartyRepository.shared.sendPlaybackAction(
                     isPlaying: true,
                     positionSec: effectivePos,
@@ -1506,13 +1515,10 @@ class PlayerViewModel: ObservableObject {
                 let delaySec = Double(delayMs) / 1000.0
                 DispatchQueue.main.asyncAfter(deadline: .now() + delaySec) { [weak self] in
                     guard let self, !self.isPausedByUser else { return }
-                    self.player?.play()
-                    self.isPlaying = true
-                    self.updateNowPlaying()
+                    self.playAtCurrentRate()
                 }
             } else {
-                player.play()
-                isPlaying = true
+                playAtCurrentRate()
                 WatchPartyRepository.shared.sendPlaybackAction(isPlaying: true, positionSec: effectivePos, action: .play)
             }
         }
@@ -1565,8 +1571,7 @@ class PlayerViewModel: ObservableObject {
                     )
                 }
                 if wasPlaying {
-                    self.player?.play()
-                    self.isPlaying = true
+                    self.playAtCurrentRate()
                 }
             }
         }
@@ -1665,9 +1670,7 @@ class PlayerViewModel: ObservableObject {
             guard let self else { return }
             // Пока шёл seek, пользователь мог передумать (тапнул паузу/вышел из режима)
             guard self.isClipMode, self.isClipPreviewRequested else { return }
-            self.player?.play()
-            self.isPlaying = true
-            self.updateNowPlaying()
+            self.playAtCurrentRate()
         }
     }
 
@@ -1764,7 +1767,10 @@ class PlayerViewModel: ObservableObject {
 
     func setPlaybackRate(_ rate: Float) {
         playbackRate = rate
-        player?.rate = rate
+        player?.defaultRate = rate
+        if isPlaying && !isPausedByUser {
+            player?.rate = rate
+        }
         updateNowPlaying()
         if WatchPartyRepository.shared.isConnected {
             WatchPartyRepository.shared.sendSpeedChange(speed: rate)
@@ -2311,7 +2317,7 @@ class PlayerViewModel: ObservableObject {
                     self.isInitialSeekPending = false
                     self.pendingSeekPosition = nil
                     if !self.isPausedByUser {
-                        self.player?.play()
+                        self.playAtCurrentRate()
                     }
                 }
             }
@@ -2597,13 +2603,18 @@ class PlayerViewModel: ObservableObject {
         self.player?.replaceCurrentItem(with: playerItem)
 
         self.player?.automaticallyWaitsToMinimizeStalling = true
-        self.player?.rate = playbackRate
+        self.player?.defaultRate = playbackRate
         if WatchPartyRepository.shared.isConnected,
            let session = WatchPartyRepository.shared.activeSession {
             self.isPausedByUser = !session.playback.isPlaying
             self.isPlaying = session.playback.isPlaying
         } else if !self.isPausedByUser {
             self.isPausedByUser = false
+        }
+        if self.isPlaying && !self.isPausedByUser {
+            self.player?.rate = playbackRate
+        } else {
+            self.player?.pause()
         }
 
         let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
@@ -2650,16 +2661,14 @@ class PlayerViewModel: ObservableObject {
                     if WatchPartyRepository.shared.isConnected,
                        let session = WatchPartyRepository.shared.activeSession {
                         if session.playback.isPlaying {
-                            self.isPausedByUser = false
-                            self.player?.play()
-                            self.isPlaying = true
+                            self.playAtCurrentRate()
                         } else {
                             self.isPausedByUser = true
                             self.player?.pause()
                             self.isPlaying = false
                         }
                     } else if !self.isPausedByUser {
-                        self.player?.play()
+                        self.playAtCurrentRate()
                     }
                     self.updateNowPlaying()
                 }
@@ -2690,14 +2699,13 @@ class PlayerViewModel: ObservableObject {
             if WatchPartyRepository.shared.isConnected,
                let session = WatchPartyRepository.shared.activeSession {
                 if session.playback.isPlaying {
-                    self.player?.play()
-                    self.isPlaying = true
+                    self.playAtCurrentRate()
                 } else {
                     self.player?.pause()
                     self.isPlaying = false
                 }
             } else if !self.isPausedByUser {
-                self.player?.play()
+                self.playAtCurrentRate()
             }
         }
     }
@@ -2805,7 +2813,7 @@ class PlayerViewModel: ObservableObject {
                        NetworkMonitor.shared.isConnected,
                        self.player?.currentItem === playerItem {
                         self.logDebug("setupPlayerItemObservers: stall persisted > 12s while connected, attempting play before reload")
-                        self.player?.play()
+                        self.playAtCurrentRate()
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
                         if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate,
                            self.player?.currentItem === playerItem {
@@ -3006,16 +3014,14 @@ class PlayerViewModel: ObservableObject {
             if WatchPartyRepository.shared.isConnected,
                let session = WatchPartyRepository.shared.activeSession {
                 if session.playback.isPlaying {
-                    self.isPausedByUser = false
-                    self.player?.play()
-                    self.isPlaying = true
+                    self.playAtCurrentRate()
                 } else {
                     self.isPausedByUser = true
                     self.player?.pause()
                     self.isPlaying = false
                 }
             } else if !self.isPausedByUser {
-                self.player?.play()
+                self.playAtCurrentRate()
             }
             return
         }
@@ -3028,16 +3034,14 @@ class PlayerViewModel: ObservableObject {
             if WatchPartyRepository.shared.isConnected,
                let session = WatchPartyRepository.shared.activeSession {
                 if session.playback.isPlaying {
-                    self.isPausedByUser = false
-                    self.player?.play()
-                    self.isPlaying = true
+                    self.playAtCurrentRate()
                 } else {
                     self.isPausedByUser = true
                     self.player?.pause()
                     self.isPlaying = false
                 }
             } else if !self.isPausedByUser {
-                self.player?.play()
+                self.playAtCurrentRate()
             }
             return
         }
@@ -3063,16 +3067,14 @@ class PlayerViewModel: ObservableObject {
                 if WatchPartyRepository.shared.isConnected,
                    let session = WatchPartyRepository.shared.activeSession {
                     if session.playback.isPlaying {
-                        self.isPausedByUser = false
-                        self.player?.play()
-                        self.isPlaying = true
+                        self.playAtCurrentRate()
                     } else {
                         self.isPausedByUser = true
                         self.player?.pause()
                         self.isPlaying = false
                     }
                 } else if !self.isPausedByUser {
-                    self.player?.play()
+                    self.playAtCurrentRate()
                 }
                 self.updateNowPlaying()
             }
@@ -3234,7 +3236,7 @@ class PlayerViewModel: ObservableObject {
                 } else {
                     let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
                     if wasPlaying && self.player?.timeControlStatus != .playing {
-                        self.player?.play()
+                        self.playAtCurrentRate()
                     }
                 }
 
@@ -3267,7 +3269,7 @@ class PlayerViewModel: ObservableObject {
                     let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
-                        self.player?.play()
+                        self.playAtCurrentRate()
                     }
                 }
             }
@@ -3312,7 +3314,7 @@ class PlayerViewModel: ObservableObject {
         cc.playCommand.isEnabled = true
         cc.playCommand.addTarget { [weak self] _ in
             self?.isPausedByUser = false
-            self?.player?.play()
+            self?.playAtCurrentRate()
             return .success
         }
         cc.pauseCommand.isEnabled = true

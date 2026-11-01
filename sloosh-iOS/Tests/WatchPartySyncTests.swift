@@ -73,17 +73,17 @@ struct WatchPartySyncTests {
         // Test 4: Sub-frame Precision P-Controller rate recommendation
         func recommendRate(drift: Double, baseSpeed: Float = 1.0) -> Float {
             let absDrift = abs(drift)
-            if absDrift <= 0.020 {
+            if absDrift <= 0.025 {
                 return baseSpeed
             } else if absDrift <= 0.150 {
-                let pGain: Float = 0.15
+                let pGain: Float = 0.25
                 let delta = Float(-drift) * pGain
-                let clampedDelta = max(-0.018, min(0.018, delta))
+                let clampedDelta = max(-0.035, min(0.035, delta))
                 return baseSpeed * (1.0 + clampedDelta)
-            } else if absDrift <= 0.800 {
-                let adjustment: Float = 0.05
+            } else if absDrift <= 0.600 {
+                let adjustment: Float = 0.055
                 return drift < 0 ? (baseSpeed * (1.0 + adjustment)) : (baseSpeed * (1.0 - adjustment))
-            } else if absDrift <= 2.0 {
+            } else if absDrift <= 1.80 {
                 let adjustment: Float = 0.10
                 return drift < 0 ? (baseSpeed * (1.0 + adjustment)) : (baseSpeed * (1.0 - adjustment))
             } else {
@@ -91,24 +91,24 @@ struct WatchPartySyncTests {
             }
         }
 
-        check(recommendRate(drift: 0.015) == 1.0, "Sub-frame lockstep (<=20ms) maintains exact base speed")
-        check(recommendRate(drift: -0.010) == 1.0, "Sub-frame lockstep negative maintains exact base speed")
+        check(recommendRate(drift: 0.020) == 1.0, "Sub-frame lockstep (<=25ms) maintains exact base speed")
+        check(recommendRate(drift: -0.015) == 1.0, "Sub-frame lockstep negative maintains exact base speed")
 
-        // Micro-slew at 50ms ahead (drift = +0.05s): delta = -0.15 * 0.05 = -0.0075 -> 0.9925x
+        // Micro-slew at 50ms ahead (drift = +0.05s): delta = -0.25 * 0.05 = -0.0125 -> 0.9875x
         let slewAhead = recommendRate(drift: 0.05)
-        check(abs(slewAhead - 0.9925) < 0.0001, "Micro-slew slows slightly by 0.75% for 50ms drift")
+        check(abs(slewAhead - 0.9875) < 0.0001, "Micro-slew slows slightly by 1.25% for 50ms drift")
 
-        // Micro-slew at 100ms behind (drift = -0.10s): delta = +0.15 * 0.10 = +0.015 -> 1.015x
+        // Micro-slew at 100ms behind (drift = -0.10s): delta = +0.25 * 0.10 = +0.025 -> 1.025x
         let slewBehind = recommendRate(drift: -0.10)
-        check(abs(slewBehind - 1.015) < 0.0001, "Micro-slew accelerates smoothly by 1.5% for 100ms drift")
+        check(abs(slewBehind - 1.025) < 0.0001, "Micro-slew accelerates smoothly by 2.5% for 100ms drift")
 
-        // Catch-up at 400ms: +/- 5%
-        check(abs(recommendRate(drift: -0.4) - 1.05) < 0.001, "Catch-up accelerates by 5% at 400ms behind")
-        check(abs(recommendRate(drift: 0.4) - 0.95) < 0.001, "Catch-up slows by 5% at 400ms ahead")
+        // Catch-up at 400ms: +/- 5.5%
+        check(abs(recommendRate(drift: -0.4) - 1.055) < 0.001, "Catch-up accelerates by 5.5% at 400ms behind")
+        check(abs(recommendRate(drift: 0.4) - 0.945) < 0.001, "Catch-up slows by 5.5% at 400ms ahead")
 
         // Slew around custom base speed (e.g. 1.5x)
         let customBaseSlew = recommendRate(drift: -0.10, baseSpeed: 1.5)
-        check(abs(customBaseSlew - (1.5 * 1.015)) < 0.001, "Slew correctly modulates around 1.5x base speed")
+        check(abs(customBaseSlew - (1.5 * 1.025)) < 0.001, "Slew correctly modulates around 1.5x base speed")
 
         // Test 4b: Backwards-compatible JSON decoding without speed field
         let legacyJson = """
@@ -193,6 +193,24 @@ struct WatchPartySyncTests {
         var closedPayload = invitePayload
         closedPayload.status = .closed
         check(!closedPayload.status.isPlayable, "Closed status is not playable")
+
+        // Test 8: Peer Clock Offset Calibration
+        // Host sends action at HostTime = 1_000_000.
+        // Guest local clock is at 999_920 (80ms behind Host).
+        // Transit time is 45ms.
+        let hostUpdatedAtMs: Int64 = 1_000_000
+        let guestLocalReceiveMs: Int64 = 999_920 + 45 // 999_965
+        let estimatedTransitMs: Int64 = 45
+        let calculatedPeerOffset = (hostUpdatedAtMs + estimatedTransitMs) - guestLocalReceiveMs // 1_000_045 - 999_965 = 80ms!
+        check(calculatedPeerOffset == 80, "Peer clock calibration recovers exact 80ms inter-device clock difference")
+
+        // When Guest calculates targetPosition with calibratedNowMs (guestLocalMs + calculatedPeerOffset):
+        let guestCurrentLocalMs: Int64 = 999_920 + 2000 // 2 seconds later in real time
+        let guestCalibratedNowMs = guestCurrentLocalMs + calculatedPeerOffset // 1_001_920 + 80 = 1_002_000
+        let targetAtGuest = playingPlayback.targetPosition(at: guestCalibratedNowMs)
+        // Host computes targetPosition at HostTime = 1_002_000:
+        let targetAtHost = playingPlayback.targetPosition(at: 1_002_000)
+        check(targetAtGuest == targetAtHost, "Calibrated Guest target position exactly equals Host target position")
 
         print("PASS: \(count) watch party sync & model test cases")
     }
