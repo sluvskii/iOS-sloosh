@@ -225,8 +225,18 @@ struct MediaDto: Codable, Identifiable {
                     return normalizeImageUrl(path: cachedTp, id: origId, isBackdrop: false) ?? cachedTp
                 }
             }
-            // Do not strip a TV/movie ID into an ambiguous textless-poster proxy.
-            // Without a confirmed textless asset, retain this title's standard poster.
+            // Keep the established textless-poster fallback in logo mode.
+            // This poster route is independent of the removed logo-proxy guess.
+            if let rawId = origId {
+                let posterId = rawId
+                    .replacingOccurrences(of: "kp_", with: "")
+                    .replacingOccurrences(of: "tmdb_", with: "")
+                    .replacingOccurrences(of: "tv_", with: "")
+                    .replacingOccurrences(of: "movie_", with: "")
+                if !posterId.isEmpty {
+                    return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/posters/\(posterId)/\(targetSize)/textless"
+                }
+            }
         }
 
         if let overridePoster = override?.posterUrl, !overridePoster.isEmpty {
