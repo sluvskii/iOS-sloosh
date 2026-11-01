@@ -223,10 +223,13 @@ struct MediaDto: Codable, Identifiable {
                 return normalizeImageUrl(path: tp, id: origId, isBackdrop: false) ?? tp
             }
             // 3. Cached details textless poster
-            if let idToLookup = origId ?? cleanId,
-               let cached = MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type),
-               let cachedTp = cached.textlessPoster ?? cached.textlessPosterUrl, !cachedTp.isEmpty {
-                return normalizeImageUrl(path: cachedTp, id: origId, isBackdrop: false) ?? cachedTp
+            if Thread.isMainThread, let idToLookup = origId ?? cleanId {
+                let cached = MainActor.assumeIsolated {
+                    MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type)
+                }
+                if let cachedTp = cached?.textlessPoster ?? cached?.textlessPosterUrl, !cachedTp.isEmpty {
+                    return normalizeImageUrl(path: cachedTp, id: origId, isBackdrop: false) ?? cachedTp
+                }
             }
             // 4. Server fallback for textless poster
             if let validId = (cleanId != nil && !cleanId!.isEmpty) ? cleanId : origId, !validId.isEmpty {
@@ -287,10 +290,13 @@ struct MediaDto: Codable, Identifiable {
         }
 
         // 3. Check cached details in MoviesRepository
-        if let idToLookup = origId ?? cleanId,
-           let cached = MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type),
-           let cachedLogo = cached.displayLogoUrl, !cachedLogo.isEmpty {
-            return isCompact ? adjustLogoUrl(urlStr: cachedLogo, targetSize: "w300") : cachedLogo
+        if Thread.isMainThread, let idToLookup = origId ?? cleanId {
+            let cached = MainActor.assumeIsolated {
+                MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type)
+            }
+            if let cachedLogo = cached?.displayLogoUrl, !cachedLogo.isEmpty {
+                return isCompact ? adjustLogoUrl(urlStr: cachedLogo, targetSize: "w300") : cachedLogo
+            }
         }
         
         // 4. Fallback to server logo proxy: /api/v1/images/logos/:id/(small or original)
