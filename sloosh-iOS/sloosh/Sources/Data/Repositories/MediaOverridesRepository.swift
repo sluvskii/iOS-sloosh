@@ -188,6 +188,18 @@ public final class MediaOverridesRepository: ObservableObject {
 
     // MARK: - Resolution Lookup
 
+    /// Catalog artwork must not trust numeric aliases shared by movie/TV or KP IDs.
+    nonisolated func catalogOverride(id: String?, type: String?, kpId: Int?) -> MediaArtworkOverride? {
+        guard let identity = CatalogArtworkIdentity(id: id, type: type) else { return nil }
+        return Self.lock.withLock {
+            let map = Self.threadSafeOverrides
+            if let exact = map[identity.requestId], identity.matchesOverride(exact, kpId: kpId) { return exact }
+            if let kpId, let exact = map["kp_\(kpId)"], identity.matchesOverride(exact, kpId: kpId) { return exact }
+            return map.values.filter { identity.matchesOverride($0, kpId: kpId) }
+                .max { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }
+        }
+    }
+
     nonisolated public func override(for rawId: String?, tmdbId: Int? = nil, kpId: Int? = nil) -> MediaArtworkOverride? {
         Self.lock.withLock {
             let map = Self.threadSafeOverrides
