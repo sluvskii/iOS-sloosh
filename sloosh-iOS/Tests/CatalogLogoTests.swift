@@ -30,7 +30,7 @@ struct CatalogLogoTests {
 
         // Exercise the actual DTO accessors and URL normalizers.
         let poster = "\(base)/api/v1/images/tmdb/w500/standard.jpg"
-        let card = MediaDto(originalId: .string("tv_100088"), title: "Одни из нас", type: "tv", poster: poster)
+        let card = MediaDto(originalId: .string("tv_100088"), title: "Одни из нас", poster: poster, type: "tv")
         check(card.displayLogoUrl() == nil, "Missing TV logo must not synthesize an untyped numeric proxy")
         check(card.displayPosterUrl(forLogoMode: true) == poster, "Missing textless asset preserves the correct standard poster")
         let stale = MediaDto(originalId: .string("tv_100088"), type: "tv", logo: "\(base)/api/v1/images/logos/100088/small")
@@ -38,7 +38,7 @@ struct CatalogLogoTests {
         let explicit = MediaDto(originalId: .string("tv_100088"), type: "tv", logo: "https://image.tmdb.org/t/p/original/tlou.png")
         check(explicit.displayLogoUrl() == "\(base)/api/v1/images/tmdb/w300/tlou.png", "Production logo resizing/routing retained")
         check(explicit.displayLogoUrl(isCompact: false) != nil, "Noncompact explicit logo still available")
-        let textless = MediaDto(originalId: .string("tv_100088"), type: "tv", poster: poster, textlessPoster: "/textless.jpg")
+        let textless = MediaDto(originalId: .string("tv_100088"), poster: poster, type: "tv", textlessPoster: "/textless.jpg")
         check(textless.displayPosterUrl(forLogoMode: true)?.contains("textless.jpg") == true, "Explicit textless poster retained")
         MediaOverridesRepository.shared.items = [MediaArtworkOverride(mediaId: "movie_100088", logoUrl: "/wrong.png")]
         check(card.displayLogoUrl() == nil, "Cross-type curated logo is not used")
