@@ -18,6 +18,22 @@ private enum ArtworkTab: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Poster Mode Enum
+
+private enum PosterMode: String, CaseIterable, Identifiable {
+    case standard = "С текстом"
+    case textless = "Для логотипов (без текста)"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .standard: return "character"
+        case .textless: return "sparkles"
+        }
+    }
+}
+
 // MARK: - Media Artwork Picker Sheet
 
 struct MediaArtworkPickerSheet: View {
@@ -44,6 +60,8 @@ struct MediaArtworkPickerSheet: View {
     // Current selections
     @State private var selectedLogoUrl: String?
     @State private var selectedPosterUrl: String?
+    @State private var selectedTextlessPosterUrl: String?
+    @State private var posterMode: PosterMode = .standard
     @State private var selectedBackdropUrl: String?
     @State private var selectedCarouselUrls: [String] = []
 
@@ -215,6 +233,7 @@ struct MediaArtworkPickerSheet: View {
         if let existing = activeOverride {
             self.selectedLogoUrl = existing.logoUrl ?? defaultLogoUrl
             self.selectedPosterUrl = existing.posterUrl ?? defaultPosterUrl
+            self.selectedTextlessPosterUrl = existing.textlessPosterUrl
             self.selectedBackdropUrl = existing.backdropUrl ?? backdropUrl
             if let customBackdrops = existing.backdropUrls, !customBackdrops.isEmpty {
                 self.selectedCarouselUrls = customBackdrops
@@ -226,10 +245,16 @@ struct MediaArtworkPickerSheet: View {
         } else {
             self.selectedLogoUrl = defaultLogoUrl
             self.selectedPosterUrl = defaultPosterUrl
+            self.selectedTextlessPosterUrl = nil
             self.selectedBackdropUrl = backdropUrl
             if self.selectedCarouselUrls.isEmpty, let b = backdropUrl, !b.isEmpty {
                 self.selectedCarouselUrls = [b]
             }
+        }
+
+        if self.selectedTextlessPosterUrl == nil {
+            let firstTextless = posters.first(where: { $0.iso_639_1 == nil || $0.iso_639_1?.isEmpty == true || $0.iso_639_1 == "xx" })
+            self.selectedTextlessPosterUrl = firstTextless?.fullUrl
         }
 
         self.previewBackdropUrl = self.selectedBackdropUrl ?? backdropUrl
@@ -308,9 +333,11 @@ struct MediaArtworkPickerSheet: View {
     }
 
     private var posterPreviewContent: some View {
-        ZStack {
+        let activePosterUrl = (posterMode == .textless ? (selectedTextlessPosterUrl ?? selectedPosterUrl) : selectedPosterUrl)
+
+        return ZStack {
             // Ambient blurred background using backdrop or poster
-            if let bg = activePreviewBackdrop ?? selectedPosterUrl, let url = URL(string: bg) {
+            if let bg = activePreviewBackdrop ?? activePosterUrl, let url = URL(string: bg) {
                 AsyncCachedImage(url: url) {
                     Color.black.opacity(0.85)
                 } content: { img in
@@ -326,49 +353,95 @@ struct MediaArtworkPickerSheet: View {
                 Color.black.opacity(0.85)
             }
 
-            // Balanced centered lockup: poster card on left, title & category on right
+            // Balanced centered lockup: poster card on left, title & mode info on right
             HStack(spacing: 16) {
-                if let posterUrl = selectedPosterUrl, !posterUrl.isEmpty, let url = URL(string: posterUrl) {
-                    AsyncCachedImage(url: url) {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
-                            .frame(width: 86, height: 128)
-                    } content: { img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 86, height: 128)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .shadow(color: .black.opacity(0.6), radius: 10, x: 0, y: 5)
-                    } fallback: {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
-                            .frame(width: 86, height: 128)
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: 86, height: 128)
-                        .overlay {
-                            Image(systemName: "photo")
-                                .font(.system(size: 24))
-                                .foregroundStyle(.secondary)
+                ZStack(alignment: .bottom) {
+                    if let posterUrl = activePosterUrl, !posterUrl.isEmpty, let url = URL(string: posterUrl) {
+                        AsyncCachedImage(url: url) {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                                .frame(width: 86, height: 128)
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 86, height: 128)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .shadow(color: .black.opacity(0.6), radius: 10, x: 0, y: 5)
+                        } fallback: {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                                .frame(width: 86, height: 128)
                         }
+                    } else {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 86, height: 128)
+                            .overlay {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(.secondary)
+                            }
+                    }
+
+                    // In textless mode, overlay logo at bottom of card to demonstrate the real catalog view
+                    if posterMode == .textless {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black.opacity(0.85)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(width: 86, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
+                            AsyncCachedImage(url: url) {
+                                Text(title)
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                            } content: { img in
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: 72, maxHeight: 18)
+                                    .shadow(color: .black.opacity(0.9), radius: 3)
+                            } fallback: {
+                                Text(title)
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                            }
+                            .padding(.bottom, 6)
+                        } else {
+                            Text(title)
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .padding(.horizontal, 4)
+                                .padding(.bottom, 6)
+                        }
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(3)
+                        .lineLimit(2)
 
                     HStack(spacing: 5) {
-                        Image(systemName: "rectangle.portrait.fill")
-                            .font(.system(size: 10))
-                        Text("Основной постер")
-                            .font(.system(size: 12, weight: .medium))
+                        Image(systemName: posterMode == .textless ? "sparkles" : "character")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(posterMode == .textless ? "Режим: Без текста (логотипы)" : "Режим: С текстом (стандарт)")
+                            .font(.system(size: 11.5, weight: .medium))
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(posterMode == .textless ? Color.white : Color.secondary)
+
+                    Text(posterMode == .textless ? "Постер без названия исключает дублирование с логотипом" : "Стандартный постер с напечатанным названием")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary.opacity(0.8))
+                        .lineLimit(2)
                 }
 
                 Spacer()
@@ -979,21 +1052,64 @@ struct MediaArtworkPickerSheet: View {
             GridItem(.flexible(), spacing: 10)
         ]
 
-        return LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(filteredItems, id: \.url) { item in
-                posterCatalogCard(item: item)
+        return VStack(spacing: 12) {
+            // Segmented mode selector: С текстом vs Для логотипов (без текста)
+            HStack(spacing: 6) {
+                ForEach(PosterMode.allCases) { mode in
+                    let isCurrent = (posterMode == mode)
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            posterMode = mode
+                            if mode == .textless && selectedLanguageFilter == "ALL" {
+                                if posters.contains(where: { $0.iso_639_1 == nil || $0.iso_639_1?.isEmpty == true }) {
+                                    selectedLanguageFilter = "NONE"
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: mode.icon)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(mode.rawValue)
+                                .font(.system(size: 12.5, weight: .semibold))
+                        }
+                        .foregroundStyle(isCurrent ? Color.primary : Color.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background {
+                            if isCurrent {
+                                Capsule().fill(Color.white.opacity(0.18))
+                            }
+                        }
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(3)
+            .glassEffect(in: Capsule())
+
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(filteredItems, id: \.url) { item in
+                    posterCatalogCard(item: item)
+                }
             }
         }
     }
 
     private func posterCatalogCard(item: MediaImageItemDto) -> some View {
         let fullUrl = item.fullUrl
-        let isSelected = (selectedPosterUrl == fullUrl)
+        let isTextless = (item.iso_639_1 == nil || item.iso_639_1?.isEmpty == true || item.iso_639_1 == "xx")
+        let isSelected = (posterMode == .textless ? (selectedTextlessPosterUrl == fullUrl) : (selectedPosterUrl == fullUrl))
 
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                selectedPosterUrl = fullUrl
+                if posterMode == .textless {
+                    selectedTextlessPosterUrl = fullUrl
+                } else {
+                    selectedPosterUrl = fullUrl
+                }
             }
         } label: {
             VStack(spacing: 6) {
@@ -1027,7 +1143,19 @@ struct MediaArtworkPickerSheet: View {
 
                         Spacer()
 
-                        if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
+                        if isTextless {
+                            HStack(spacing: 2) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 7, weight: .bold))
+                                Text("Без текста")
+                                    .font(.system(size: 8.5, weight: .bold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2.5)
+                            .background(Capsule().fill(Color.black.opacity(0.72)))
+                            .padding(5)
+                        } else if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
                             Text(lang)
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
@@ -1280,6 +1408,9 @@ struct MediaArtworkPickerSheet: View {
                     if self.selectedPosterUrl == nil, let firstPoster = self.posters.first {
                         self.selectedPosterUrl = firstPoster.fullUrl
                     }
+                    if self.selectedTextlessPosterUrl == nil, let firstTextless = self.posters.first(where: { $0.iso_639_1 == nil || $0.iso_639_1?.isEmpty == true || $0.iso_639_1 == "xx" }) {
+                        self.selectedTextlessPosterUrl = firstTextless.fullUrl
+                    }
                     if self.selectedCarouselUrls.isEmpty && !self.backdrops.isEmpty {
                         self.selectedCarouselUrls = Array(self.backdrops.prefix(6).map { $0.fullUrl })
                     }
@@ -1355,6 +1486,7 @@ struct MediaArtworkPickerSheet: View {
                 tmdbId: tmdbId,
                 title: title,
                 posterUrl: selectedPosterUrl,
+                textlessPosterUrl: selectedTextlessPosterUrl,
                 logoUrl: selectedLogoUrl,
                 backdropUrl: selectedBackdropUrl,
                 backdropUrls: selectedCarouselUrls.isEmpty ? nil : selectedCarouselUrls

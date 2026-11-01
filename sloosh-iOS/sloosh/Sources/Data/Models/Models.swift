@@ -125,10 +125,12 @@ struct MediaDto: Codable, Identifiable {
     let backdrop: String?
     let backdrop_path: String?
     let logo: String?
+    let textlessPoster: String?
+    let textlessPosterUrl: String?
     
     enum CodingKeys: String, CodingKey {
         case originalId = "id"
-        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, countries, externalIds, name, poster_path, backdrop, backdrop_path, logo
+        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, countries, externalIds, name, poster_path, backdrop, backdrop_path, logo, textlessPoster, textlessPosterUrl
     }
 
     init(
@@ -150,7 +152,9 @@ struct MediaDto: Codable, Identifiable {
         poster_path: String? = nil,
         backdrop: String? = nil,
         backdrop_path: String? = nil,
-        logo: String? = nil
+        logo: String? = nil,
+        textlessPoster: String? = nil,
+        textlessPosterUrl: String? = nil
     ) {
         self.originalId = originalId
         self.title = title
@@ -171,6 +175,8 @@ struct MediaDto: Codable, Identifiable {
         self.backdrop = backdrop
         self.backdrop_path = backdrop_path
         self.logo = logo
+        self.textlessPoster = textlessPoster
+        self.textlessPosterUrl = textlessPosterUrl
     }
     
     // Identifiable requirement helper
@@ -195,24 +201,56 @@ struct MediaDto: Codable, Identifiable {
         title ?? name ?? originalTitle ?? "Unknown"
     }
     
-    var displayPosterUrl: String? {
-        if let origId = originalId?.stringValue,
-           let overridePoster = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.posterUrl,
-           !overridePoster.isEmpty {
+    func displayPosterUrl(forLogoMode: Bool) -> String? {
+        let origId = originalId?.stringValue
+        let cleanId = origId?
+            .replacingOccurrences(of: "kp_", with: "")
+            .replacingOccurrences(of: "tmdb_", with: "")
+            .replacingOccurrences(of: "tv_", with: "")
+            .replacingOccurrences(of: "movie_", with: "")
+        let override = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)
+            ?? (cleanId != nil ? MediaOverridesRepository.shared.override(for: cleanId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp) : nil)
+        let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
+        let targetSize = isLowQuality ? "w185" : "w500"
+
+        if forLogoMode {
+            // 1. Curated textless override first
+            if let overrideTextless = override?.textlessPosterUrl, !overrideTextless.isEmpty {
+                return overrideTextless
+            }
+            // 2. Direct textless poster from DTO
+            if let tp = textlessPoster ?? textlessPosterUrl, !tp.isEmpty {
+                return normalizeImageUrl(path: tp, id: origId, isBackdrop: false) ?? tp
+            }
+            // 3. Cached details textless poster
+            if let idToLookup = origId ?? cleanId,
+               let cached = MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type),
+               let cachedTp = cached.textlessPoster ?? cached.textlessPosterUrl, !cachedTp.isEmpty {
+                return normalizeImageUrl(path: cachedTp, id: origId, isBackdrop: false) ?? cachedTp
+            }
+            // 4. Server fallback for textless poster
+            if let validId = (cleanId != nil && !cleanId!.isEmpty) ? cleanId : origId, !validId.isEmpty {
+                return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/posters/\(validId)/\(targetSize)/textless"
+            }
+        }
+
+        if let overridePoster = override?.posterUrl, !overridePoster.isEmpty {
             return overridePoster
         }
         if let p = poster, !p.isEmpty {
-            return normalizeImageUrl(path: p, id: originalId?.stringValue, isBackdrop: false)
+            return normalizeImageUrl(path: p, id: origId, isBackdrop: false)
         }
         if let p = posterUrl, !p.isEmpty {
-            return normalizeImageUrl(path: p, id: originalId?.stringValue, isBackdrop: false)
+            return normalizeImageUrl(path: p, id: origId, isBackdrop: false)
         }
         if let path = poster_path, !path.isEmpty {
-            let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
-            let targetSize = isLowQuality ? "w185" : "w500"
-            return normalizeImageUrl(path: path, id: originalId?.stringValue, isBackdrop: false) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/\(targetSize)\(path)")
+            return normalizeImageUrl(path: path, id: origId, isBackdrop: false) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/\(targetSize)\(path)")
         }
         return nil
+    }
+
+    var displayPosterUrl: String? {
+        displayPosterUrl(forLogoMode: UserDefaults.standard.bool(forKey: "useLogosInCatalog"))
     }
 
     var displayBackdropUrl: String? {
@@ -229,9 +267,15 @@ struct MediaDto: Codable, Identifiable {
 
     func displayLogoUrl(isCompact: Bool = true) -> String? {
         let origId = originalId?.stringValue
+        let cleanId = origId?
+            .replacingOccurrences(of: "kp_", with: "")
+            .replacingOccurrences(of: "tmdb_", with: "")
+            .replacingOccurrences(of: "tv_", with: "")
+            .replacingOccurrences(of: "movie_", with: "")
         
         // 1. Check curated artwork overrides first
-        if let overrideLogo = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl,
+        if let overrideLogo = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl ??
+           (cleanId != nil ? MediaOverridesRepository.shared.override(for: cleanId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl : nil),
            !overrideLogo.isEmpty {
             return isCompact ? adjustLogoUrl(urlStr: overrideLogo, targetSize: "w300") : overrideLogo
         }
@@ -241,9 +285,16 @@ struct MediaDto: Codable, Identifiable {
             let normalized = normalizeImageUrl(path: l, id: origId) ?? l
             return isCompact ? adjustLogoUrl(urlStr: normalized, targetSize: "w300") : normalized
         }
+
+        // 3. Check cached details in MoviesRepository
+        if let idToLookup = origId ?? cleanId,
+           let cached = MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type),
+           let cachedLogo = cached.displayLogoUrl, !cachedLogo.isEmpty {
+            return isCompact ? adjustLogoUrl(urlStr: cachedLogo, targetSize: "w300") : cachedLogo
+        }
         
-        // 3. Fallback to server logo proxy: /api/v1/images/logos/:id/(small or original)
-        guard let validId = origId?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else {
+        // 4. Fallback to server logo proxy: /api/v1/images/logos/:id/(small or original)
+        guard let validId = (cleanId != nil && !cleanId!.isEmpty) ? cleanId : origId, !validId.isEmpty else {
             return nil
         }
         let sizeSegment = isCompact ? "small" : "original"
@@ -514,6 +565,8 @@ struct MediaDetailsDto: Codable {
     let backdrop: String?
     let backdrops: [String]?
     let logo: String?
+    let textlessPoster: String?
+    let textlessPosterUrl: String?
     let cast: [CastMemberDto]?
     let directors: [CrewMemberDto]?
     let writers: [CrewMemberDto]?
@@ -538,7 +591,7 @@ struct MediaDetailsDto: Codable {
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
-        case genres, countries, duration, poster, backdrop, backdrops, logo, cast, directors, writers, crew, trailers
+        case genres, countries, duration, poster, backdrop, backdrops, logo, textlessPoster, textlessPosterUrl, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
         case budget, revenue, ageRating, status, nextEpisodeToAir, seasons
         case availableLogos, availablePosters, availableBackdrops
@@ -559,6 +612,8 @@ struct MediaDetailsDto: Codable {
         backdrop: String? = nil,
         backdrops: [String]? = nil,
         logo: String? = nil,
+        textlessPoster: String? = nil,
+        textlessPosterUrl: String? = nil,
         cast: [CastMemberDto]? = nil,
         directors: [CrewMemberDto]? = nil,
         writers: [CrewMemberDto]? = nil,
@@ -595,6 +650,8 @@ struct MediaDetailsDto: Codable {
         self.backdrop = backdrop
         self.backdrops = backdrops
         self.logo = logo
+        self.textlessPoster = textlessPoster
+        self.textlessPosterUrl = textlessPosterUrl
         self.cast = cast
         self.directors = directors
         self.writers = writers

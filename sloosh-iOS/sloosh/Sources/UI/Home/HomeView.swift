@@ -532,7 +532,7 @@ struct MoviePosterCard: View {
 
     private var classicBody: some View {
         VStack(alignment: .leading, spacing: 8) {
-            let url = URL(string: movie.displayPosterUrl ?? "")
+            let url = URL(string: movie.displayPosterUrl(forLogoMode: useLogosInCatalog) ?? "")
             
             ZStack(alignment: .topLeading) {
                 RemotePosterView(url: url)
@@ -590,7 +590,7 @@ struct MoviePosterCard: View {
     }
 
     private var overlayBody: some View {
-        RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 12) {
+        RemotePosterView(url: URL(string: movie.displayPosterUrl(forLogoMode: useLogosInCatalog) ?? ""), cornerRadius: 12) {
             ZStack(alignment: .bottomLeading) {
                 // Progressive blur with dark tint at the bottom of the poster
                 VariableBlurView(

@@ -9,6 +9,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
     public var tmdbId: Int?
     public var title: String?
     public var posterUrl: String?
+    public var textlessPosterUrl: String?
     public var logoUrl: String?
     public var backdropUrl: String?
     public var backdropUrls: [String]?
@@ -21,6 +22,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
         tmdbId: Int? = nil,
         title: String? = nil,
         posterUrl: String? = nil,
+        textlessPosterUrl: String? = nil,
         logoUrl: String? = nil,
         backdropUrl: String? = nil,
         backdropUrls: [String]? = nil,
@@ -32,6 +34,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
         self.tmdbId = tmdbId
         self.title = title
         self.posterUrl = posterUrl
+        self.textlessPosterUrl = textlessPosterUrl
         self.logoUrl = logoUrl
         self.backdropUrl = backdropUrl
         self.backdropUrls = backdropUrls

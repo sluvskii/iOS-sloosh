@@ -327,6 +327,7 @@ public final class MediaOverridesRepository: ObservableObject {
         tmdbId: Int? = nil,
         title: String? = nil,
         posterUrl: String? = nil,
+        textlessPosterUrl: String? = nil,
         logoUrl: String? = nil,
         backdropUrl: String? = nil,
         backdropUrls: [String]? = nil
@@ -340,6 +341,7 @@ public final class MediaOverridesRepository: ObservableObject {
             tmdbId: tmdbId,
             title: title,
             posterUrl: posterUrl,
+            textlessPosterUrl: textlessPosterUrl,
             logoUrl: logoUrl,
             backdropUrl: backdropUrl,
             backdropUrls: backdropUrls,
