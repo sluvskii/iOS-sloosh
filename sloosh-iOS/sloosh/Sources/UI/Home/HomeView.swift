@@ -670,15 +670,15 @@ struct MovieCardTitleOrLogoView: View {
     
     var body: some View {
         if useLogos, let logoUrlStr = movie.displayLogoUrl(isCompact: true), let logoUrl = URL(string: logoUrlStr) {
-            AsyncCachedImage(url: logoUrl) { image in
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: isOverlay ? 22 : 20, alignment: .leading)
-                    .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
-            } placeholder: {
+            AsyncCachedImage(url: logoUrl) {
                 titleText
                     .opacity(0.85)
+            } content: { uiImg in
+                Image(uiImage: uiImg)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+                    .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
             } fallback: {
                 titleText
             }
