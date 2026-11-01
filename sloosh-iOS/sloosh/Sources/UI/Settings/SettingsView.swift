@@ -151,6 +151,10 @@ struct SettingsView: View {
                             Text(quality.title).tag(quality)
                         }
                     }
+                    .onChange(of: posterQuality) { _, _ in
+                        ImageCache.shared.clear()
+                        NotificationCenter.default.post(name: .posterQualityDidChange, object: nil)
+                    }
                 }
 
                 // Показывать оригинальное название

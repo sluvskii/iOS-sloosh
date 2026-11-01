@@ -39,23 +39,34 @@ public final class ImageCache {
 
     public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
         guard let original = targetUrl else { return nil }
-        let str = original.absoluteString
+        var str = original.absoluteString
         let base = MoviesApi.activeImagesBaseURL
+        let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
         
         // Rewrite legacy/hardcoded vercel URLs to active base URL dynamically
         if str.contains("api-sloosh.vercel.app") {
-            let redirected = str.replacingOccurrences(of: "https://api-sloosh.vercel.app", with: base)
+            str = str.replacingOccurrences(of: "https://api-sloosh.vercel.app", with: base)
                 .replacingOccurrences(of: "http://api-sloosh.vercel.app", with: base)
-            return URL(string: redirected) ?? original
         }
         
         // Proxy raw TMDB images through active base URL
         if str.contains("image.tmdb.org/t/p/") {
-            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
+            str = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
                 .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
-            return URL(string: proxied) ?? original
         }
-        return original
+
+        // Apply quality size if URL routes through TMDB image proxy
+        if str.contains("/api/v1/images/tmdb/") {
+            let isBackdrop = str.contains("/original/") || str.contains("/w780/") || str.contains("/w1280/")
+            let targetSize = isBackdrop ? (isLowQuality ? "w780" : "original") : (isLowQuality ? "w185" : "w500")
+            let pattern = #"/api/v1/images/tmdb/(w\d+|original)/"#
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                let range = NSRange(str.startIndex..<str.endIndex, in: str)
+                str = regex.stringByReplacingMatches(in: str, options: [], range: range, withTemplate: "/api/v1/images/tmdb/\(targetSize)/")
+            }
+        }
+
+        return URL(string: str) ?? original
     }
 
     public static func prefetch(urls: [URL]) {
@@ -178,6 +189,12 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
         .onChange(of: isLoading, initial: true) { _, newValue in
             isExternalLoading?.wrappedValue = newValue
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .posterQualityDidChange)) { _ in
+            self.image = nil
+            Task {
+                await loadImage()
+            }
         }
     }
 

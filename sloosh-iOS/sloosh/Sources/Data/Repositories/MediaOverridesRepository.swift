@@ -5,6 +5,7 @@ import UIKit
 
 public extension Notification.Name {
     static let mediaArtworkOverridesDidChange = Notification.Name("sloosh_media_artwork_overrides_did_change")
+    static let posterQualityDidChange = Notification.Name("sloosh_poster_quality_did_change")
 }
 
 @MainActor

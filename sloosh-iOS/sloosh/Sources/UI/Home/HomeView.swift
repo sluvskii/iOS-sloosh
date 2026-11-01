@@ -518,6 +518,7 @@ struct MoviePosterCard: View {
     let movie: MediaDto
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
+    @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
 
     var body: some View {
         switch cardStyle {

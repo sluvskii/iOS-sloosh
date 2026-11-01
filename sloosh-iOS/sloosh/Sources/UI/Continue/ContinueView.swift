@@ -221,30 +221,7 @@ private struct ContinueWatchingItem: Identifiable {
     var imageURL: URL? {
         let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
         if let urlStr = backdropUrl ?? posterUrl, !urlStr.isEmpty {
-            var finalUrlStr = urlStr
-            if isLowQuality {
-                if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/original") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/original", with: "/large")
-                }
-                if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/small") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/small", with: "/large")
-                }
-                if finalUrlStr.contains("/kp/") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/kp/", with: "/kp_small/")
-                }
-            } else {
-                if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/large") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/large", with: "/original")
-                }
-                if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/small") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/small", with: "/original")
-                }
-                if finalUrlStr.contains("/kp_small/") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/kp_small/", with: "/kp/")
-                }
-            }
-            
-            finalUrlStr = adjustExternalImageUrl(urlStr: finalUrlStr, isLowQuality: isLowQuality)
+            let finalUrlStr = adjustExternalImageUrl(urlStr: urlStr, isLowQuality: isLowQuality, isBackdrop: true)
             return URL(string: finalUrlStr)
         }
         return nil
@@ -803,6 +780,7 @@ private struct ContinuePresentation: Identifiable {
 private struct ContinueWatchingCard: View {
     let item: ContinueWatchingItem
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
+    @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
