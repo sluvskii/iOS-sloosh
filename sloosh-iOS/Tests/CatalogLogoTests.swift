@@ -2,118 +2,76 @@ import Foundation
 
 @main
 struct CatalogLogoTests {
-    static func main() {
+    @MainActor
+    static func main() async throws {
         var count = 0
         func check(_ condition: Bool, _ description: String) {
             precondition(condition, description)
             count += 1
         }
+        let base = MoviesApi.activeImagesBaseURL
+        let tv = CatalogArtworkIdentity(id: "tv_100088", type: nil)!
+        let film = CatalogArtworkIdentity(id: "movie_100088", type: nil)!
+        check(tv != film, "Same number must not share movie/TV cache identity")
+        check(tv.requestId == "tv_100088" && tv.mediaType == "tv", "TV prefix retained")
+        check(CatalogArtworkIdentity(id: "100088", type: "tv") == tv, "Typed numeric TV ID is canonical")
+        check(CatalogArtworkIdentity(id: "tmdb_100088", type: "tv") == tv, "TMDB plus type retains TV namespace")
+        check(CatalogArtworkIdentity(id: "tv_100088", type: "movie") == tv, "Explicit prefix is authoritative")
+        check(CatalogArtworkIdentity(id: "100088", type: nil) == nil, "Never guess a movie from an untyped ID")
+        check(CatalogArtworkIdentity(id: "tv_bad", type: "tv") == nil, "Reject malformed IDs")
+        check(CatalogArtworkIdentity(id: "tv_0", type: "tv") == nil, "Reject zero IDs")
+        check(CatalogArtworkIdentity(id: "kp_123", type: nil)?.requestId == "kp_123", "KP namespace retained")
+        check(!tv.matchesOverride(MediaArtworkOverride(mediaId: "movie_100088", tmdbId: 100088), kpId: nil), "Movie override must not leak into TV")
+        check(!tv.matchesOverride(MediaArtworkOverride(mediaId: "100088", tmdbId: 100088), kpId: nil), "Untyped numeric alias is ambiguous")
+        check(tv.matchesOverride(MediaArtworkOverride(mediaId: "tv_100088"), kpId: nil), "Exact typed override accepted")
+        check(tv.matchesOverride(MediaArtworkOverride(mediaId: "kp_464963", kpId: 464963), kpId: 464963), "Explicit matching external KP identity accepted")
+        check(!tv.acceptsLogoURL("\(base)/api/v1/images/logos/100088/small"), "Reject ambiguous logo URLs from old caches too")
+        check(tv.acceptsLogoURL("\(base)/api/v1/images/tmdb/w300/tlou.png"), "Explicit artwork path accepted")
 
-        func adjustLogo(urlStr: String, targetSize: String = "w300") -> String {
-            var result = urlStr
-            let base = "https://api.sloosh.workers.dev"
+        // Exercise the actual DTO accessors and URL normalizers.
+        let poster = "\(base)/api/v1/images/tmdb/w500/standard.jpg"
+        let card = MediaDto(originalId: .string("tv_100088"), title: "Одни из нас", poster: poster, type: "tv")
+        check(card.displayLogoUrl() == nil, "Missing TV logo must not synthesize an untyped numeric proxy")
+        check(card.displayPosterUrl(forLogoMode: true) == poster, "Missing textless asset preserves the correct standard poster")
+        let stale = MediaDto(originalId: .string("tv_100088"), type: "tv", logo: "\(base)/api/v1/images/logos/100088/small")
+        check(stale.displayLogoUrl() == nil, "Reject a stale proxy stored in the DTO")
+        let explicit = MediaDto(originalId: .string("tv_100088"), type: "tv", logo: "https://image.tmdb.org/t/p/original/tlou.png")
+        check(explicit.displayLogoUrl() == "\(base)/api/v1/images/tmdb/w300/tlou.png", "Production logo resizing/routing retained")
+        check(explicit.displayLogoUrl(isCompact: false) != nil, "Noncompact explicit logo still available")
+        let textless = MediaDto(originalId: .string("tv_100088"), poster: poster, type: "tv", textlessPoster: "/textless.jpg")
+        check(textless.displayPosterUrl(forLogoMode: true)?.contains("textless.jpg") == true, "Explicit textless poster retained")
+        MediaOverridesRepository.shared.items = [MediaArtworkOverride(mediaId: "movie_100088", logoUrl: "/wrong.png")]
+        check(card.displayLogoUrl() == nil, "Cross-type curated logo is not used")
+        MediaOverridesRepository.shared.items = [MediaArtworkOverride(mediaId: "tv_100088", logoUrl: "\(base)/api/v1/images/tmdb/original/curated.png")]
+        check(card.displayLogoUrl()?.contains("/w300/curated.png") == true, "Correct curated logo wins")
+        MediaOverridesRepository.shared.items = []
+        check(adjustLogoUrl(urlStr: "\(base)/api/v1/images/logos/550/original", targetSize: "w300") == "\(base)/api/v1/images/logos/550/small", "Legacy sizing helper unchanged for other callers")
 
-            if result.contains("api-sloosh.vercel.app") {
-                result = result.replacingOccurrences(of: "https://api-sloosh.vercel.app", with: base)
-                    .replacingOccurrences(of: "http://api-sloosh.vercel.app", with: base)
-            }
-            if result.contains("image.tmdb.org/t/p/") {
-                result = result.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
-                    .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
-            }
-
-            if result.contains("/api/v1/images/tmdb/") {
-                let pattern = #"/api/v1/images/tmdb/(w\d+|original)/"#
-                if let regex = try? NSRegularExpression(pattern: pattern) {
-                    let range = NSRange(result.startIndex..<result.endIndex, in: result)
-                    result = regex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "/api/v1/images/tmdb/\(targetSize)/")
-                }
-            } else if result.contains("/api/v1/images/logos/") {
-                let isSmall = (targetSize == "w300" || targetSize == "small" || targetSize == "w185" || targetSize == "w154")
-                let targetSegment = isSmall ? "small" : "original"
-                let pattern = #"/api/v1/images/logos/([^/]+)/(original|small|w\d+)"#
-                if let regex = try? NSRegularExpression(pattern: pattern) {
-                    let range = NSRange(result.startIndex..<result.endIndex, in: result)
-                    result = regex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "/api/v1/images/logos/$1/\(targetSegment)")
-                }
-            }
-            return result
+        func image(_ path: String, language: String?) throws -> MediaImageItemDto {
+            let data = try JSONSerialization.data(withJSONObject: ["url": path, "iso_639_1": language as Any? ?? NSNull()])
+            return try JSONDecoder().decode(MediaImageItemDto.self, from: data)
         }
-
-        // Test 1: TMDB original logo downscaled to w300 for compact card
-        let t1 = adjustLogo(urlStr: "https://api.sloosh.workers.dev/api/v1/images/tmdb/original/logo123.png", targetSize: "w300")
-        check(t1 == "https://api.sloosh.workers.dev/api/v1/images/tmdb/w300/logo123.png", "Downscales TMDB original logo to w300")
-
-        // Test 2: Raw TMDB image URL sanitized and downscaled to w300
-        let t2 = adjustLogo(urlStr: "https://image.tmdb.org/t/p/original/logo123.png", targetSize: "w300")
-        check(t2 == "https://api.sloosh.workers.dev/api/v1/images/tmdb/w300/logo123.png", "Sanitizes raw TMDB logo and downscales to w300")
-
-        // Test 3: Legacy vercel domain sanitized and downscaled
-        let t3 = adjustLogo(urlStr: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500/logo123.png", targetSize: "w300")
-        check(t3 == "https://api.sloosh.workers.dev/api/v1/images/tmdb/w300/logo123.png", "Sanitizes legacy vercel URL and sets w300")
-
-        // Test 4: Server logo proxy /original downscaled to /small
-        let t4 = adjustLogo(urlStr: "https://api.sloosh.workers.dev/api/v1/images/logos/550/original", targetSize: "w300")
-        check(t4 == "https://api.sloosh.workers.dev/api/v1/images/logos/550/small", "Server logo proxy /original converted to /small")
-
-        // Test 5: Server logo proxy preserves /original when targetSize is original (for DetailsView)
-        let t5 = adjustLogo(urlStr: "https://api.sloosh.workers.dev/api/v1/images/logos/550/small", targetSize: "original")
-        check(t5 == "https://api.sloosh.workers.dev/api/v1/images/logos/550/original", "Server logo proxy /small converted to /original for details")
-
-        // Test 6: TMDB logo preserves original when targetSize is original
-        let t6 = adjustLogo(urlStr: "https://api.sloosh.workers.dev/api/v1/images/tmdb/w300/logo123.png", targetSize: "original")
-        check(t6 == "https://api.sloosh.workers.dev/api/v1/images/tmdb/original/logo123.png", "TMDB logo upgrades to original for details")
-
-        // Test 7: TV and movie ID prefix stripping for logo resolution
-        func cleanMediaId(_ raw: String) -> String {
-            raw.replacingOccurrences(of: "kp_", with: "")
-                .replacingOccurrences(of: "tmdb_", with: "")
-                .replacingOccurrences(of: "tv_", with: "")
-                .replacingOccurrences(of: "movie_", with: "")
-        }
-
-        check(cleanMediaId("tv_1396") == "1396", "Strips tv_ prefix correctly for TV show logos")
-        check(cleanMediaId("movie_550") == "550", "Strips movie_ prefix correctly for movie logos")
-        check(cleanMediaId("tmdb_12345") == "12345", "Strips tmdb_ prefix correctly")
-        check(cleanMediaId("kp_6789") == "6789", "Strips kp_ prefix correctly")
-
-        // Test 8: Textless poster fallback URL construction
-        func resolveCatalogPosterUrl(
-            origId: String,
-            forLogoMode: Bool,
-            overrideTextless: String? = nil,
-            dtoTextless: String? = nil,
-            standardPoster: String
-        ) -> String {
-            if forLogoMode {
-                if let o = overrideTextless, !o.isEmpty { return o }
-                if let d = dtoTextless, !d.isEmpty { return d }
-                let validId = cleanMediaId(origId)
-                return "https://api.sloosh.workers.dev/api/v1/images/posters/\(validId)/w500/textless"
-            }
-            return standardPoster
-        }
-
-        let standard = "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/standard_poster.jpg"
-        let textlessOverride = "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/curated_textless.jpg"
-        let textlessDto = "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/dto_textless.jpg"
-
-        // Mode: standard (logos off) -> always returns standard poster
-        let r1 = resolveCatalogPosterUrl(origId: "tv_1396", forLogoMode: false, overrideTextless: textlessOverride, dtoTextless: textlessDto, standardPoster: standard)
-        check(r1 == standard, "Returns standard poster when logo mode is off")
-
-        // Mode: textless with curated override -> returns curated textless poster
-        let r2 = resolveCatalogPosterUrl(origId: "tv_1396", forLogoMode: true, overrideTextless: textlessOverride, dtoTextless: textlessDto, standardPoster: standard)
-        check(r2 == textlessOverride, "Prefers curated textless override when logo mode is on")
-
-        // Mode: textless with DTO textless -> returns DTO textless poster
-        let r3 = resolveCatalogPosterUrl(origId: "tv_1396", forLogoMode: true, overrideTextless: nil, dtoTextless: textlessDto, standardPoster: standard)
-        check(r3 == textlessDto, "Uses DTO textless poster when override is absent")
-
-        // Mode: textless fallback to server textless proxy
-        let r4 = resolveCatalogPosterUrl(origId: "tv_1396", forLogoMode: true, overrideTextless: nil, dtoTextless: nil, standardPoster: standard)
-        check(r4 == "https://api.sloosh.workers.dev/api/v1/images/posters/1396/w500/textless", "Falls back to server textless proxy with cleaned id")
-
-        print("Catalog logo tests passed: \(count) assertions verified.")
+        MoviesApi.shared.responses["tv|tv_100088"] = MediaImagesResponseDto(logos: [
+            try image("\(base)/api/v1/images/tmdb/original/english.png", language: "en"),
+            try image("\(base)/api/v1/images/tmdb/original/tlou.png", language: "ru")
+        ])
+        MoviesApi.shared.responses["movie|movie_100088"] = MediaImagesResponseDto(logos: [
+            try image("\(base)/api/v1/images/tmdb/original/different-film.png", language: "en")
+        ])
+        async let first = CatalogLogoRepository.shared.logo(for: tv)
+        async let duplicate = CatalogLogoRepository.shared.logo(for: tv)
+        let (a, b) = await (first, duplicate)
+        check(a == b && a?.hasSuffix("/tlou.png") == true, "Russian logo from typed TV response wins")
+        check(MoviesApi.shared.requests.filter { $0 == "tv|tv_100088" }.count == 1, "Requests across shelves coalesce")
+        let cached = await CatalogLogoRepository.shared.logo(for: tv)
+        check(cached == a && MoviesApi.shared.requests.count == 1, "Successful result is cached")
+        let different = await CatalogLogoRepository.shared.logo(for: film)
+        check(different?.hasSuffix("/different-film.png") == true && different != a, "Same-number film uses a separate request/cache")
+        let missing = CatalogArtworkIdentity(id: "tv_123", type: nil)!
+        let absent = await CatalogLogoRepository.shared.logo(for: missing)
+        let absentAgain = await CatalogLogoRepository.shared.logo(for: missing)
+        check(absent == nil && absentAgain == nil, "Missing artwork has no guessed fallback")
+        check(MoviesApi.shared.requests.filter { $0 == "tv|tv_123" }.count == 1, "Brief negative cache avoids request storms")
+        print("Catalog artwork identity, production model/resizing and repository tests passed: \(count) assertions.")
     }
 }

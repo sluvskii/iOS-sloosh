@@ -666,29 +666,48 @@ struct MovieCardTitleOrLogoView: View {
     let movie: MediaDto
     let isOverlay: Bool
     let useLogos: Bool
+    @State private var fetchedLogo: (identity: CatalogArtworkIdentity, url: String)?
+    private var artworkIdentity: CatalogArtworkIdentity? {
+        CatalogArtworkIdentity(id: movie.originalId?.stringValue, type: movie.type)
+    }
+    private var logoURL: URL? {
+        let remote = fetchedLogo.flatMap { $0.identity == artworkIdentity ? $0.url : nil }
+        guard let value = movie.displayLogoUrl(isCompact: true) ?? remote else { return nil }
+        return URL(string: adjustLogoUrl(urlStr: value, targetSize: "w300"))
+    }
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
-        if useLogos, let logoUrlStr = movie.displayLogoUrl(isCompact: true), let logoUrl = URL(string: logoUrlStr) {
-            AsyncCachedImage(url: logoUrl) {
-                titleText
-                    .opacity(0.85)
-            } content: { uiImg in
-                Image(uiImage: uiImg)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(height: isOverlay ? 22 : 20, alignment: .leading)
-                    .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
-            } fallback: {
-                titleText
-            }
-            .frame(height: isOverlay ? 22 : 20, alignment: .leading)
-        } else {
-            titleText
+        Group {
+            if useLogos, let logoUrl = logoURL {
+                AsyncCachedImage(url: logoUrl) {
+                    titleText
+                        .opacity(0.85)
+                } content: { uiImg in
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+                        .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
+                } fallback: {
+                    titleText
+                }
                 .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+                .id("\(movie.identifier)|\(logoUrl.absoluteString)")
+            } else {
+                titleText
+                    .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+            }
+        }
+        .task(id: "\(useLogos)|\(artworkIdentity?.requestId ?? movie.identifier)") {
+            fetchedLogo = nil
+            guard useLogos, let identity = artworkIdentity, movie.displayLogoUrl(isCompact: true) == nil else { return }
+            let url = await CatalogLogoRepository.shared.logo(for: identity)
+            guard !Task.isCancelled, artworkIdentity == identity, let url else { return }
+            fetchedLogo = (identity, url)
         }
     }
-    
+
     private var titleText: some View {
         Group {
             if isOverlay {

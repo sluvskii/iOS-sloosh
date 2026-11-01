@@ -203,13 +203,7 @@ struct MediaDto: Codable, Identifiable {
     
     func displayPosterUrl(forLogoMode: Bool) -> String? {
         let origId = originalId?.stringValue
-        let cleanId = origId?
-            .replacingOccurrences(of: "kp_", with: "")
-            .replacingOccurrences(of: "tmdb_", with: "")
-            .replacingOccurrences(of: "tv_", with: "")
-            .replacingOccurrences(of: "movie_", with: "")
-        let override = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)
-            ?? (cleanId != nil ? MediaOverridesRepository.shared.override(for: cleanId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp) : nil)
+        let override = MediaOverridesRepository.shared.catalogOverride(id: origId, type: type, kpId: externalIds?.kp)
         let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
         let targetSize = isLowQuality ? "w185" : "w500"
 
@@ -223,7 +217,7 @@ struct MediaDto: Codable, Identifiable {
                 return normalizeImageUrl(path: tp, id: origId, isBackdrop: false) ?? tp
             }
             // 3. Cached details textless poster
-            if Thread.isMainThread, let idToLookup = origId ?? cleanId {
+            if Thread.isMainThread, let idToLookup = origId {
                 let cached = MainActor.assumeIsolated {
                     MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type)
                 }
@@ -231,10 +225,8 @@ struct MediaDto: Codable, Identifiable {
                     return normalizeImageUrl(path: cachedTp, id: origId, isBackdrop: false) ?? cachedTp
                 }
             }
-            // 4. Server fallback for textless poster
-            if let validId = (cleanId != nil && !cleanId!.isEmpty) ? cleanId : origId, !validId.isEmpty {
-                return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/posters/\(validId)/\(targetSize)/textless"
-            }
+            // Do not strip a TV/movie ID into an ambiguous textless-poster proxy.
+            // Without a confirmed textless asset, retain this title's standard poster.
         }
 
         if let overridePoster = override?.posterUrl, !overridePoster.isEmpty {
@@ -270,41 +262,37 @@ struct MediaDto: Codable, Identifiable {
 
     func displayLogoUrl(isCompact: Bool = true) -> String? {
         let origId = originalId?.stringValue
-        let cleanId = origId?
-            .replacingOccurrences(of: "kp_", with: "")
-            .replacingOccurrences(of: "tmdb_", with: "")
-            .replacingOccurrences(of: "tv_", with: "")
-            .replacingOccurrences(of: "movie_", with: "")
-        
+        let identity = CatalogArtworkIdentity(id: origId, type: type)
+        func accepted(_ url: String) -> Bool {
+            identity?.acceptsLogoURL(url) ?? !url.contains("/api/v1/images/logos/")
+        }
+
         // 1. Check curated artwork overrides first
-        if let overrideLogo = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl ??
-           (cleanId != nil ? MediaOverridesRepository.shared.override(for: cleanId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl : nil),
-           !overrideLogo.isEmpty {
+        if let overrideLogo = MediaOverridesRepository.shared.catalogOverride(id: origId, type: type, kpId: externalIds?.kp)?.logoUrl,
+           !overrideLogo.isEmpty, accepted(overrideLogo) {
             return isCompact ? adjustLogoUrl(urlStr: overrideLogo, targetSize: "w300") : overrideLogo
         }
         
         // 2. Check if MediaDto has a logo property
-        if let l = logo, !l.isEmpty {
+        if let l = logo, !l.isEmpty, accepted(l) {
             let normalized = normalizeImageUrl(path: l, id: origId) ?? l
             return isCompact ? adjustLogoUrl(urlStr: normalized, targetSize: "w300") : normalized
         }
 
         // 3. Check cached details in MoviesRepository
-        if Thread.isMainThread, let idToLookup = origId ?? cleanId {
+        if Thread.isMainThread, let idToLookup = origId {
             let cached = MainActor.assumeIsolated {
                 MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type)
             }
-            if let cachedLogo = cached?.displayLogoUrl, !cachedLogo.isEmpty {
-                return isCompact ? adjustLogoUrl(urlStr: cachedLogo, targetSize: "w300") : cachedLogo
+            if let cachedLogo = cached?.logo, !cachedLogo.isEmpty, accepted(cachedLogo) {
+                let normalized = normalizeImageUrl(path: cachedLogo, id: origId) ?? cachedLogo
+                return isCompact ? adjustLogoUrl(urlStr: normalized, targetSize: "w300") : normalized
             }
         }
         
-        // 4. Fallback to server logo proxy: /api/v1/images/logos/:id/(small or original)
-        guard let validId = (cleanId != nil && !cleanId!.isEmpty) ? cleanId : origId, !validId.isEmpty else {
-            return nil
-        }
-        let sizeSegment = isCompact ? "small" : "original"
-        return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/logos/\(validId)/\(sizeSegment)"
+        // Missing artwork is resolved asynchronously by the typed artwork API.
+        // Showing the title is safer than requesting another namespace's logo.
+        return nil
     }
 
     var displayLogoUrl: String? {

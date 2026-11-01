@@ -149,3 +149,18 @@ Manual on-device checklist (not covered by the standalone query test):
 - Poster artwork should remain clearer higher up; title/logo and year/genre must
   stay legible. Classic cards, logo resolution/sizing, poster selection and header
   blur should be unchanged. CI does not visually validate the UIKit blur filter.
+
+## Catalog artwork identity regression
+
+The catalog-logo runner now compiles production Models.swift, identity policy,
+URL sizing and catalog repository with only network/cache adapters stubbed (not
+copied production algorithms). Tests cover colliding movie/TV numbers, typed and
+KP override matches, old ambiguous proxy URLs, explicit/textless artwork, Russian
+logo preference, coalescing, separate caches and missing-artwork fallback.
+
+Manual: check «Одни из нас» in both card styles; logo mode on/off; fast scrolling
+and repeated titles across shelves; no flash of another title's image. Confirm
+correct curated logos, no-logo text fallback, standard poster fallback, offline
+behavior, and reopening after old DTO/image caches exist. Backend artwork content
+cannot be visually verified by fixtures; the typed server response still must be
+correct. Existing numeric proxy cache entries are not reused by the new path.
