@@ -725,6 +725,8 @@ struct MediaDetailsDto: Codable {
         self.backdrop = try? container.decodeIfPresent(String.self, forKey: .backdrop)
         self.backdrops = try? container.decodeIfPresent([String].self, forKey: .backdrops)
         self.logo = try? container.decodeIfPresent(String.self, forKey: .logo)
+        self.textlessPoster = try? container.decodeIfPresent(String.self, forKey: .textlessPoster)
+        self.textlessPosterUrl = try? container.decodeIfPresent(String.self, forKey: .textlessPosterUrl)
         self.cast = try? container.decodeIfPresent([CastMemberDto].self, forKey: .cast)
         self.directors = try? container.decodeIfPresent([CrewMemberDto].self, forKey: .directors)
         self.writers = try? container.decodeIfPresent([CrewMemberDto].self, forKey: .writers)
