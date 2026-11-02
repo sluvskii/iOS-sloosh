@@ -174,3 +174,25 @@ explicit/curated textless precedence, and keeping the unsafe **logo** proxy disa
 On iPhone compare logo mode on/off in both card styles: title lettering baked into
 ordinary posters should not reappear merely because the DTO lacks textless fields.
 The actual server-provided artwork must still be checked visually.
+
+## Catalog year/genre visibility
+
+`showCatalogMetadata` defaults to true. In Settings → «Вид каталога», the compact
+«Год и жанр» toggle follows the two layout pickers and «Логотипы».
+The catalog tests compile the production `CatalogCaptionLayout`: caption height
+stays stable, hidden metadata reallocates its full area to the logo/title, wide,
+square and tall logos fit without distortion at narrow/regular widths and larger
+Dynamic Type scales. Missing year/genre and text fallback are covered as policies.
+
+On-device checklist (SwiftUI rendering is not covered by the policy tests):
+- Both card styles × both densities × logos on/off × year/genre on/off.
+- Settings preview and loading skeletons match actual caption height/visibility.
+- Large logo fills the former title+year/genre area, no empty metadata stripe,
+  no stretching/clipping of wide or tall logos and no grid jumps on toggle/load.
+- Missing/failed/offline logo uses the text title, up to two lines when metadata
+  is hidden; no duplicate title images or stale logos while scrolling.
+- Missing year, missing genre, both missing; default visibility after upgrading
+  and persistence after relaunch. Hidden metadata is absent from VoiceOver;
+  image logos still announce the movie title. Larger Dynamic Type sizes.
+- Verify on Home/search/detail shelves using shared MoviePosterCard. No changes
+  to posters without text, logo identity, source/quality/player or overlay blur.
