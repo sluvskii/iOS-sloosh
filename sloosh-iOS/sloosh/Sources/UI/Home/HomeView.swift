@@ -520,6 +520,7 @@ struct MoviePosterCard: View {
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @AppStorage("useLogosInCatalog") private var useLogosInCatalog: Bool = false
+    @AppStorage("showCatalogMetadata") private var showCatalogMetadata = true
 
     var body: some View {
         switch cardStyle {
@@ -557,33 +558,10 @@ struct MoviePosterCard: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                MovieCardTitleOrLogoView(movie: movie, isOverlay: false, useLogos: useLogosInCatalog)
-
-                let yearStr = movie.displayYear
-                let genreStr = movie.genres?.first?.name?.capitalized
-                
-                if let y = yearStr, let g = genreStr {
-                    Text("\(y), \(g)")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                } else if let y = yearStr {
-                    Text(y)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                } else if let g = genreStr {
-                    Text(g)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text(" ")
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                }
-            }
+            MovieCardCaptionView(
+                movie: movie, isOverlay: false,
+                useLogos: useLogosInCatalog, showsMetadata: showCatalogMetadata
+            )
             .padding(.horizontal, 4)
             .padding(.bottom, 2)
         }
@@ -606,32 +584,10 @@ struct MoviePosterCard: View {
                 .allowsHitTesting(false)
                 
                 // Metadata inside the poster
-                VStack(alignment: .leading, spacing: 2) {
-                    MovieCardTitleOrLogoView(movie: movie, isOverlay: true, useLogos: useLogosInCatalog)
-                    
-                    let yearStr = movie.displayYear
-                    let genreStr = movie.genres?.first?.name?.capitalized
-                    
-                    if let y = yearStr, let g = genreStr {
-                        Text("\(y), \(g)")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.65))
-                            .blendMode(.plusLighter)
-                            .lineLimit(1)
-                    } else if let y = yearStr {
-                        Text(y)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.65))
-                            .blendMode(.plusLighter)
-                            .lineLimit(1)
-                    } else if let g = genreStr {
-                        Text(g)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.65))
-                            .blendMode(.plusLighter)
-                            .lineLimit(1)
-                    }
-                }
+                MovieCardCaptionView(
+                    movie: movie, isOverlay: true,
+                    useLogos: useLogosInCatalog, showsMetadata: showCatalogMetadata
+                )
                 .padding(.horizontal, 8)
                 .padding(.bottom, 8)
             }
@@ -662,10 +618,45 @@ struct MoviePosterCard: View {
     }
 }
 
+private struct MovieCardCaptionView: View {
+    let movie: MediaDto
+    let isOverlay: Bool
+    let useLogos: Bool
+    let showsMetadata: Bool
+    @ScaledMetric(relativeTo: .caption) private var scale: CGFloat = 1
+
+    private var metadata: String? {
+        CatalogCaptionLayout.metadataText(year: movie.displayYear, genre: movie.genres?.first?.name?.capitalized)
+    }
+
+    var body: some View {
+        let layout = CatalogCaptionLayout(isOverlay: isOverlay, showsMetadata: showsMetadata, scale: scale)
+        VStack(alignment: .leading, spacing: layout.spacing) {
+            MovieCardTitleOrLogoView(movie: movie, isOverlay: isOverlay, useLogos: useLogos, showsMetadata: showsMetadata)
+            if showsMetadata {
+                Text(metadata ?? " ")
+                    .font(.system(size: (isOverlay ? 10 : 12) * scale, weight: isOverlay ? .semibold : .regular))
+                    .foregroundStyle(isOverlay ? Color.white.opacity(0.65) : Color.secondary)
+                    .blendMode(isOverlay ? .plusLighter : .normal)
+                    .lineLimit(1)
+                    .frame(height: layout.metadataHeight, alignment: .leading)
+                    .accessibilityHidden(metadata == nil)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: layout.totalHeight, alignment: .leading)
+    }
+}
+
 struct MovieCardTitleOrLogoView: View {
     let movie: MediaDto
     let isOverlay: Bool
     let useLogos: Bool
+    var showsMetadata = true
+    @ScaledMetric(relativeTo: .caption) private var captionScale: CGFloat = 1
+    private var layout: CatalogCaptionLayout {
+        CatalogCaptionLayout(isOverlay: isOverlay, showsMetadata: showsMetadata, scale: captionScale)
+    }
     @State private var fetchedLogo: (identity: CatalogArtworkIdentity, url: String)?
     private var artworkIdentity: CatalogArtworkIdentity? {
         CatalogArtworkIdentity(id: movie.originalId?.stringValue, type: movie.type)
@@ -684,19 +675,24 @@ struct MovieCardTitleOrLogoView: View {
                     titleText
                         .opacity(0.85)
                 } content: { uiImg in
-                    Image(uiImage: uiImg)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(height: isOverlay ? 22 : 20, alignment: .leading)
-                        .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
+                    GeometryReader { geometry in
+                        let size = layout.fittedLogoSize(imageSize: uiImg.size, availableWidth: geometry.size.width)
+                        Image(uiImage: uiImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: size.width, height: size.height)
+                            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
+                            .shadow(color: Color.black.opacity(isOverlay ? 0.6 : (colorScheme == .light ? 0.25 : 0.45)), radius: 1, x: 0, y: 1)
+                    }
+                    .accessibilityLabel(movie.displayTitle)
                 } fallback: {
                     titleText
                 }
-                .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+                .frame(height: layout.titleAreaHeight, alignment: .leading)
                 .id("\(movie.identifier)|\(logoUrl.absoluteString)")
             } else {
                 titleText
-                    .frame(height: isOverlay ? 22 : 20, alignment: .leading)
+                    .frame(height: layout.titleAreaHeight, alignment: .leading)
             }
         }
         .task(id: "\(useLogos)|\(artworkIdentity?.requestId ?? movie.identifier)") {
@@ -712,18 +708,18 @@ struct MovieCardTitleOrLogoView: View {
         Group {
             if isOverlay {
                 Text(movie.displayTitle)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13 * captionScale, weight: .bold))
                     .foregroundStyle(Color.white.opacity(0.95))
                     .blendMode(.plusLighter)
-                    .lineLimit(1)
+                    .lineLimit(layout.titleLineLimit)
                     .tracking(-0.3)
                     .allowsTightening(true)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
             } else {
                 Text(movie.displayTitle)
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
+                    .font(.system(size: 14 * captionScale, weight: .semibold))
+                    .lineLimit(layout.titleLineLimit)
                     .tracking(-0.3)
                     .allowsTightening(true)
                     .truncationMode(.tail)
@@ -752,6 +748,7 @@ struct FallbackPosterView: View {
 struct MoviePosterCardPlaceholder: View {
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("useLogosInCatalog") private var useLogosInCatalog: Bool = false
+    @AppStorage("showCatalogMetadata") private var showCatalogMetadata = true
     
     var body: some View {
         switch cardStyle {
@@ -763,19 +760,10 @@ struct MoviePosterCardPlaceholder: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .shimmer()
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: useLogosInCatalog ? 75 : nil, height: 14)
-                        .cornerRadius(4)
-                        .shimmer()
-                        
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 50, height: 14)
-                        .cornerRadius(4)
-                        .shimmer()
-                }
+                CatalogCaptionSkeleton(isOverlay: false, useLogos: useLogosInCatalog, showsMetadata: showCatalogMetadata)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
+                    .shimmer()
             }
         case .overlay:
             Rectangle()

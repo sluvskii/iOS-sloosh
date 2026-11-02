@@ -12,6 +12,8 @@ struct SettingsView: View {
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @AppStorage("useLogosInCatalog") private var useLogosInCatalog = false
+    @AppStorage("showCatalogMetadata") private var showCatalogMetadata = true
+    @ScaledMetric(relativeTo: .caption) private var catalogCaptionScale: CGFloat = 1
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @AppStorage("showOriginalTitle") private var showOriginalTitle = true
     @AppStorage("autoAdvanceBackdrops") private var autoAdvanceBackdrops = false
@@ -38,11 +40,12 @@ struct SettingsView: View {
                     Spacer()
                     let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                     let cardWidth: CGFloat = cardDensity == .compact ? 95 : 85
-                    let cardHeight = cardStyle == .classic ? cardWidth * 1.5 + 34 : cardWidth * 1.5
+                    let layout = CatalogCaptionLayout(isOverlay: false, showsMetadata: showCatalogMetadata, scale: catalogCaptionScale)
+                    let cardHeight = cardWidth * 1.5 + (cardStyle == .classic ? layout.classicCardExtraHeight : 0)
                     
                     HStack(spacing: spacing) {
                         ForEach(0..<3, id: \.self) { _ in
-                            PreviewMoviePosterCard(style: cardStyle, width: cardWidth, useLogos: useLogosInCatalog)
+                            PreviewMoviePosterCard(style: cardStyle, width: cardWidth, useLogos: useLogosInCatalog, showsMetadata: showCatalogMetadata)
                         }
                     }
                     .frame(height: cardHeight)
@@ -52,6 +55,7 @@ struct SettingsView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardStyle)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardDensity)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: useLogosInCatalog)
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: showCatalogMetadata)
                 
                 // Отображение названий
                 VStack(alignment: .leading, spacing: 8) {
@@ -110,6 +114,18 @@ struct SettingsView: View {
                 .onChange(of: useLogosInCatalog) { _, _ in
                     NotificationCenter.default.post(name: .useLogosInCatalogDidChange, object: nil)
                 }
+                Toggle(isOn: $showCatalogMetadata.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "text.below.photo")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        Text("Год и жанр")
+                            .font(.body)
+                    }
+                }
+                .tint(Color.slooshAccent)
+                .padding(.vertical, 4)
             }
 
             Section("Иконка приложения") {
@@ -476,66 +492,27 @@ struct SettingsView: View {
 struct PreviewMoviePosterCard: View {
     let style: CardStyle
     let width: CGFloat
-    var useLogos: Bool = false
-    
+    var useLogos = false
+    var showsMetadata = true
+
     var body: some View {
-        let cardHeight = style == .classic ? width * 1.5 + 34 : width * 1.5
         VStack(alignment: .leading, spacing: style == .classic ? 8 : 0) {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.secondary.opacity(0.15))
                 .frame(width: width, height: width * 1.5)
-                .overlay(
-                    // Текст / логотип оверлея всегда в иерархии, меняется только прозрачность
-                    VStack(alignment: .leading, spacing: 4) {
-                        Spacer()
-                        if useLogos {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.secondary.opacity(0.35))
-                                .frame(width: width * 0.55, height: 16)
-                        } else {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.secondary.opacity(0.25))
-                                .frame(height: 12)
-                                .frame(width: width * 0.7)
-                        }
-                        
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(height: 10)
-                            .frame(width: width * 0.45)
+                .overlay(alignment: .bottomLeading) {
+                    if style == .overlay {
+                        CatalogCaptionSkeleton(isOverlay: true, useLogos: useLogos, showsMetadata: showsMetadata)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 8)
                     }
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .opacity(style == .overlay ? 1.0 : 0.0)
-                )
-            
-            // Классический текст / логотип всегда в иерархии, плавно меняются высота и прозрачность
-            VStack(alignment: .leading, spacing: 4) {
-                if useLogos {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.22))
-                        .frame(width: width * 0.6, height: 16)
-                } else {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.15))
-                        .frame(height: 12)
-                        .frame(width: width * 0.75)
                 }
-                
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.secondary.opacity(0.1))
-                    .frame(height: 10)
-                    .frame(width: width * 0.5)
+            if style == .classic {
+                CatalogCaptionSkeleton(isOverlay: false, useLogos: useLogos, showsMetadata: showsMetadata)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
             }
-            .padding(.horizontal, 4)
-            .opacity(style == .classic ? 1.0 : 0.0)
-            .frame(height: style == .classic ? 26 : 0, alignment: .top)
-            .clipped()
         }
-        .frame(width: width, height: cardHeight, alignment: .top)
+        .frame(width: width, alignment: .top)
     }
 }
-
-
-
-

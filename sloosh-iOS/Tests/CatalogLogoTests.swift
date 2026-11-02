@@ -9,6 +9,39 @@ struct CatalogLogoTests {
             precondition(condition, description)
             count += 1
         }
+        // The actual layout policy is shared by cards, settings previews and
+        // loading skeletons; test hidden metadata reclaiming the whole caption.
+        for overlay in [false, true] {
+            for scale in [CGFloat(1), 1.4, 2] {
+                let shown = CatalogCaptionLayout(isOverlay: overlay, showsMetadata: true, scale: scale)
+                let hidden = CatalogCaptionLayout(isOverlay: overlay, showsMetadata: false, scale: scale)
+                check(shown.totalHeight == hidden.totalHeight, "Grid height must not jump on metadata toggle")
+                check(hidden.titleAreaHeight == shown.titleHeight + shown.spacing + shown.metadataHeight,
+                      "Logo must inherit all previous title/year/genre space")
+                check(hidden.titleAreaHeight > shown.titleAreaHeight, "Logo area grows with hidden metadata")
+                check(shown.titleLineLimit == 1 && hidden.titleLineLimit == 2, "No-logo/loading/error fallback can use two lines")
+                for metadataVisible in [false, true] {
+                    let layout = CatalogCaptionLayout(isOverlay: overlay, showsMetadata: metadataVisible, scale: scale)
+                    for width in [CGFloat(69), 95, 160] {
+                        for original in [CGSize(width: 600, height: 100), CGSize(width: 200, height: 180), CGSize(width: 100, height: 400)] {
+                            let size = layout.fittedLogoSize(imageSize: original, availableWidth: width)
+                            check(size.width <= width + 0.001 && size.height <= layout.titleAreaHeight + 0.001,
+                                  "Wide/tall logo must fit compact/regular caption bounds")
+                            check(abs(size.width / size.height - original.width / original.height) < 0.001,
+                                  "Logo aspect ratio must be preserved")
+                            check(abs(size.width - width) < 0.001 || abs(size.height - layout.titleAreaHeight) < 0.001,
+                                  "Logo uses the maximum possible caption area")
+                        }
+                    }
+                    check(layout.fittedLogoSize(imageSize: .zero, availableWidth: 95) == .zero, "Invalid logo dimensions fail safely")
+                }
+            }
+        }
+        check(CatalogCaptionLayout.metadataText(year: "2026", genre: "Драма") == "2026, Драма", "Year and genre")
+        check(CatalogCaptionLayout.metadataText(year: nil, genre: "Драма") == "Драма", "Missing year")
+        check(CatalogCaptionLayout.metadataText(year: "2026", genre: nil) == "2026", "Missing genre")
+        check(CatalogCaptionLayout.metadataText(year: " ", genre: nil) == nil, "Empty metadata creates no accessibility text")
+
         let base = MoviesApi.activeImagesBaseURL
         let tv = CatalogArtworkIdentity(id: "tv_100088", type: nil)!
         let film = CatalogArtworkIdentity(id: "movie_100088", type: nil)!
