@@ -87,24 +87,7 @@ final class CollapsRepository: @unchecked Sendable {
             }
         }
 
-        // 1. Попытка через backend API (быстрый кэшированный серверный парсер sloosh-api)
-        if let apiEnvelope = try? await MoviesApi.shared.fetchCollapsStream(
-            kpId: effectiveKp,
-            imdbId: effectiveImdb,
-            title: title,
-            isTv: isTv
-        ),
-           let streamData = apiEnvelope.data,
-           let catalog = streamData.toCatalog(),
-           let parsed = CollapsParser.createResult(from: catalog, defaultTitle: title ?? streamData.title),
-           isValidType(parsed) {
-            cacheLock.lock()
-            cache[cacheKey] = (result: parsed, expiresAt: Date().addingTimeInterval(cacheTtl))
-            cacheLock.unlock()
-            return parsed
-        }
-
-        // 2. Локальный фоллбэк: попытка через KP ID
+        // 1. Попытка через KP ID (напрямую с устройства, чтобы токены сегментов соответствовали IP пользователя)
         if let kp = effectiveKp {
             if let parsed = await queryEmbed(urlStr: "https://api.luxembd.ws/embed/kp/\(kp)"), isValidType(parsed) {
                 cacheLock.lock()
@@ -114,7 +97,7 @@ final class CollapsRepository: @unchecked Sendable {
             }
         }
 
-        // 3. Локальный фоллбэк: попытка через IMDB ID
+        // 2. Попытка через IMDB ID (если KP не сработал или вернул не тот тип — например, сериал вместо фильма!)
         if let imdb = effectiveImdb {
             if let parsed = await queryEmbed(urlStr: "https://api.luxembd.ws/embed/imdb/\(imdb)"), isValidType(parsed) {
                 cacheLock.lock()

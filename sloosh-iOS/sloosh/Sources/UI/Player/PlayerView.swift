@@ -550,6 +550,7 @@ class PlayerViewModel: ObservableObject {
     private var playbackRetryCount = 0
     private let maxPlaybackRetries = 3
     private var networkCancellable: AnyCancellable?
+    private var networkWasLost = false
 
     var displayLogoUrl: URL? {
         if let logo = logoUrl, let url = URL(string: logo) {
@@ -3276,6 +3277,7 @@ class PlayerViewModel: ObservableObject {
         }
 
         // 5. Авто-восстановление воспроизведения при смене сети (Wi-Fi/LTE/VPN)
+        networkWasLost = false
         networkCancellable?.cancel()
         networkCancellable = NetworkMonitor.shared.$isConnected
             .dropFirst()
@@ -3284,13 +3286,17 @@ class PlayerViewModel: ObservableObject {
             .sink { [weak self] isConnected in
                 guard let self else { return }
                 if isConnected {
-                    if self.error != nil || self.player?.currentItem?.status == .failed || self.isBuffering {
-                        self.logDebug("Network restored: auto-recovering playback...")
-                        self.error = nil
-                        self.playbackRetryCount = 0
-                        self.retryPlayback()
+                    if self.networkWasLost {
+                        self.networkWasLost = false
+                        if self.error != nil || self.player?.currentItem?.status == .failed {
+                            self.logDebug("Network restored: auto-recovering playback...")
+                            self.error = nil
+                            self.playbackRetryCount = 0
+                            self.retryPlayback()
+                        }
                     }
                 } else {
+                    self.networkWasLost = true
                     let status = self.player?.timeControlStatus
                     if status == .playing || status == .waitingToPlayAtSpecifiedRate {
                         self.isBuffering = true
