@@ -577,6 +577,28 @@ class MoviesApi {
         return envelope.data?.tokens ?? []
     }
 
+    func fetchCollapsStream(
+        kpId: Int? = nil,
+        imdbId: String? = nil,
+        title: String? = nil,
+        isTv: Bool? = nil
+    ) async throws -> ApiEnvelope<CollapsStreamResponseDto> {
+        var queryItems: [URLQueryItem] = []
+        if let kp = kpId, kp > 0 {
+            queryItems.append(URLQueryItem(name: "kp", value: String(kp)))
+        }
+        if let imdb = imdbId?.trimmingCharacters(in: .whitespacesAndNewlines), !imdb.isEmpty {
+            queryItems.append(URLQueryItem(name: "imdb", value: imdb))
+        }
+        if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+            queryItems.append(URLQueryItem(name: "title", value: t))
+        }
+        if let isTv = isTv {
+            queryItems.append(URLQueryItem(name: "isTv", value: isTv ? "true" : "false"))
+        }
+        return try await performRequest(endpoint: "api/v1/streams/collaps", queryItems: queryItems)
+    }
+
     // MARK: - Media Artwork Overrides (Admin & Dynamic Sync)
 
     func getMediaOverrides() async throws -> ApiEnvelope<[String: MediaArtworkOverride]> {

@@ -10,7 +10,7 @@ struct EpisodeKey: Hashable, Codable, Sendable {
     }
 }
 
-struct CollapsSubtitle: Codable, Hashable, Equatable {
+struct CollapsSubtitle: Codable, Hashable, Equatable, Sendable {
     let url: String
     let label: String
     let language: String
@@ -22,7 +22,7 @@ struct CollapsSubtitle: Codable, Hashable, Equatable {
     }
 }
 
-struct CollapsPlaylist: Codable, Hashable, Equatable {
+struct CollapsPlaylist: Codable, Hashable, Equatable, Sendable {
     let primaryUrl: String
     let hlsUrl: String?
     let dashUrl: String?
@@ -38,7 +38,7 @@ struct CollapsPlaylist: Codable, Hashable, Equatable {
     }
 }
 
-struct CollapsEpisode: Codable, Hashable, Equatable {
+struct CollapsEpisode: Codable, Hashable, Equatable, Sendable {
     let season: Int
     let episode: Int
     let title: String
@@ -52,7 +52,7 @@ struct CollapsEpisode: Codable, Hashable, Equatable {
     }
 }
 
-struct CollapsSeason: Codable, Hashable, Equatable {
+struct CollapsSeason: Codable, Hashable, Equatable, Sendable {
     let season: Int
     let title: String
     let episodes: [CollapsEpisode]
@@ -64,7 +64,7 @@ struct CollapsSeason: Codable, Hashable, Equatable {
     }
 }
 
-enum CollapsCatalog: Codable, Hashable, Equatable {
+enum CollapsCatalog: Codable, Hashable, Equatable, Sendable {
     case movie(source: String, playlist: CollapsPlaylist)
     case series(source: String, seasons: [CollapsSeason])
     
@@ -102,5 +102,23 @@ enum CollapsCatalog: Codable, Hashable, Equatable {
             try container.encode(source, forKey: .source)
             try container.encode(seasons, forKey: .seasons)
         }
+    }
+}
+
+struct CollapsStreamResponseDto: Codable, Sendable {
+    let kind: String
+    let source: String
+    let title: String
+    let headers: [String: String]?
+    let playlist: CollapsPlaylist?
+    let seasons: [CollapsSeason]?
+
+    func toCatalog() -> CollapsCatalog? {
+        if kind == "movie", let playlist = playlist {
+            return .movie(source: source, playlist: playlist)
+        } else if kind == "series", let seasons = seasons {
+            return .series(source: source, seasons: seasons)
+        }
+        return nil
     }
 }

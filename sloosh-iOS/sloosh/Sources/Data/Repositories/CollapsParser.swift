@@ -26,6 +26,78 @@ final class CollapsParser {
         return nil
     }
 
+    static func createResult(from catalog: CollapsCatalog, defaultTitle: String) -> ParseResult? {
+        switch catalog {
+        case .series(_, let collapsSeasons):
+            var allohaSeasons: [AllohaSeason] = []
+            var epSubtitlesMap: [EpisodeKey: [PlaybackSubtitle]] = [:]
+
+            for s in collapsSeasons {
+                var allohaEpisodes: [AllohaEpisode] = []
+                for ep in s.episodes {
+                    let playbackSubs = ep.playlist.subtitles.map {
+                        PlaybackSubtitle(url: $0.url, label: $0.label, lang: $0.language)
+                    }
+                    epSubtitlesMap[EpisodeKey(season: ep.season, episode: ep.episode)] = playbackSubs
+
+                    let translations = ep.playlist.voiceovers.map { voiceName in
+                        AllohaTranslation(
+                            id: voiceName,
+                            name: voiceName,
+                            iframeUrl: "",
+                            streamUrl: ep.playlist.primaryUrl
+                        )
+                    }
+                    allohaEpisodes.append(AllohaEpisode(season: ep.season, episode: ep.episode, translations: translations))
+                }
+                allohaSeasons.append(AllohaSeason(season: s.season, episodes: allohaEpisodes))
+            }
+
+            let apiResult = AllohaApiResult(
+                title: defaultTitle,
+                isSerial: true,
+                movie: nil,
+                seasons: allohaSeasons
+            )
+            return ParseResult(
+                catalog: catalog,
+                apiResult: apiResult,
+                episodeSubtitles: epSubtitlesMap,
+                movieSubtitles: []
+            )
+
+        case .movie(_, let playlist):
+            let playbackSubs = playlist.subtitles.map {
+                PlaybackSubtitle(url: $0.url, label: $0.label, lang: $0.language)
+            }
+            let translations = playlist.voiceovers.map { voice in
+                AllohaTranslation(
+                    id: voice,
+                    name: voice,
+                    iframeUrl: "",
+                    streamUrl: playlist.primaryUrl
+                )
+            }
+            let allohaMovie = AllohaMovie(
+                title: defaultTitle,
+                iframeUrl: "",
+                translations: translations
+            )
+            let apiResult = AllohaApiResult(
+                title: defaultTitle,
+                isSerial: false,
+                movie: allohaMovie,
+                seasons: []
+            )
+            return ParseResult(
+                catalog: catalog,
+                apiResult: apiResult,
+                episodeSubtitles: [:],
+                movieSubtitles: playbackSubs
+            )
+        }
+    }
+
     // MARK: - TV Series Extraction
 
     private static func extractSeasonsJson(from html: String) -> String? {
