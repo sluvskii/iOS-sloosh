@@ -101,8 +101,11 @@ final class ScraperEngine: @unchecked Sendable {
                     continue
                 }
 
+                let startTime = Date()
                 if let catalog = parseHtml(script: script, html: html, title: resolvedTitle, isTv: isTv) {
+                    let parseDurationMs = Date().timeIntervalSince(startTime) * 1000.0
                     if let parsed = CollapsParser.createResult(from: catalog, defaultTitle: resolvedTitle) {
+                        AppDiagnostics.shared.log("ScraperEngine: resolved Collaps via JS in \(String(format: "%.1f", parseDurationMs))ms")
                         return parsed
                     }
                 }

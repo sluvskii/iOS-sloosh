@@ -95,6 +95,7 @@ final class CollapsRepository: @unchecked Sendable {
             title: title,
             isTv: isTv
         ), isValidType(scraperResult) {
+            AppDiagnostics.shared.log("CollapsRepository: resolved via ScraperEngine for \(cacheKey)")
             cacheLock.lock()
             cache[cacheKey] = (result: scraperResult, expiresAt: Date().addingTimeInterval(cacheTtl))
             cacheLock.unlock()
