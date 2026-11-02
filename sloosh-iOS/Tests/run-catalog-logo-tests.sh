@@ -6,6 +6,7 @@ trap 'rm -rf "$test_dir"' EXIT
 if ! swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/UI/Shared/CatalogCaptionLayout.swift \
   sloosh/Sources/UI/Shared/CatalogFallbackTitleStyle.swift \
+  sloosh/Sources/UI/Shared/CatalogWordmarkLayout.swift \
   sloosh/Sources/UI/Shared/CatalogFallbackLogoTitle.swift \
   Tests/CatalogFallbackTitleTests.swift \
   sloosh/Sources/Data/Models/Models.swift \

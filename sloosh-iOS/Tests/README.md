@@ -211,3 +211,18 @@ Manual iPhone: compare next to real logos in both card styles and themes; failed
 and offline image loads, long titles, Ё/Й, toggling logos/year+genre, VoiceOver (it
 should announce the original title, not spell out uppercase lettering). Verify the
 new font is actually present in the installed IPA. Other UI remains unchanged.
+
+### Wordmark spacing and area fitting refinement
+
+The same bundled font/scope remains. Layout now uses CoreText ink bounds rather
+than Oswald's padded ascender/descender line box. It tries natural one/two-line
+word breaks, grows/shrinks point size to the full caption without stretching,
+uses -0.012em tracking and 0.07em real-ink line gaps. Readable ellipsis is reserved
+for extreme overlong titles. A bounded cache avoids re-shaping unchanged labels.
+
+Production tests cover short-title enlargement, width/scale responsiveness,
+Cyrillic accents/descenders, compact gaps, preserving words, empty/zero geometry,
+pathological truncation, and both measured + actual rendered use of caption space.
+On iPhone compare «Медиум», «Мятеж», «Обитель мёртвых», «Библиотекари» and
+«Магическая битва: Казнь»; verify no letter collisions/cropping, no stretched
+letterforms, unchanged card height and logos; normal SF modes remain untouched.
