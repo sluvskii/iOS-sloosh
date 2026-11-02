@@ -1,7 +1,7 @@
 import Foundation
 
-/// Experimental typography is scoped to the logo-only caption, never the
-/// ordinary text-card mode or the title/year/genre layout.
+/// Full-caption wordmark typography follows metadata visibility, independently
+/// of image-logo preference. Captions with year/genre retain ordinary SF text.
 enum CatalogFallbackTitleStyle {
     static let postScriptName = "SlooshCatalogCondensed-SemiBold"
     static let fontFileName = "SlooshCatalogCondensed-SemiBold.ttf"
@@ -11,8 +11,8 @@ enum CatalogFallbackTitleStyle {
     static let lineGapEm: CGFloat = 0.07
     static let minimumPointSize: CGFloat = 10
 
-    static func isEnabled(useLogos: Bool, showsMetadata: Bool) -> Bool {
-        useLogos && !showsMetadata
+    static func isEnabled(showsMetadata: Bool) -> Bool {
+        !showsMetadata
     }
 
     static func displayTitle(_ title: String) -> String {
