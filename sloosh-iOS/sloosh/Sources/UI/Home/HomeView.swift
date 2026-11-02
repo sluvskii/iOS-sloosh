@@ -706,7 +706,9 @@ struct MovieCardTitleOrLogoView: View {
 
     private var titleText: some View {
         Group {
-            if isOverlay {
+            if CatalogFallbackTitleStyle.isEnabled(useLogos: useLogos, showsMetadata: showsMetadata) {
+                CatalogFallbackLogoTitle(title: movie.displayTitle, isOverlay: isOverlay, scale: captionScale)
+            } else if isOverlay {
                 Text(movie.displayTitle)
                     .font(.system(size: 13 * captionScale, weight: .bold))
                     .foregroundStyle(Color.white.opacity(0.95))

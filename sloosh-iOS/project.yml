@@ -28,6 +28,8 @@ targets:
       properties:
         CFBundleShortVersionString: "2.1"
         CFBundleVersion: "890"
+        UIAppFonts:
+          - SlooshCatalogCondensed-SemiBold.ttf
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
