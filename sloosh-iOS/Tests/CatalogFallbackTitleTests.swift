@@ -10,12 +10,13 @@ struct CatalogFallbackTitleTests {
             precondition(condition, message)
             count += 1
         }
-        for logos in [false, true] {
-            for metadata in [false, true] {
-                check(CatalogFallbackTitleStyle.isEnabled(useLogos: logos, showsMetadata: metadata) == (logos && !metadata),
-                      "Keep the typography experiment out of ordinary card modes")
-            }
-        }
+        // Image-logo preference is deliberately not an input to text styling.
+        // Both logo preferences use wordmarks when metadata is hidden, and SF
+        // fallback titles when metadata is visible. Image selection stays separate.
+        check(CatalogFallbackTitleStyle.isEnabled(showsMetadata: false),
+              "Hidden year/genre must use wordmark text even with image logos off")
+        check(!CatalogFallbackTitleStyle.isEnabled(showsMetadata: true),
+              "Visible year/genre must restore ordinary SF text with either logo preference")
         check(CatalogFallbackTitleStyle.displayTitle("Одни из нас: Ёж и Йода") == "ОДНИ ИЗ НАС: ЁЖ И ЙОДА", "Cyrillic uppercase including Ё/Й")
         check(CatalogFallbackTitleStyle.displayTitle("Spider-Man: No Way Home") == "SPIDER-MAN: NO WAY HOME", "Latin uppercase/punctuation")
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)

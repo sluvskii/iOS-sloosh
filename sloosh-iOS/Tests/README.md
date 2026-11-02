@@ -197,12 +197,13 @@ On-device checklist (SwiftUI rendering is not covered by the policy tests):
 - Verify on Home/search/detail shelves using shared MoviePosterCard. No changes
   to posters without text, logo identity, source/quality/player or overlay blur.
 
-## Condensed logo-mode text fallback experiment
+## Condensed catalog text titles
 
-Only `useLogosInCatalog && !showCatalogMetadata`: missing/loading/error logos use
-bundled Oswald-derived weight-600 uppercase Cyrillic/Latin text. Two lines, adaptive
-scaling inside the same caption; ordinary text cards and metadata-on captions stay
-SF. The SIL OFL license/provenance is in Resources/Fonts. No remote font service.
+When `!showCatalogMetadata`, text titles use bundled Oswald-derived weight-600
+uppercase Cyrillic/Latin text independently of `useLogosInCatalog`. This includes
+text-only cards and missing/loading/error image logos. Two lines, adaptive scaling
+inside the same caption; metadata-on text titles stay SF. Real image logos are
+still controlled only by the logo preference. The SIL OFL license/provenance is in Resources/Fonts. No remote font service.
 The catalog test runner registers the actual TTF via CoreText, checks glyphs and
 app/XcodeGen declarations, then renders 45 actual SwiftUI captions with long and
 short Cyrillic/Latin titles at narrow/normal widths and larger Dynamic Type scales.
@@ -225,4 +226,17 @@ Cyrillic accents/descenders, compact gaps, preserving words, empty/zero geometry
 pathological truncation, and both measured + actual rendered use of caption space.
 On iPhone compare «Медиум», «Мятеж», «Обитель мёртвых», «Библиотекари» and
 «Магическая битва: Казнь»; verify no letter collisions/cropping, no stretched
-letterforms, unchanged card height and logos; normal SF modes remain untouched.
+letterforms, unchanged card height and logos; metadata-on SF titles remain untouched.
+
+### Title style settings matrix
+
+| Логотипы | Год и жанр | Title |
+| --- | --- | --- |
+| Off | Off | Condensed adaptive text wordmark |
+| Off | On | Ordinary SF text |
+| On | Off | Real image logo if available; wordmark while loading/missing/failed |
+| On | On | Real image logo if available; ordinary SF fallback text |
+
+Toggle both settings in classic and overlay cards, including offline/missing logos.
+Year/genre visibility alone selects the text style; image requests, poster routes,
+caption dimensions and actual logo selection must not change.

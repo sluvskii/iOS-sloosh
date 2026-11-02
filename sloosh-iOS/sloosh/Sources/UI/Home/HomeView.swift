@@ -706,7 +706,7 @@ struct MovieCardTitleOrLogoView: View {
 
     private var titleText: some View {
         Group {
-            if CatalogFallbackTitleStyle.isEnabled(useLogos: useLogos, showsMetadata: showsMetadata) {
+            if CatalogFallbackTitleStyle.isEnabled(showsMetadata: showsMetadata) {
                 CatalogFallbackLogoTitle(title: movie.displayTitle, isOverlay: isOverlay, scale: captionScale)
             } else if isOverlay {
                 Text(movie.displayTitle)
