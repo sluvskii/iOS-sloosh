@@ -81,6 +81,7 @@ struct slooshApp: App {
             await MoviesApi.shared.loadRemoteConfig()
             SharedWebViewProvider.shared.prewarm()
             await AllohaRepository.shared.warmup()
+            await ScraperEngine.shared.warmup()
             PlaybackAnalyticsService.shared.sendSessionHeartbeat()
             await MediaOverridesRepository.shared.fetchOverrides()
             await ClipsRepository.shared.fetchFeed()

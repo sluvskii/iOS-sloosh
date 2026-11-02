@@ -87,7 +87,21 @@ final class CollapsRepository: @unchecked Sendable {
             }
         }
 
-        // 1. Попытка через KP ID (напрямую с устройства, чтобы токены сегментов соответствовали IP пользователя)
+        // 1. Попытка через динамический JavaScriptCore скрейпер ScraperEngine
+        // Выполняет актуальный JS-скрипт с бэкенда прямо на устройстве (под личным IP пользователя)
+        if let scraperResult = await ScraperEngine.shared.resolveCollaps(
+            kpId: effectiveKp,
+            imdbId: effectiveImdb,
+            title: title,
+            isTv: isTv
+        ), isValidType(scraperResult) {
+            cacheLock.lock()
+            cache[cacheKey] = (result: scraperResult, expiresAt: Date().addingTimeInterval(cacheTtl))
+            cacheLock.unlock()
+            return scraperResult
+        }
+
+        // 2. Локальный фоллбэк: встроенный Swift-парсер через KP ID
         if let kp = effectiveKp {
             if let parsed = await queryEmbed(urlStr: "https://api.luxembd.ws/embed/kp/\(kp)"), isValidType(parsed) {
                 cacheLock.lock()
@@ -97,7 +111,7 @@ final class CollapsRepository: @unchecked Sendable {
             }
         }
 
-        // 2. Попытка через IMDB ID (если KP не сработал или вернул не тот тип — например, сериал вместо фильма!)
+        // 3. Локальный фоллбэк: встроенный Swift-парсер через IMDB ID
         if let imdb = effectiveImdb {
             if let parsed = await queryEmbed(urlStr: "https://api.luxembd.ws/embed/imdb/\(imdb)"), isValidType(parsed) {
                 cacheLock.lock()

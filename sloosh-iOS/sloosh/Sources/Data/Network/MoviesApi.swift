@@ -599,6 +599,10 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v1/streams/collaps", queryItems: queryItems)
     }
 
+    func fetchScraper(id: String) async throws -> ApiEnvelope<RemoteScraperDto> {
+        return try await performRequest(endpoint: "api/v1/scrapers/\(id)")
+    }
+
     // MARK: - Media Artwork Overrides (Admin & Dynamic Sync)
 
     func getMediaOverrides() async throws -> ApiEnvelope<[String: MediaArtworkOverride]> {

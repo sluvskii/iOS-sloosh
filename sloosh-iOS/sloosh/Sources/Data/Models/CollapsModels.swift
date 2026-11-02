@@ -122,3 +122,9 @@ struct CollapsStreamResponseDto: Codable, Sendable {
         return nil
     }
 }
+
+struct RemoteScraperDto: Codable, Sendable {
+    let id: String
+    let version: String
+    let code: String
+}
