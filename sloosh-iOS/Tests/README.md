@@ -196,3 +196,18 @@ On-device checklist (SwiftUI rendering is not covered by the policy tests):
   image logos still announce the movie title. Larger Dynamic Type sizes.
 - Verify on Home/search/detail shelves using shared MoviePosterCard. No changes
   to posters without text, logo identity, source/quality/player or overlay blur.
+
+## Condensed logo-mode text fallback experiment
+
+Only `useLogosInCatalog && !showCatalogMetadata`: missing/loading/error logos use
+bundled Oswald-derived weight-600 uppercase Cyrillic/Latin text. Two lines, adaptive
+scaling inside the same caption; ordinary text cards and metadata-on captions stay
+SF. The SIL OFL license/provenance is in Resources/Fonts. No remote font service.
+The catalog test runner registers the actual TTF via CoreText, checks glyphs and
+app/XcodeGen declarations, then renders 45 actual SwiftUI captions with long and
+short Cyrillic/Latin titles at narrow/normal widths and larger Dynamic Type scales.
+
+Manual iPhone: compare next to real logos in both card styles and themes; failed
+and offline image loads, long titles, Ё/Й, toggling logos/year+genre, VoiceOver (it
+should announce the original title, not spell out uppercase lettering). Verify the
+new font is actually present in the installed IPA. Other UI remains unchanged.

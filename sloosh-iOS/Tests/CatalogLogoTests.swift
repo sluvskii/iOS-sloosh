@@ -42,6 +42,8 @@ struct CatalogLogoTests {
         check(CatalogCaptionLayout.metadataText(year: "2026", genre: nil) == "2026", "Missing genre")
         check(CatalogCaptionLayout.metadataText(year: " ", genre: nil) == nil, "Empty metadata creates no accessibility text")
 
+        let typographyChecks = CatalogFallbackTitleTests.run()
+        print("PASS: \(typographyChecks) bundled-font/scope/actual rendered-title checks")
         let base = MoviesApi.activeImagesBaseURL
         let tv = CatalogArtworkIdentity(id: "tv_100088", type: nil)!
         let film = CatalogArtworkIdentity(id: "movie_100088", type: nil)!
