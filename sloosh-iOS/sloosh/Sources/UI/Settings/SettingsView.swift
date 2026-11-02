@@ -73,29 +73,6 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 4)
 
-                // Логотипы вместо названий
-                Toggle(isOn: $useLogosInCatalog.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "photo.badge.checkmark")
-                            .foregroundStyle(Color.slooshAccent)
-                            .font(.system(size: 18))
-                            .frame(width: 24)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Логотипы вместо названий")
-                                .font(.body)
-                            Text("Отображать логотипы фильмов в карточках вместо обычного текста при их наличии")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .tint(Color.slooshAccent)
-                .padding(.vertical, 4)
-                .onChange(of: useLogosInCatalog) { _, _ in
-                    NotificationCenter.default.post(name: .useLogosInCatalogDidChange, object: nil)
-                }
-                
                 // Плотность сетки
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
@@ -115,6 +92,24 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
+
+                // Логотипы вместо названий
+                Toggle(isOn: $useLogosInCatalog.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo.badge.checkmark")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+
+                        Text("Логотипы")
+                            .font(.body)
+                    }
+                }
+                .tint(Color.slooshAccent)
+                .padding(.vertical, 4)
+                .onChange(of: useLogosInCatalog) { _, _ in
+                    NotificationCenter.default.post(name: .useLogosInCatalogDidChange, object: nil)
+                }
             }
 
             Section("Иконка приложения") {
