@@ -2,10 +2,9 @@ import SwiftUI
 import UIKit
 
 /// Флагманский нативный экран обязательной авторизации sloosh.
-/// Чистый дизайн Apple TV / Liquid Glass (Сборка 2.1):
-/// - Оптическое появление кино-цитат слово за словом из блюр-фокуса (как в ChatGPT / Claude)
-/// - Идеальная типографика San Francisco без костылей и вылетов за пределы экрана
-/// - Полноэкранный edge-to-edge лэйаут с нативным затемнением системных окон без смещений
+/// Чистый дизайн Apple TV / Liquid Glass:
+/// - Безупречное позиционирование в Safe Area: логотип строго под Dynamic Island / чёлкой с комфортным отступом
+/// - Непрерывный кинематографичный Cross-Dissolve с оптическим блюр-фокусом без исчезновения в пустоту
 /// - Идеальная капсула «Продолжить через Google» с тактильным откликом
 /// - Дышащий кинематографичный фон с акцентным неоновым ореолом slooshAccent
 public struct CinematicAuthView: View {
@@ -13,33 +12,22 @@ public struct CinematicAuthView: View {
 
     public var onDismiss: (() -> Void)?
 
-    private struct PhraseQuote: Identifiable {
-        let id: Int
-        let lines: [[String]]
-
-        var totalWords: Int {
-            lines.reduce(0) { $0 + $1.count }
-        }
-    }
-
-    /// Сбалансированные кино-мысли, разбитые на естественные строки для идеального переноса
-    private let quotes: [PhraseQuote] = [
-        PhraseQuote(id: 0, lines: [["Не", "только", "смотри,"], ["но", "и", "sloosh-ай"]]),
-        PhraseQuote(id: 1, lines: [["Смотри", "глазами."], ["sloosh-ай", "сердцем"]]),
-        PhraseQuote(id: 2, lines: [["Твой", "личный", "кинозал"], ["в", "кармане"]]),
-        PhraseQuote(id: 3, lines: [["Один", "клик", "—"], ["и", "ты", "уже", "в", "кино"]]),
-        PhraseQuote(id: 4, lines: [["Кинотеатр,", "который"], ["всегда", "с", "тобой"]]),
-        PhraseQuote(id: 5, lines: [["Залипнуть", "на", "все", "выходные?"], ["Легко"]]),
-        PhraseQuote(id: 6, lines: [["Ещё", "одну", "серию"], ["и", "точно", "спать"]]),
-        PhraseQuote(id: 7, lines: [["Тот", "самый", "фильм"], ["из", "сохранённых"]]),
-        PhraseQuote(id: 8, lines: [["Кино,", "которое"], ["давно", "откладывали"]]),
-        PhraseQuote(id: 9, lines: [["Сериал,", "который", "затянет"], ["с", "первой", "серии"]]),
-        PhraseQuote(id: 10, lines: [["Что", "вышло"], ["в", "хорошем", "качестве?"]])
+    /// Сбалансированные кино-мысли, разбитые на естественные строки для идеальной типографики
+    private let phrases = [
+        "Не только смотри,\nно и sloosh-ай",
+        "Смотри глазами.\nsloosh-ай сердцем",
+        "Твой личный кинозал\nв кармане",
+        "Один клик —\nи ты уже в кино",
+        "Кинотеатр, который\nвсегда с тобой",
+        "Залипнуть на все выходные?\nЛегко",
+        "Ещё одну серию\nи точно спать",
+        "Тот самый фильм\nиз сохранённых",
+        "Кино, которое\nдавно откладывали",
+        "Сериал, который затянет\nс первой серии",
+        "Что вышло\nв хорошем качестве?"
     ]
 
-    @State private var currentQuoteIndex: Int = 0
-    @State private var revealedWordCount: Int = 0
-    @State private var isDissolving: Bool = false
+    @State private var phraseIndex: Int = 0
     @State private var auroraPulse: Bool = false
 
     public init(onDismiss: (() -> Void)? = nil) {
@@ -54,18 +42,18 @@ public struct CinematicAuthView: View {
         ZStack {
             // MARK: - Атмосферный фон на весь экран
             cinematicBackground
+                .ignoresSafeArea()
 
-            // MARK: - Нативный контент внутри Safe Area
+            // MARK: - Нативный контент строго внутри Safe Area (никогда не лезет под чёлку)
             VStack(spacing: 0) {
-                // Верхняя панель: Логотип и опциональная кнопка закрытия
+                // Верхняя панель: Логотип под чёлкой/Dynamic Island
                 topBarView
                     .padding(.top, 14)
 
                 Spacer()
 
-                // Центр: Кинематографичная мысль с оптическим появлением из блюр-фокуса
-                heroPhraseContainer
-                    .frame(maxWidth: 340)
+                // Центр: Кинематографичная кино-мысль с оптическим блюр-переходом
+                heroPhraseView
 
                 // Оповещение об ошибке (если есть)
                 if let error = authRepo.lastError, !error.isEmpty {
@@ -97,15 +85,13 @@ public struct CinematicAuthView: View {
                     .padding(.bottom, 12)
             }
             .padding(.horizontal, 24)
-            .safeAreaPadding(.vertical)
         }
-        .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .task {
             withAnimation(.easeInOut(duration: 6.5).repeatForever(autoreverses: true)) {
                 auroraPulse = true
             }
-            await runPhraseAnimationLoop()
+            await runPhraseLoop()
         }
     }
 
@@ -139,35 +125,20 @@ public struct CinematicAuthView: View {
         }
     }
 
-    // MARK: - Hero Phrase Container (Оптический блюр-фокус)
+    // MARK: - Hero Phrase View (Оптический блюр-фокус)
 
-    private var heroPhraseContainer: some View {
-        let quote = quotes[currentQuoteIndex]
-
-        return VStack(spacing: 8) {
-            ForEach(0..<quote.lines.count, id: \.self) { lineIdx in
-                let lineWords = quote.lines[lineIdx]
-                let lineStartIndex = quote.lines.prefix(lineIdx).reduce(0) { $0 + $1.count }
-
-                HStack(spacing: 7) {
-                    ForEach(0..<lineWords.count, id: \.self) { wordIdx in
-                        let word = lineWords[wordIdx]
-                        let globalWordIndex = lineStartIndex + wordIdx
-
-                        BlurRevealWord(
-                            word: word,
-                            isRevealed: revealedWordCount > globalWordIndex,
-                            accentColor: Color.slooshAccent
-                        )
-                    }
-                }
-            }
+    private var heroPhraseView: some View {
+        ZStack {
+            Text(formattedPhrase(phrases[phraseIndex]))
+                .font(.system(size: 25, weight: .bold, design: .default))
+                .multilineTextAlignment(.center)
+                .lineSpacing(6)
+                .frame(maxWidth: 320)
+                .id(phraseIndex)
+                .transition(.opticalBlurDissolve)
         }
         .frame(maxWidth: .infinity)
         .frame(minHeight: 110)
-        .opacity(isDissolving ? 0 : 1)
-        .blur(radius: isDissolving ? 8 : 0)
-        .offset(y: isDissolving ? -6 : 0)
     }
 
     // MARK: - Google Sign-In Button
@@ -276,82 +247,70 @@ public struct CinematicAuthView: View {
         }
     }
 
-    // MARK: - Генеративный цикл пословной материализации из блюра без морганий
+    // MARK: - Непрерывный цикл смены кино-мыслей
 
     @MainActor
-    private func runPhraseAnimationLoop() async {
-        var playlist = Array(0..<quotes.count).shuffled()
-        var playlistIndex = 0
-
+    private func runPhraseLoop() async {
         while !Task.isCancelled {
-            let quoteIdx = playlist[playlistIndex]
-            currentQuoteIndex = quoteIdx
-            revealedWordCount = 0
-            isDissolving = false
-
-            let quote = quotes[quoteIdx]
-
-            // 1. Короткая пауза перед началом материализации
-            try? await Task.sleep(nanoseconds: 240_000_000)
+            try? await Task.sleep(nanoseconds: 3_800_000_000)
             if Task.isCancelled { break }
-
-            // 2. Последовательно открываем каждое слово из блюра в фокус
-            for wordIndex in 1...quote.totalWords {
-                revealedWordCount = wordIndex
-
-                let wordDelay: UInt64
-                if wordIndex == quote.totalWords {
-                    wordDelay = 100_000_000
-                } else {
-                    wordDelay = 180_000_000
-                }
-
-                try? await Task.sleep(nanoseconds: wordDelay)
-                if Task.isCancelled { break }
-            }
-            if Task.isCancelled { break }
-
-            // 3. Фаза чтения (3.0 секунды в идеальном фокусе)
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if Task.isCancelled { break }
-
-            // 4. Плавное растворение цитаты в блюр (350 мс)
-            withAnimation(.easeInOut(duration: 0.35)) {
-                isDissolving = true
-            }
-            try? await Task.sleep(nanoseconds: 380_000_000)
-            if Task.isCancelled { break }
-
-            // 5. Переход к следующей фразе
-            playlistIndex += 1
-            if playlistIndex >= playlist.count {
-                playlist = Array(0..<quotes.count).shuffled()
-                playlistIndex = 0
+            withAnimation(.easeInOut(duration: 0.75)) {
+                phraseIndex = (phraseIndex + 1) % phrases.count
             }
         }
     }
+
+    // MARK: - Форматирование реплики с подсветкой sloosh-ай
+
+    private func formattedPhrase(_ text: String) -> AttributedString {
+        var attr = AttributedString(text)
+        attr.foregroundColor = Color.white.opacity(0.92)
+
+        if let range = attr.range(of: "sloosh-ай", options: .caseInsensitive) {
+            attr[range].foregroundColor = Color.slooshAccent
+        } else if let range = attr.range(of: "sloosh", options: .caseInsensitive) {
+            attr[range].foregroundColor = Color.slooshAccent
+        }
+        return attr
+    }
 }
 
-// MARK: - BlurRevealWord (Оптическая фокусировка слова)
+// MARK: - Оптический блюр-переход (Optical Blur Dissolve)
 
-private struct BlurRevealWord: View {
-    let word: String
-    let isRevealed: Bool
-    let accentColor: Color
+private struct BlurFadeInModifier: ViewModifier {
+    let isActive: Bool
 
-    private var isSlooshWord: Bool {
-        word.lowercased().contains("sloosh")
+    func body(content: Content) -> some View {
+        content
+            .opacity(isActive ? 0 : 1)
+            .blur(radius: isActive ? 10 : 0)
+            .scaleEffect(isActive ? 0.97 : 1.0)
     }
+}
 
-    var body: some View {
-        Text(word)
-            .font(.system(size: 25, weight: .bold, design: .default))
-            .foregroundStyle(isSlooshWord ? accentColor : Color.white.opacity(0.92))
-            .blur(radius: isRevealed ? 0 : 8)
-            .opacity(isRevealed ? 1 : 0)
-            .scaleEffect(isRevealed ? 1.0 : 0.94)
-            .offset(y: isRevealed ? 0 : 4)
-            .animation(.easeOut(duration: 0.28), value: isRevealed)
+private struct BlurFadeOutModifier: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isActive ? 0 : 1)
+            .blur(radius: isActive ? 10 : 0)
+            .scaleEffect(isActive ? 1.03 : 1.0)
+    }
+}
+
+private extension AnyTransition {
+    static var opticalBlurDissolve: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(
+                active: BlurFadeInModifier(isActive: true),
+                identity: BlurFadeInModifier(isActive: false)
+            ),
+            removal: .modifier(
+                active: BlurFadeOutModifier(isActive: true),
+                identity: BlurFadeOutModifier(isActive: false)
+            )
+        )
     }
 }
 

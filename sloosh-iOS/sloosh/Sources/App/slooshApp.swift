@@ -111,7 +111,6 @@ struct slooshApp: App {
                         .zIndex(999)
                 }
             }
-            .ignoresSafeArea()
             .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authRepo.isAuthenticated)
                 .modelContainer(AppDatabase.shared.container)
                 .preferredColorScheme(appTheme.colorScheme)
