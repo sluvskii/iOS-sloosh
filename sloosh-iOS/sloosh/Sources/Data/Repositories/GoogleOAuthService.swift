@@ -138,7 +138,7 @@ public final class GoogleOAuthService: NSObject {
                 } else {
                     continuation.resume(throwing: GoogleOAuthError.noCallbackURL)
                 }
-                _ = session // сохраняем ссылку
+                _ = (session, contextProvider) // сохраняем ссылку на сессию и провайдер контекста
             }
             session?.presentationContextProvider = contextProvider
             // false = Safari покажет уже вошедшие аккаунты Google (не ephemeral/инкогнито)
@@ -281,14 +281,23 @@ public final class GoogleOAuthService: NSObject {
 /// Предоставляет UIWindow для ASWebAuthenticationSession.
 /// Передаётся в GoogleOAuthService.shared.signIn(contextProvider:)
 public final class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
-    private let window: UIWindow
+    private weak var window: UIWindow?
 
-    public init(window: UIWindow) {
+    public init(window: UIWindow? = nil) {
         self.window = window
     }
 
     public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        return window
+        if let window = self.window {
+            return window
+        }
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
+        return activeScene?.windows.first(where: { $0.isKeyWindow })
+            ?? activeScene?.windows.first(where: { $0.windowLevel == .normal })
+            ?? activeScene?.windows.first
+            ?? ASPresentationAnchor()
     }
 }
 

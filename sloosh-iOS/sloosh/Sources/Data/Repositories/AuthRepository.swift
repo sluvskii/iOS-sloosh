@@ -126,11 +126,14 @@ public final class AuthRepository: ObservableObject {
         lastError = nil
         defer { isLoading = false }
 
-        // Получаем rootViewController для презентации браузерного окна
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }),
-              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+        // Получаем активное окно для привязки системного диалога авторизации
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
+        let targetWindow = activeScene?.windows.first(where: { $0.isKeyWindow })
+            ?? activeScene?.windows.first(where: { $0.windowLevel == .normal })
+            ?? activeScene?.windows.first
+
+        guard let rootVC = targetWindow?.rootViewController else {
             lastError = "Не удалось получить контекст приложения"
             return false
         }
@@ -141,8 +144,8 @@ public final class AuthRepository: ObservableObject {
             topVC = presented
         }
 
-        // Устанавливаем ASWebAuthenticationPresentationContextProviding
-        let contextProvider = WebAuthContextProvider(window: windowScene.windows.first { $0.isKeyWindow }!)
+        // Устанавливаем ASWebAuthenticationPresentationContextProviding с привязкой к активному окну
+        let contextProvider = WebAuthContextProvider(window: targetWindow)
 
         do {
             let result = try await GoogleOAuthService.shared.signIn(
