@@ -125,7 +125,7 @@ public struct CinematicAuthView: View {
     // MARK: - Hero Phrase Container
 
     private var heroPhraseContainer: some View {
-        FlowLayout(horizontalSpacing: 7, verticalSpacing: 6, alignment: .center) {
+        AuthPhraseFlowLayout(horizontalSpacing: 7, verticalSpacing: 6, alignment: .center) {
             ForEach(Array(activePhrase.words.enumerated()), id: \.offset) { index, word in
                 BlurRevealWord(
                     word: word,
@@ -347,9 +347,9 @@ private struct BlurRevealWord: View {
     }
 }
 
-// MARK: - FlowLayout (Guaranteed Zero-Overflow Horizontal Flow)
+// MARK: - AuthPhraseFlowLayout (Guaranteed Zero-Overflow Horizontal Flow)
 
-private struct FlowLayout: Layout {
+private struct AuthPhraseFlowLayout: Layout {
     var horizontalSpacing: CGFloat = 7
     var verticalSpacing: CGFloat = 6
     var alignment: TextAlignment = .center
