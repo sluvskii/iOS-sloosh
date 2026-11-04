@@ -10,11 +10,13 @@ public struct AuthView: View {
     public init() {}
 
     public var body: some View {
-        CinematicAuthView()
-            .onChange(of: authRepo.isAuthenticated) { _, isAuth in
-                if isAuth {
-                    dismiss()
-                }
+        CinematicAuthView(onDismiss: {
+            dismiss()
+        })
+        .onChange(of: authRepo.isAuthenticated) { _, isAuth in
+            if isAuth {
+                dismiss()
             }
+        }
     }
 }

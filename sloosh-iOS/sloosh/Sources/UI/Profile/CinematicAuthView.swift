@@ -2,11 +2,10 @@ import SwiftUI
 import UIKit
 
 /// Flagship Cinematic Auth View for sloosh.
-/// Ported 1-to-1 from Android (AuthSheet.kt) with optical blur-reveal cinema thoughts,
-/// atmospheric aurora background, and pure native Google Sign-In.
+/// Inspired by ChatGPT & Claude: dynamic typewriter cinema quotes with optical blur reveal,
+/// atmospheric cinematic aurora orbs, and native Google Sign-In.
 public struct CinematicAuthView: View {
     @ObservedObject private var authRepo = AuthRepository.shared
-    @Environment(\.colorScheme) private var colorScheme
 
     private let phrases = [
         "Не только смотри, но и sloosh-ай",
@@ -22,14 +21,22 @@ public struct CinematicAuthView: View {
         "Что вышло в хорошем качестве?"
     ]
 
-    @State private var currentPhrase: String = ""
-    @State private var words: [String] = []
+    private struct PhraseState: Equatable {
+        let id: String
+        let text: String
+        let words: [String]
+    }
+
+    @State private var activePhrase: PhraseState = PhraseState(id: "init", text: "", words: [])
     @State private var revealedCount: Int = 0
     @State private var isDissolving: Bool = false
-
     @State private var auroraPulse: Bool = false
 
-    public init() {}
+    public var onDismiss: (() -> Void)?
+
+    public init(onDismiss: (() -> Void)? = nil) {
+        self.onDismiss = onDismiss
+    }
 
     private var versionName: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.1"
@@ -37,84 +44,89 @@ public struct CinematicAuthView: View {
 
     public var body: some View {
         ZStack {
-            // Atmospheric cinematic background (breathing aurora orbs)
+            // MARK: - Atmospheric Background (Full Screen)
             cinematicBackground
+                .ignoresSafeArea()
 
-            // Foreground content
+            // MARK: - Foreground Content (Strictly Safe-Area Bound)
             VStack(spacing: 0) {
-                // Top Logo
-                Image("LogoText")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 24)
-                    .foregroundStyle(Color.slooshAccent)
-                    .padding(.top, 48)
+                // Top Bar with Logo and optional close button
+                HStack {
+                    Spacer()
+                    Image("LogoText")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 24)
+                        .foregroundStyle(Color.slooshAccent)
+                    Spacer()
+                }
+                .overlay(alignment: .trailing) {
+                    if let onDismiss {
+                        Button {
+                            onDismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color.white.opacity(0.85))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.12), in: Circle())
+                        }
+                        .padding(.trailing, 20)
+                    }
+                }
+                .padding(.top, 24)
 
                 Spacer()
 
-                // Center Hero: Word-by-Word Blur Focus Reveal
-                heroWordsRevealView
-                    .padding(.horizontal, 28)
+                // Center Hero: Cinematic Phrase with Blur-Reveal
+                heroPhraseContainer
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: 400)
 
                 // Error Notice (if any)
                 if let error = authRepo.lastError, !error.isEmpty {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
-                            .font(.system(size: 15))
-                        Text(error)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
-                            .multilineTextAlignment(.leading)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color(red: 1.0, green: 0.27, blue: 0.23).opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color(red: 1.0, green: 0.27, blue: 0.23).opacity(0.25), lineWidth: 1)
-                    )
-                    .padding(.horizontal, 28)
-                    .padding(.top, 16)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    errorNoticeView(error)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
+                        .frame(maxWidth: 400)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
 
                 Spacer()
 
                 // Google Sign-In Button
                 googleSignInButton
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: 380)
 
                 // Value proposition
                 Text("История просмотров и избранное сохранятся в вашем профиле")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.secondary.opacity(0.70))
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.60))
                     .multilineTextAlignment(.center)
-                    .lineSpacing(2)
+                    .lineSpacing(3)
                     .padding(.horizontal, 32)
                     .padding(.top, 14)
 
                 // App version
                 Text("Версия \(versionName)")
                     .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary.opacity(0.38))
+                    .foregroundStyle(Color.white.opacity(0.32))
                     .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 16)
             }
         }
-        .ignoresSafeArea()
         .task {
             startPhraseAnimationLoop()
         }
     }
 
-    // MARK: - Center Hero Words Flow
+    // MARK: - Hero Phrase Container
 
-    private var heroWordsRevealView: some View {
-        WrappingHStack(horizontalSpacing: 8, verticalSpacing: 6) {
-            ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+    private var heroPhraseContainer: some View {
+        FlowLayout(horizontalSpacing: 7, verticalSpacing: 6, alignment: .center) {
+            ForEach(Array(activePhrase.words.enumerated()), id: \.offset) { index, word in
                 BlurRevealWord(
                     word: word,
                     isRevealed: revealedCount > index,
@@ -123,14 +135,14 @@ public struct CinematicAuthView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 120)
-        .blur(radius: isDissolving ? 7 : 0)
+        .frame(minHeight: 110)
+        .blur(radius: isDissolving ? 8 : 0)
         .opacity(isDissolving ? 0 : 1)
-        .offset(y: isDissolving ? -8 : 0)
-        .animation(.easeInOut(duration: 0.32), value: isDissolving)
+        .offset(y: isDissolving ? -6 : 0)
+        .animation(.easeInOut(duration: 0.35), value: isDissolving)
     }
 
-    // MARK: - Google Sign-In Button
+    // MARK: - Google Sign-In Button (Perfect Pill with Capsule Shape)
 
     private var googleSignInButton: some View {
         Button {
@@ -145,7 +157,7 @@ public struct CinematicAuthView: View {
                     ProgressView()
                         .tint(.black)
                     Text("Авторизация...")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold, design: .default))
                         .foregroundStyle(Color.black)
                 } else {
                     Image("GoogleLogo")
@@ -153,21 +165,44 @@ public struct CinematicAuthView: View {
                         .scaledToFit()
                         .frame(width: 22, height: 22)
                     Text("Продолжить через Google")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold, design: .default))
                         .foregroundStyle(Color.black)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: 54)
-            .background(Color.white)
+            .background(Color.white, in: Capsule())
             .clipShape(Capsule())
-            .shadow(color: Color.black.opacity(0.20), radius: 12, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.28), radius: 14, x: 0, y: 7)
         }
         .disabled(authRepo.isLoading)
-        .buttonStyle(ScaleButtonStyle())
+        .buttonStyle(AuthPressButtonStyle())
     }
 
-    // MARK: - Cinematic Background
+    // MARK: - Error Notice View
+
+    private func errorNoticeView(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
+                .font(.system(size: 15))
+            Text(message)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(red: 1.0, green: 0.27, blue: 0.23).opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(red: 1.0, green: 0.27, blue: 0.23).opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Cinematic Aurora Background
 
     private var cinematicBackground: some View {
         ZStack {
@@ -178,8 +213,26 @@ public struct CinematicAuthView: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.slooshAccent.opacity(0.18),
-                            Color.slooshAccent.opacity(0.04),
+                            Color.slooshAccent.opacity(0.20),
+                            Color.slooshAccent.opacity(0.05),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 220
+                    )
+                )
+                .frame(width: 440, height: 440)
+                .offset(x: auroraPulse ? 35 : -35, y: auroraPulse ? -110 : -70)
+                .blur(radius: 50)
+
+            // Aurora Orb 2 (Deep Indigo / Teal)
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.12, green: 0.22, blue: 0.40).opacity(0.24),
+                            Color(red: 0.12, green: 0.22, blue: 0.40).opacity(0.06),
                             Color.clear
                         ],
                         center: .center,
@@ -188,35 +241,17 @@ public struct CinematicAuthView: View {
                     )
                 )
                 .frame(width: 480, height: 480)
-                .offset(x: auroraPulse ? 40 : -40, y: auroraPulse ? -120 : -80)
+                .offset(x: auroraPulse ? -50 : 45, y: auroraPulse ? 140 : 100)
                 .blur(radius: 60)
-
-            // Aurora Orb 2 (Deep Indigo / Teal)
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.12, green: 0.22, blue: 0.38).opacity(0.22),
-                            Color(red: 0.12, green: 0.22, blue: 0.38).opacity(0.05),
-                            Color.clear
-                        ],
-                        center: .center,
-                        startRadius: 10,
-                        endRadius: 260
-                    )
-                )
-                .frame(width: 520, height: 520)
-                .offset(x: auroraPulse ? -60 : 50, y: auroraPulse ? 160 : 120)
-                .blur(radius: 70)
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 7.0).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 6.5).repeatForever(autoreverses: true)) {
                 auroraPulse.toggle()
             }
         }
     }
 
-    // MARK: - Animation Loop
+    // MARK: - Seamless Optical Animation Loop (Zero Flicker)
 
     private func startPhraseAnimationLoop() {
         Task {
@@ -224,22 +259,35 @@ public struct CinematicAuthView: View {
             var playlistIndex = 0
 
             while !Task.isCancelled {
-                let target = playlist[playlistIndex]
+                let targetText = playlist[playlistIndex]
+                let targetWords = targetText.split(separator: " ").map(String.init)
+                let newPhrase = PhraseState(id: UUID().uuidString, text: targetText, words: targetWords)
+
+                // 1. Mount new phrase under total invisibility
                 await MainActor.run {
-                    currentPhrase = target
-                    words = target.split(separator: " ").map(String.init)
+                    activePhrase = newPhrase
                     revealedCount = 0
-                    isDissolving = false
                 }
 
-                try? await Task.sleep(nanoseconds: 280_000_000)
+                // Small pause for layout mounting
+                try? await Task.sleep(nanoseconds: 120_000_000)
 
-                for i in 1...words.count {
+                // 2. Fade in container smoothly
+                await MainActor.run {
+                    withAnimation(.easeIn(duration: 0.20)) {
+                        isDissolving = false
+                    }
+                }
+
+                try? await Task.sleep(nanoseconds: 200_000_000)
+
+                // 3. Sequentially reveal words from blur
+                for i in 1...targetWords.count {
                     if Task.isCancelled { return }
                     await MainActor.run {
                         revealedCount = i
                     }
-                    let currentWord = words[i - 1]
+                    let currentWord = targetWords[i - 1]
                     let delayMs: UInt64
                     if currentWord.count <= 2 {
                         delayMs = 110
@@ -248,36 +296,35 @@ public struct CinematicAuthView: View {
                     } else if currentWord.hasSuffix(",") || currentWord == "—" {
                         delayMs = 190
                     } else {
-                        delayMs = 160
+                        delayMs = 150
                     }
                     try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
                 }
 
-                // Crisp reading pause
+                // 4. Crisp reading pause (2.8 seconds)
                 try? await Task.sleep(nanoseconds: 2_800_000_000)
 
-                // Dissolve phase
+                // 5. Dissolve phase: entire phrase dissolves away completely
                 await MainActor.run {
-                    isDissolving = true
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        isDissolving = true
+                    }
                 }
-                try? await Task.sleep(nanoseconds: 380_000_000)
+                // Wait for dissolve animation to fully complete
+                try? await Task.sleep(nanoseconds: 400_000_000)
 
+                // Advance to next phrase
                 playlistIndex += 1
                 if playlistIndex >= playlist.count {
                     playlist = phrases.shuffled()
                     playlistIndex = 0
                 }
-
-                await MainActor.run {
-                    revealedCount = 0
-                }
-                try? await Task.sleep(nanoseconds: 50_000_000)
             }
         }
     }
 }
 
-// MARK: - BlurRevealWord
+// MARK: - BlurRevealWord (Optical Focus Transition)
 
 private struct BlurRevealWord: View {
     let word: String
@@ -290,55 +337,64 @@ private struct BlurRevealWord: View {
 
     var body: some View {
         Text(word)
-            .font(.system(size: 26, weight: .bold))
-            .foregroundStyle(isSlooshWord ? accentColor : Color.white.opacity(0.88))
-            .blur(radius: isRevealed ? 0 : 9)
+            .font(.system(size: 23, weight: .bold, design: .default))
+            .foregroundStyle(isSlooshWord ? accentColor : Color.white.opacity(0.92))
+            .blur(radius: isRevealed ? 0 : 7)
             .opacity(isRevealed ? 1 : 0)
-            .offset(y: isRevealed ? 0 : 5)
-            .animation(.easeOut(duration: 0.26), value: isRevealed)
+            .scaleEffect(isRevealed ? 1.0 : 0.95)
+            .offset(y: isRevealed ? 0 : 3)
+            .animation(.easeOut(duration: 0.24), value: isRevealed)
     }
 }
 
-// MARK: - Wrapping Layout for Words
+// MARK: - FlowLayout (Guaranteed Zero-Overflow Horizontal Flow)
 
-private struct WrappingHStack: Layout {
-    var horizontalSpacing: CGFloat = 8
+private struct FlowLayout: Layout {
+    var horizontalSpacing: CGFloat = 7
     var verticalSpacing: CGFloat = 6
+    var alignment: TextAlignment = .center
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 320
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var lineHeight: CGFloat = 0
+        let maxWidth = proposal.width ?? 320
+        var totalHeight: CGFloat = 0
+        var currentRowWidth: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > width && currentX > 0 {
-                currentX = 0
-                currentY += lineHeight + verticalSpacing
-                lineHeight = 0
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            let neededWidth = currentRowWidth == 0 ? size.width : (currentRowWidth + horizontalSpacing + size.width)
+
+            if neededWidth > maxWidth && currentRowWidth > 0 {
+                totalHeight += currentRowHeight + verticalSpacing
+                currentRowWidth = size.width
+                currentRowHeight = size.height
+            } else {
+                currentRowWidth = neededWidth
+                currentRowHeight = max(currentRowHeight, size.height)
             }
-            lineHeight = max(lineHeight, size.height)
-            currentX += size.width + horizontalSpacing
         }
-        return CGSize(width: width, height: currentY + lineHeight)
+        totalHeight += currentRowHeight
+        return CGSize(width: maxWidth, height: max(totalHeight, 100))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        // Collect rows to center-align each row horizontally
+        let maxWidth = bounds.width
         var rows: [[(subview: LayoutSubview, size: CGSize)]] = []
         var currentRow: [(subview: LayoutSubview, size: CGSize)] = []
         var currentRowWidth: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentRowWidth + size.width > bounds.width && !currentRow.isEmpty {
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            let neededWidth = currentRow.isEmpty ? size.width : (currentRowWidth + horizontalSpacing + size.width)
+
+            if neededWidth > maxWidth && !currentRow.isEmpty {
                 rows.append(currentRow)
-                currentRow = []
-                currentRowWidth = 0
+                currentRow = [(subview, size)]
+                currentRowWidth = size.width
+            } else {
+                currentRow.append((subview, size))
+                currentRowWidth = neededWidth
             }
-            currentRow.append((subview, size))
-            currentRowWidth += size.width + horizontalSpacing
         }
         if !currentRow.isEmpty {
             rows.append(currentRow)
@@ -347,27 +403,32 @@ private struct WrappingHStack: Layout {
         var y = bounds.minY
         for row in rows {
             let rowContentWidth = row.map(\.size.width).reduce(0, +) + CGFloat(max(0, row.count - 1)) * horizontalSpacing
-            var x = bounds.minX + max(0, (bounds.width - rowContentWidth) / 2)
-            let maxHeight = row.map(\.size.height).max() ?? 0
+            let rowHeight = row.map(\.size.height).max() ?? 0
+
+            var x: CGFloat = bounds.minX
+            if alignment == .center {
+                x = bounds.minX + max(0, (bounds.width - rowContentWidth) / 2)
+            }
 
             for item in row {
                 item.subview.place(
-                    at: CGPoint(x: x, y: y + (maxHeight - item.size.height) / 2),
+                    at: CGPoint(x: x, y: y + (rowHeight - item.size.height) / 2),
                     proposal: ProposedViewSize(item.size)
                 )
                 x += item.size.width + horizontalSpacing
             }
-            y += maxHeight + verticalSpacing
+            y += rowHeight + verticalSpacing
         }
     }
 }
 
-// MARK: - Scale Button Style
+// MARK: - AuthPressButtonStyle
 
-private struct ScaleButtonStyle: ButtonStyle {
+private struct AuthPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }
