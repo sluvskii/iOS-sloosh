@@ -89,6 +89,7 @@ struct slooshApp: App {
     }
     
     @ObservedObject private var diagnostics = AppDiagnostics.shared
+    @ObservedObject private var authRepo = AuthRepository.shared
     @State private var showShareSheet = false
     @State private var isSplashActive = true
     @Environment(\.scenePhase) private var scenePhase
@@ -96,7 +97,13 @@ struct slooshApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                ContentView()
+                if authRepo.isAuthenticated {
+                    ContentView()
+                        .transition(.opacity)
+                } else {
+                    CinematicAuthView()
+                        .transition(.opacity)
+                }
                 
                 if isSplashActive {
                     LaunchSplashView(isPresented: $isSplashActive)
@@ -104,6 +111,7 @@ struct slooshApp: App {
                         .zIndex(999)
                 }
             }
+            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authRepo.isAuthenticated)
                 .modelContainer(AppDatabase.shared.container)
                 .preferredColorScheme(appTheme.colorScheme)
                 .alert("Приложение было закрыто из-за ошибки", isPresented: $diagnostics.hasCrashLog) {

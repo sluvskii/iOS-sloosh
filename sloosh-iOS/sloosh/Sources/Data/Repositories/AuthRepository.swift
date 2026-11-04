@@ -30,7 +30,7 @@ public final class AuthRepository: ObservableObject {
 
     public var isAuthenticated: Bool {
         guard let user = currentUser else { return false }
-        return !user.isAnonymous
+        return !user.isAnonymous && !(user.idToken ?? "").isEmpty
     }
 
     public var isAnonymous: Bool {
@@ -92,17 +92,12 @@ public final class AuthRepository: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "sloosh_is_admin_device_master")
 
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let user = try? JSONDecoder().decode(UserProfile.self, from: data) {
+           let user = try? JSONDecoder().decode(UserProfile.self, from: data),
+           !user.isAnonymous && !(user.idToken ?? "").isEmpty {
             self.currentUser = user
             UserDefaults.standard.removeObject(forKey: "sloosh_is_admin_\(user.id)")
         } else {
-            let guest = UserProfile(
-                id: "guest_\(UUID().uuidString.prefix(8))",
-                isAnonymous: true,
-                provider: "anonymous"
-            )
-            self.currentUser = guest
-            saveUser(guest)
+            self.currentUser = nil
         }
     }
 
@@ -517,16 +512,13 @@ public final class AuthRepository: ObservableObject {
     // MARK: - Выход из аккаунта
 
     public func signOut() {
-        let guest = UserProfile(
-            id: "guest_\(UUID().uuidString.prefix(8))",
-            isAnonymous: true,
-            provider: "anonymous"
-        )
-        saveUser(guest)
+        self.currentUser = nil
+        self.isAdmin = false
+        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
         lastError = nil
         ToastManager.shared.show(
             title: "Выход выполнен",
-            subtitle: "Переход в гостевой режим",
+            subtitle: "Вы вышли из аккаунта",
             icon: "arrow.right.square"
         )
     }

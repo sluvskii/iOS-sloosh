@@ -108,6 +108,9 @@ jobs:
         run: |
           cd sloosh-iOS
           sed -i '' "s/apiKey: String = \"\"/apiKey: String = \"${{ secrets.SLOOSH_API_KEY }}\"/" sloosh/Sources/Data/Network/AppSecrets.swift
+          if [ -n "${{ secrets.SLOOSH_HMAC_SECRET }}" ]; then
+            sed -i '' "s/hmacSecret: String = \".*\"/hmacSecret: String = \"${{ secrets.SLOOSH_HMAC_SECRET }}\"/" sloosh/Sources/Data/Network/RequestSigner.swift
+          fi
 
       - name: Generate Xcode Project
         run: |

@@ -289,11 +289,10 @@ class MoviesApi {
             if !MoviesApi.currentApiKey.isEmpty {
                 request.setValue(MoviesApi.currentApiKey, forHTTPHeaderField: "X-API-Key")
             }
-            if endpoint.contains("admin/") {
-                if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
-                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                }
+            if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
+            RequestSigner.shared.sign(request: &request, path: url.path, method: method)
             
             let maxRetries = baseCandidates.count > 1 ? 2 : 3
             
