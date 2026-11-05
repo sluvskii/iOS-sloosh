@@ -329,3 +329,28 @@ policy tests cover read-only system traits without trying to mutate them.
 On iPhone compare the header logo with both inline branded phrases across light
 movement and cross-dissolves; check no yellow tint, no suffix collision, all rows
 fit, and the logo/«-АЙ» reveal together. Other screens' logos/styles are unchanged.
+
+### Livelier auth light field and screen polish
+
+`AuthBackgroundMotion` samples five independent continuous native-gradient lights:
+three broad palette fields and two tilted, elongated light washes. Shallow intensity
+and radius breathing creates depth without particles, sharp lines or flashes. The
+33-stop feathered falloff, fixed one-physical-pixel dither and readability vignette
+remain. Redraw stays isolated in the background at 24 fps; there are no sensors,
+large blurred textures or new network work. `AuthBackgroundClock` accumulates only
+active animation time, freezing the current picture under Reduce Motion, Low Power,
+inactive scene or disappearance, and resuming without resets/catch-up.
+
+A short staged entrance affects header/action/captions only, never the approved
+hero layout, inline wordmark, green ink or word reveal. The Google action starts
+visible at 72% opacity; VoiceOver / Reduce Motion skip the entrance. Button press
+feedback is shallower and respects Reduce Motion. Close has a 44pt touch target
+with a Russian accessibility label. Google loading has one coherent spoken label,
+and error text is grouped without a decorative warning-icon announcement.
+
+Tests cover clock pause/resume, all pause-policy combinations, continuous motion
+sampling, entrance/press policies and actual multi-phase background pixels:
+brightness limits, per-frame continuity, visible motion within two seconds, dither
+stability and wide layouts. Existing logo-color, reveal and equal-width suites
+remain. Check the staged entrance and moving light on an iPhone too, including
+Low Power, Reduce Motion, app background/foreground and a cancelled Google flow.

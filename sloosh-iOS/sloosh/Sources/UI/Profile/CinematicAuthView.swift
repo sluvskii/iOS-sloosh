@@ -60,6 +60,7 @@ public struct CinematicAuthView: View {
                     // Верхняя панель: Логотип под чёлкой/Dynamic Island
                     topBarView
                         .padding(.top, 14)
+                        .modifier(AuthScreenEntrance(stage: .header))
 
                     Spacer()
 
@@ -79,6 +80,7 @@ public struct CinematicAuthView: View {
                     // Кнопка авторизации через Google (строгая капсула с отступами)
                     googleSignInButton
                         .frame(maxWidth: 360)
+                        .modifier(AuthScreenEntrance(stage: .action))
 
                     // Пояснительная подпись
                     Text("История просмотров и избранное сохранятся в вашем профиле")
@@ -88,6 +90,7 @@ public struct CinematicAuthView: View {
                         .lineSpacing(3)
                         .padding(.horizontal, 28)
                         .padding(.top, 14)
+                        .modifier(AuthScreenEntrance(stage: .caption))
 
                     // Версия приложения
                     Text("Версия \(versionName)")
@@ -95,6 +98,7 @@ public struct CinematicAuthView: View {
                         .foregroundStyle(Color.white.opacity(0.35))
                         .padding(.top, 8)
                         .padding(.bottom, 12)
+                        .modifier(AuthScreenEntrance(stage: .caption))
                 }
                 .padding(.horizontal, 24)
                 .frame(width: geometry.size.width, height: geometry.size.height)
@@ -131,7 +135,11 @@ public struct CinematicAuthView: View {
                         .foregroundStyle(Color.white.opacity(0.85))
                         .frame(width: 32, height: 32)
                         .background(Color.white.opacity(0.12), in: Circle())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Закрыть")
             }
         }
     }
@@ -187,6 +195,8 @@ public struct CinematicAuthView: View {
             .clipShape(Capsule())
             .shadow(color: Color.black.opacity(0.35), radius: 14, x: 0, y: 6)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(authRepo.isLoading ? "Вход через Google" : "Продолжить через Google")
         .disabled(authRepo.isLoading)
         .buttonStyle(AuthPressButtonStyle())
     }
@@ -198,6 +208,7 @@ public struct CinematicAuthView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
                 .font(.system(size: 15))
+                .accessibilityHidden(true)
             Text(message)
                 .font(.system(size: 13, weight: .regular, design: .default))
                 .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
@@ -213,6 +224,7 @@ public struct CinematicAuthView: View {
                 .stroke(Color(red: 1.0, green: 0.27, blue: 0.23).opacity(0.25), lineWidth: 1)
         )
         .frame(maxWidth: 360)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Cancellable word reveal / phrase cycle
@@ -260,16 +272,5 @@ public struct CinematicAuthView: View {
                 revealElapsed = 0
             }
         }
-    }
-}
-
-// MARK: - Тактильная кнопка с мягким откликом
-
-private struct AuthPressButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.92 : 1.0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

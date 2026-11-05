@@ -39,8 +39,57 @@ struct AuthPresentationTests {
         let glow = AuthBackgroundSmoothing.glowStops.map(\.opacity)
         check(glow.first == 1 && glow.last == 0, "Glow starts at the same intensity and feathers to zero")
         check(zip(glow, glow.dropFirst()).allSatisfy { $0 >= $1 }, "Glow has no abrupt brightness reversals")
-        let beam = AuthBackgroundSmoothing.beamStops.map(\.opacity)
-        check(beam.first == 0 && (beam.last ?? 1) < 0.0001 && beam[16] == 1, "Beam edges are feathered, preserving peak intensity")
+        for reduceMotion in [false, true] {
+            for active in [false, true] {
+                for lowPower in [false, true] {
+                    check(AuthBackgroundMotion.isPaused(reduceMotion: reduceMotion, isActive: active, lowPower: lowPower)
+                          == (reduceMotion || !active || lowPower), "Background honors every pause condition")
+                }
+            }
+        }
+        let epoch = Date(timeIntervalSince1970: 1_000)
+        var clock = AuthBackgroundClock()
+        check(clock.time(at: epoch) == 0, "Paused clock starts with the static design")
+        clock.setRunning(true, at: epoch)
+        clock.setRunning(true, at: epoch.addingTimeInterval(2))
+        check(clock.time(at: epoch.addingTimeInterval(5)) == 5, "Repeated appearance must not restart live time")
+        clock.setRunning(false, at: epoch.addingTimeInterval(5))
+        clock.setRunning(false, at: epoch.addingTimeInterval(70))
+        check(clock.time(at: epoch.addingTimeInterval(100)) == 5, "Pause freezes the current phase, not phase zero")
+        clock.setRunning(true, at: epoch.addingTimeInterval(100))
+        check(clock.time(at: epoch.addingTimeInterval(102)) == 7, "Resume cannot catch up background time")
+        check(clock.time(at: epoch.addingTimeInterval(99)) == 5, "Stale timeline dates never move below the frozen phase")
+        for stage in AuthEntranceStage.allCases {
+            check(stage.opacity(appeared: true, reducedEffects: false) == 1 && stage.offset(appeared: true, reducedEffects: false) == 0,
+                  "Entrance settles without changing layout or final colors")
+            check(stage.opacity(appeared: false, reducedEffects: true) == 1 && stage.offset(appeared: false, reducedEffects: true) == 0,
+                  "VoiceOver / Reduce Motion expose controls immediately without entrance movement")
+        }
+        check(AuthEntranceStage.action.initialOpacity >= 0.7, "Primary action is visible from its first frame")
+        check(AuthEntranceStage.caption.delay < 0.25, "No slow splash sequence before login")
+        for pressed in [false, true] {
+            for reduceMotion in [false, true] {
+                let appearance = AuthPressAppearance(isPressed: pressed, reduceMotion: reduceMotion)
+                check(appearance.scale >= 0.98 && appearance.opacity >= 0.95, "Press feedback is subtle, not a large bounce")
+                if reduceMotion || !pressed {
+                    check(appearance.scale == 1 && appearance.offset == 0, "No press displacement with Reduce Motion or when released")
+                }
+            }
+        }
+        for time in stride(from: 0.0, through: 180, by: 0.5) {
+            let lights = AuthBackgroundMotion.lights(at: time)
+            check(lights.count == 5 && lights.filter(\.isRibbon).count == 2, "Fixed-cost native light field, no accumulating particles")
+            check(lights.allSatisfy { $0.opacity > 0 && $0.opacity < 0.3 && $0.radiusX > 0 && $0.radiusY > 0 },
+                  "Breathing keeps positive, restrained light intensity and radii")
+            let next = AuthBackgroundMotion.lights(at: time + 1.0 / 24)
+            for (light, following) in zip(lights, next) {
+                check(abs(light.x - following.x) < 0.005 && abs(light.y - following.y) < 0.005
+                      && abs(light.opacity - following.opacity) < 0.001 && abs(light.angle - following.angle) < 0.2,
+                      "Every light path is continuous, with no wraps or flashes")
+            }
+        }
+        check(abs(AuthBackgroundMotion.lights(at: 2)[3].x - AuthBackgroundMotion.lights(at: 0)[3].x) > 0.1,
+              "Narrow light wash visibly drifts within two seconds, not only over a long cycle")
         let phrase = "  Один клик —\nи ты уже в кино  "
         let plan = AuthWordRevealPlan(phrase)
         check(plan.parts.map(\.text).joined() == phrase, "Preserve spaces, punctuation and manual line breaks")
@@ -240,8 +289,22 @@ struct AuthPresentationTests {
         check((differences.max() ?? 255) <= 8, "Dither stays a few code values, never a visible wash")
         check(background0 == pixels(AuthCinematicBackdrop(time: 0, accent: .green), width: 200, height: 400),
               "Dither is stable at the same phase, not random flicker")
-        let maxChannel = stride(from: 0, to: background0.count, by: 4).map { max(background0[$0], background0[$0 + 1], background0[$0 + 2]) }.max() ?? 255
-        check(maxChannel < 150, "Background remains restrained enough for white hero text")
+        for time in [0.0, 2, 5, 9, 15, 24, 45] {
+            let frame = pixels(AuthCinematicBackdrop(time: time, accent: .green), width: 200, height: 400)
+            let maxChannel = stride(from: 0, to: frame.count, by: 4).map { max(frame[$0], frame[$0 + 1], frame[$0 + 2]) }.max() ?? 255
+            check(maxChannel < 150, "Background remains restrained for white hero text at multiple phases")
+            let next = pixels(AuthCinematicBackdrop(time: time + 1.0 / 24, accent: .green), width: 200, height: 400)
+            check(zip(frame, next).map { abs(Int($0) - Int($1)) }.max()! <= 4,
+                  "Actual consecutive frames have no bright jumps or hard moving edges")
+        }
+        let background2 = pixels(AuthCinematicBackdrop(time: 2, accent: .green), width: 200, height: 400)
+        let rgbOffsets = (0..<(200 * 400 * 4)).filter { $0 % 4 != 3 }
+        let movement = rgbOffsets.reduce(0.0) { $0 + Double(abs(Int(background0[$1]) - Int(background2[$1]))) } / Double(rgbOffsets.count)
+        check(movement > 0.5, "Real rendered light movement is perceptible within two seconds")
+        let wideBackground = pixels(AuthCinematicBackdrop(time: 5, accent: .green), width: 600, height: 320)
+        check(litCount(wideBackground) > 500, "Light washes adapt to wide layouts too")
+        let styledButton = pixels(Button("Продолжить через Google") {}.foregroundStyle(.white).buttonStyle(AuthPressButtonStyle()), width: 320, height: 52)
+        check(litCount(styledButton) > 50, "Production button style renders its label")
         print("✓ Auth presentation: \(count) checks passed")
     }
 }

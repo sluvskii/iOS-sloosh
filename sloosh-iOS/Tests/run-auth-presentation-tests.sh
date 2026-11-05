@@ -32,6 +32,7 @@ if ! swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/UI/Profile/AuthPhraseLayout.swift \
   sloosh/Sources/UI/Profile/AuthInlineBrand.swift \
   sloosh/Sources/UI/Profile/AuthCinematicBackground.swift \
+  sloosh/Sources/UI/Profile/AuthScreenPolish.swift \
   Tests/AuthPresentationTests.swift \
   -o "$test_dir/auth-presentation-tests" >"$test_dir/compiler.log" 2>&1; then
   cat "$test_dir/compiler.log"
