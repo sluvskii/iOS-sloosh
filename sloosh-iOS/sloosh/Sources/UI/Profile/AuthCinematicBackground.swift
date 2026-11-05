@@ -6,17 +6,20 @@ struct AuthCinematicBackground: View {
     let accent: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @State private var startedAt = Date()
+    @State private var clock = AuthBackgroundClock()
     @State private var lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     private var isPaused: Bool {
-        reduceMotion || scenePhase != .active || lowPowerMode
+        AuthBackgroundMotion.isPaused(reduceMotion: reduceMotion, isActive: scenePhase == .active, lowPower: lowPowerMode)
     }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 24, paused: isPaused)) { timeline in
-            AuthCinematicBackdrop(time: isPaused ? 0 : timeline.date.timeIntervalSince(startedAt), accent: accent)
+            AuthCinematicBackdrop(time: clock.time(at: timeline.date), accent: accent)
         }
+        .onAppear { clock.setRunning(!isPaused, at: Date()) }
+        .onChange(of: isPaused) { _, paused in clock.setRunning(!paused, at: Date()) }
+        .onDisappear { clock.setRunning(false, at: Date()) }
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
             lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
@@ -33,39 +36,27 @@ struct AuthCinematicBackdrop: View {
 
     var body: some View {
         Canvas { context, size in
+            guard size.width > 0, size.height > 0 else { return }
             let screen = Path(CGRect(origin: .zero, size: size))
             context.fill(screen, with: .color(.black))
-            let phase = time * .pi / 18
-
-            func glow(_ color: Color, opacity: Double, x: Double, y: Double, radius: Double) {
-                context.fill(screen, with: .radialGradient(
+            // Five native gradients, no large blurred textures, particles or sensors.
+            // Wider fields and narrower tilted washes drift at independent speeds.
+            for light in AuthBackgroundMotion.lights(at: time) {
+                var wash = context
+                wash.translateBy(x: size.width * light.x, y: size.height * light.y)
+                wash.rotate(by: .degrees(light.angle))
+                let radiusX = light.isRibbon ? size.width * light.radiusX : size.height * light.radiusX
+                wash.scaleBy(x: radiusX, y: size.height * light.radiusY)
+                let color: Color
+                switch light.tone {
+                case .brand: color = accent
+                case .teal: color = Color(red: 0.03, green: 0.5, blue: 0.46)
+                case .violet: color = Color(red: 0.22, green: 0.17, blue: 0.49)
+                }
+                wash.fill(Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2)), with: .radialGradient(
                     Gradient(stops: AuthBackgroundSmoothing.glowStops.map {
-                        .init(color: color.opacity(opacity * $0.opacity), location: $0.location)
-                    }),
-                    center: CGPoint(x: size.width * x, y: size.height * y),
-                    startRadius: 0, endRadius: size.height * radius
-                ))
-            }
-            // Independent slow drift rather than two circles pulsing in lockstep.
-            glow(accent, opacity: 0.28, x: 0.18 + sin(phase) * 0.15,
-                 y: 0.27 + cos(phase * 0.8) * 0.07, radius: 0.64)
-            glow(Color(red: 0.03, green: 0.5, blue: 0.46), opacity: 0.19,
-                 x: 0.88 + cos(phase * 0.7) * 0.12, y: 0.51 + sin(phase * 0.6) * 0.14, radius: 0.57)
-            glow(Color(red: 0.22, green: 0.17, blue: 0.49), opacity: 0.22,
-                 x: 0.3 + sin(phase * 0.5) * 0.2, y: 0.96, radius: 0.5)
-
-            // Soft projection-light shafts, not visible lines or separate panels.
-            for index in 0..<2 {
-                var beam = context
-                beam.translateBy(x: size.width * (index == 0 ? 0.22 : 0.85), y: size.height * 0.35)
-                beam.rotate(by: .degrees(-25 + Double(index) * 13 + sin(phase * 0.65) * 5))
-                let width = size.width * (index == 0 ? 0.44 : 0.23)
-                let rect = CGRect(x: -width / 2, y: -size.height, width: width, height: size.height * 2)
-                beam.fill(Path(rect), with: .linearGradient(
-                    Gradient(stops: AuthBackgroundSmoothing.beamStops.map {
-                        .init(color: accent.opacity((index == 0 ? 0.045 : 0.025) * $0.opacity), location: $0.location)
-                    }),
-                    startPoint: CGPoint(x: -width / 2, y: 0), endPoint: CGPoint(x: width / 2, y: 0)
+                        .init(color: color.opacity(light.opacity * $0.opacity), location: $0.location)
+                    }), center: .zero, startRadius: 0, endRadius: 1
                 ))
             }
             // Keep the logo and sign-in copy readable against every animation phase.
@@ -89,6 +80,77 @@ struct AuthCinematicBackdrop: View {
                     scale: 1 / max(displayScale, 1)
                 ))
             }
+        }
+    }
+}
+
+/// Pure motion sampling keeps all paths continuous and deterministic at any frame.
+/// Breathing is deliberately shallow: movement is visible, luminance never flashes.
+enum AuthBackgroundMotion {
+    enum Tone { case brand, teal, violet }
+    struct Light {
+        let tone: Tone
+        let x: Double
+        let y: Double
+        let radiusX: Double
+        let radiusY: Double
+        let angle: Double
+        let opacity: Double
+        var isRibbon = false
+    }
+
+    static func isPaused(reduceMotion: Bool, isActive: Bool, lowPower: Bool) -> Bool {
+        reduceMotion || !isActive || lowPower
+    }
+
+    static func lights(at time: TimeInterval) -> [Light] {
+        let phase = time * .pi / 11
+        let brandRadius = 0.60 + sin(phase * 0.54) * 0.035
+        let tealRadius = 0.56 + cos(phase * 0.61) * 0.025
+        let violetRadius = 0.50 + sin(phase * 0.74) * 0.035
+        return [
+            Light(tone: .brand, x: 0.20 + sin(phase * 0.93) * 0.25,
+                  y: 0.26 + cos(phase * 0.72) * 0.10,
+                  radiusX: brandRadius, radiusY: brandRadius, angle: 0,
+                  opacity: 0.26 + sin(phase * 0.96) * 0.025),
+            Light(tone: .teal, x: 0.82 + cos(phase * 0.71 + 0.8) * 0.24,
+                  y: 0.53 + sin(phase * 0.89 + 0.5) * 0.20,
+                  radiusX: tealRadius, radiusY: tealRadius, angle: 0,
+                  opacity: 0.19 + sin(phase * 0.80 + 0.6) * 0.025),
+            Light(tone: .violet, x: 0.32 + sin(phase * 0.63 + 1.1) * 0.28,
+                  y: 0.90 + cos(phase * 0.57) * 0.09,
+                  radiusX: violetRadius, radiusY: violetRadius, angle: 0,
+                  opacity: 0.20 + sin(phase * 0.68 + 1.6) * 0.020),
+            Light(tone: .brand, x: 0.35 + sin(phase * 0.77 + 0.2) * 0.32,
+                  y: 0.40 + cos(phase * 0.81) * 0.10,
+                  radiusX: 0.21, radiusY: 0.73,
+                  angle: -27 + sin(phase * 0.70) * 14,
+                  opacity: 0.075 + sin(phase * 0.90 + 0.2) * 0.018, isRibbon: true),
+            Light(tone: .teal, x: 0.82 + sin(phase * 0.88 + 1.4) * 0.23,
+                  y: 0.62 + sin(phase * 0.67) * 0.13,
+                  radiusX: 0.16, radiusY: 0.63,
+                  angle: 32 + cos(phase * 0.69) * 11,
+                  opacity: 0.055 + sin(phase * 0.76 + 1.7) * 0.013, isRibbon: true)
+        ]
+    }
+}
+
+/// Accumulate only foreground animation time. Pausing never resets the picture,
+/// and resuming cannot fast-forward through time spent in background / Low Power.
+struct AuthBackgroundClock {
+    private var accumulated: TimeInterval = 0
+    private var runningSince: Date?
+
+    func time(at date: Date) -> TimeInterval {
+        accumulated + (runningSince.map { max(0, date.timeIntervalSince($0)) } ?? 0)
+    }
+
+    mutating func setRunning(_ running: Bool, at date: Date) {
+        if running {
+            if runningSince == nil { runningSince = date }
+        } else if runningSince != nil {
+            accumulated = time(at: date)
+            runningSince = nil
         }
     }
 }
@@ -124,9 +186,5 @@ enum AuthBackgroundSmoothing {
         let edge = min(1, max(0, (t - 0.8) / 0.2))
         let feather = 1 - edge * edge * (3 - 2 * edge)
         return Stop(location: t, opacity: max(0, gaussian * feather))
-    }
-    static let beamStops: [Stop] = (0...32).map { index in
-        let t = Double(index) / 32
-        return Stop(location: t, opacity: pow(sin(.pi * t), 2))
     }
 }
