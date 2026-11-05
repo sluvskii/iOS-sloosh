@@ -31,7 +31,7 @@ public struct CinematicAuthView: View {
     @State private var revealElapsed: Double = 0
     @State private var outgoingPhraseIndex: Int?
     @State private var outgoingOpacity: Double = 0
-    @ScaledMetric(relativeTo: .title2) private var phrasePointSize: CGFloat = AuthPhraseTypography.baseSize
+    @ScaledMetric(relativeTo: .title2) private var phraseScale: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.scenePhase) private var scenePhase
@@ -55,46 +55,50 @@ public struct CinematicAuthView: View {
                 .ignoresSafeArea()
 
             // MARK: - Нативный контент строго внутри Safe Area (никогда не лезет под чёлку)
-            VStack(spacing: 0) {
-                // Верхняя панель: Логотип под чёлкой/Dynamic Island
-                topBarView
-                    .padding(.top, 14)
+            GeometryReader { geometry in
+                VStack(spacing: 0) {
+                    // Верхняя панель: Логотип под чёлкой/Dynamic Island
+                    topBarView
+                        .padding(.top, 14)
 
-                Spacer()
+                    Spacer()
 
-                // Центр: Кинематографичная кино-мысль с оптическим блюр-переходом
-                heroPhraseView
+                    // Центр: Кинематографичная кино-мысль с оптическим блюр-переходом
+                    heroPhraseView
+                        .frame(height: AuthPhraseLayout.heroHeight(availableHeight: geometry.size.height, scale: phraseScale))
 
-                // Оповещение об ошибке (если есть)
-                if let error = authRepo.lastError, !error.isEmpty {
-                    errorNoticeView(error)
-                        .padding(.top, 20)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    // Оповещение об ошибке (если есть)
+                    if let error = authRepo.lastError, !error.isEmpty {
+                        errorNoticeView(error)
+                            .padding(.top, 20)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+
+                    Spacer()
+
+                    // Кнопка авторизации через Google (строгая капсула с отступами)
+                    googleSignInButton
+                        .frame(maxWidth: 360)
+
+                    // Пояснительная подпись
+                    Text("История просмотров и избранное сохранятся в вашем профиле")
+                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .foregroundStyle(Color.white.opacity(0.60))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 14)
+
+                    // Версия приложения
+                    Text("Версия \(versionName)")
+                        .font(.system(size: 11, weight: .regular, design: .default))
+                        .foregroundStyle(Color.white.opacity(0.35))
+                        .padding(.top, 8)
+                        .padding(.bottom, 12)
                 }
-
-                Spacer()
-
-                // Кнопка авторизации через Google (строгая капсула с отступами)
-                googleSignInButton
-                    .frame(maxWidth: 360)
-
-                // Пояснительная подпись
-                Text("История просмотров и избранное сохранятся в вашем профиле")
-                    .font(.system(size: 13, weight: .regular, design: .default))
-                    .foregroundStyle(Color.white.opacity(0.60))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 14)
-
-                // Версия приложения
-                Text("Версия \(versionName)")
-                    .font(.system(size: 11, weight: .regular, design: .default))
-                    .foregroundStyle(Color.white.opacity(0.35))
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                .padding(.horizontal, 24)
+                .frame(width: geometry.size.width, height: geometry.size.height)
             }
-            .padding(.horizontal, 24)
         }
         .preferredColorScheme(.dark)
         .task(id: animatesPhrases) {
@@ -139,19 +143,15 @@ public struct CinematicAuthView: View {
             if let outgoingPhraseIndex {
                 AuthAnimatedPhrase(phrase: phrases[outgoingPhraseIndex],
                                    elapsed: AuthWordRevealPlan(phrases[outgoingPhraseIndex]).duration,
-                                   accent: .slooshAccent)
+                                   accent: .slooshAccent, scale: phraseScale)
                     .opacity(outgoingOpacity)
                     .blur(radius: (1 - outgoingOpacity) * 6)
                     .accessibilityHidden(true)
             }
-            AuthAnimatedPhrase(phrase: phrases[phraseIndex], elapsed: revealElapsed, accent: .slooshAccent)
+            AuthAnimatedPhrase(phrase: phrases[phraseIndex], elapsed: revealElapsed, accent: .slooshAccent, scale: phraseScale)
         }
-        .font(AuthPhraseTypography.font(at: phrasePointSize))
-        .multilineTextAlignment(.center)
-        .lineSpacing(AuthPhraseTypography.lineSpacing)
-        .frame(maxWidth: 320)
+        .frame(maxWidth: 360)
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 110)
     }
 
     // MARK: - Google Sign-In Button

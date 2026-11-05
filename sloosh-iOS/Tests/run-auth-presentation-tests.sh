@@ -6,6 +6,7 @@ trap 'rm -rf "$test_dir"' EXIT
 if ! swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/UI/Shared/CatalogFallbackTitleStyle.swift \
   sloosh/Sources/UI/Profile/AuthWordReveal.swift \
+  sloosh/Sources/UI/Profile/AuthPhraseLayout.swift \
   sloosh/Sources/UI/Profile/AuthCinematicBackground.swift \
   Tests/AuthPresentationTests.swift \
   -o "$test_dir/auth-presentation-tests" >"$test_dir/compiler.log" 2>&1; then
