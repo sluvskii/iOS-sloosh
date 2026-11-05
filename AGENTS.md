@@ -19,6 +19,7 @@ This workspace contains the flagship native iOS client for **sloosh**:
 ## Product Identity & Rules
 
 - **Public product name**: `sloosh`.
+- **Brand artwork**: `LogoText.imageset/sloosh.svg` is the canonical Latin wordmark. Regenerate primary/Cinema launcher icons (all appearances) and Settings previews via `tools/branding` when it changes; `npm test` there checks pixel synchronization. Cyrillic/Glyph alternatives are separate intentional designs.
 - **UI Copy Language**: Russian strictly.
 - **Provider Confidentiality**: Never introduce any user-facing mention of internal sources, providers, or scrapers (`Alloha`, `Collaps`, `NeoMovies`, `TMDB`, `Kinopoisk`, etc.). In the UI, streaming sources are exposed only as «Основной» / «Резервный».
 - **Streaming Sources** (dual-source architecture):

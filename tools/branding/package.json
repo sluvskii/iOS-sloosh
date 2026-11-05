@@ -1,0 +1,13 @@
+{
+  "name": "sloosh-brand-assets",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "generate": "node generate.cjs",
+    "test": "node generate.cjs --check"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "sharp": "0.34.5"
+  }
+}

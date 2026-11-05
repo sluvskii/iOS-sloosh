@@ -52,6 +52,12 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
 
+      - name: Test brand icons against canonical wordmark
+        run: |
+          cd tools/branding
+          npm ci --no-audit --no-fund
+          npm test
+
       - name: Test clip playback policy
         run: bash sloosh-iOS/Tests/run-clip-playback-tests.sh
 

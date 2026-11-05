@@ -240,3 +240,13 @@ letterforms, unchanged card height and logos; metadata-on SF titles remain untou
 Toggle both settings in classic and overlay cards, including offline/missing logos.
 Year/genre visibility alone selects the text style; image requests, poster routes,
 caption dimensions and actual logo selection must not change.
+
+## Canonical brand artwork
+
+CI runs `npm ci && npm test` in `tools/branding`: the main and Cinema launcher
+icons must match the canonical `LogoText` SVG in light/dark/tinted appearances;
+Settings previews must match their light icons. It checks actual pixels, opaque
+1024×1024 output and clean source backgrounds. See `tools/branding/README.md` for
+regeneration. On iPhone verify both icon choices, all three Home Screen appearances,
+Settings previews, launch/auth/About branding, and unchanged Cyrillic/Glyph options.
+iOS may cache launcher icons after an update; re-select the icon/restart if needed.
