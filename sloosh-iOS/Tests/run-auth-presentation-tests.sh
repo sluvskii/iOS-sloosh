@@ -30,6 +30,7 @@ if ! swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/UI/Shared/BackdropForeground.swift \
   sloosh/Sources/UI/Profile/AuthWordReveal.swift \
   sloosh/Sources/UI/Profile/AuthPhraseLayout.swift \
+  sloosh/Sources/UI/Profile/AuthPhraseCopy.swift \
   sloosh/Sources/UI/Profile/AuthInlineBrand.swift \
   sloosh/Sources/UI/Profile/AuthCinematicBackground.swift \
   sloosh/Sources/UI/Profile/AuthScreenPolish.swift \

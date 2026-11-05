@@ -12,22 +12,11 @@ public struct CinematicAuthView: View {
 
     public var onDismiss: (() -> Void)?
 
-    /// Сбалансированные кино-мысли, разбитые на естественные строки для идеальной типографики
-    private let phrases = [
-        "Не только смотри,\nно и sloosh-ай",
-        "Смотри глазами.\nsloosh-ай сердцем",
-        "Твой личный кинозал\nв кармане",
-        "Один клик —\nи ты уже в кино",
-        "Кинотеатр, который\nвсегда с тобой",
-        "Залипнуть на все выходные?\nЛегко",
-        "Ещё одну серию\nи точно спать",
-        "Тот самый фильм\nиз сохранённых",
-        "Кино, которое\nдавно откладывали",
-        "Сериал, который затянет\nс первой серии",
-        "Что вышло\nв хорошем качестве?"
-    ]
+    private let phrases = AuthPhraseCopy.phrases
 
-    @State private var phraseIndex: Int = 0
+    // Choose once per screen instance; don't restart with the same slogan every
+    // time. State preserves this choice across redraws and accessibility changes.
+    @State private var phraseIndex = AuthPhraseCopy.phrases.indices.randomElement() ?? 0
     @State private var revealElapsed: Double = 0
     @State private var outgoingPhraseIndex: Int?
     @State private var outgoingOpacity: Double = 0

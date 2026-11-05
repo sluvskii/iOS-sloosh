@@ -354,3 +354,18 @@ brightness limits, per-frame continuity, visible motion within two seconds, dith
 stability and wide layouts. Existing logo-color, reveal and equal-width suites
 remain. Check the staged entrance and moving light on an iPhone too, including
 Low Power, Reduce Motion, app background/foreground and a cancelled Google flow.
+
+### Conversational auth phrase bank
+
+`AuthPhraseCopy` is the shared production/test source for 32 distinct short phrases:
+recognizable viewing habits, light self-irony and movie reactions, not advertising
+promises or a stream of forced slang. Two approved inline-wordmark phrases remain,
+spaced through the sequence. Auth chooses a random starting index once per screen
+instance, then follows the existing cycle. Redraws, Google loading and accessibility
+changes do not reroll it. VoiceOver / Reduce Motion still keep the current phrase
+stable; no changes to reveal/hold timing or the approved visual presentation.
+
+Auth tests run the entire real bank through font coverage, word-beat/reflow and
+equal-width ink fitting at narrow/regular widths and larger text, plus actual
+narrow-screen rendering of every phrase. Keep authored two-row setup/reaction
+breaks, no emoji or unsupported glyphs, and short copy that fits the existing hold.
