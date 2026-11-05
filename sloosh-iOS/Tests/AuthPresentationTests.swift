@@ -210,7 +210,9 @@ struct AuthPresentationTests {
             }
             return values.sorted { $0.value > $1.value }.prefix(8).map { "\($0.key):\($0.value)" }.joined(separator: " ")
         }
-        FileHandle.standardError.write(Data("::error::Brand pixel diagnostic: swatch=\(swatch), left=\(leftMatches), right=\(rightMatches), leftHistogram=\(inkHistogram(in: 0..<106)), rightHistogram=\(inkHistogram(in: 215..<320))\n".utf8))
+        if leftMatches <= 50 || rightMatches <= 20 {
+            FileHandle.standardError.write(Data("::error::Brand pixel diagnostic: swatch=\(swatch), left=\(leftMatches), right=\(rightMatches), leftHistogram=\(inkHistogram(in: 0..<106)), rightHistogram=\(inkHistogram(in: 215..<320))\n".utf8))
+        }
         check(leftMatches > 50, "Actual logo pixels match a native SwiftUI accent swatch")
         check(rightMatches > 20, "CoreText suffix matches the same swatch; no sRGB/linear double encoding")
         check(litCount(pixels(authPhrase(phrase: "SLOOSH", elapsed: 10, accent: brandAccent), width: 320, height: 150)) > 100,

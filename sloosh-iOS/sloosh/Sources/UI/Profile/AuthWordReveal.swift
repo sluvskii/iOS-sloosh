@@ -73,8 +73,7 @@ struct AuthPhraseInkCanvas: View, Animatable {
             // Color.Resolved.red/green/blue are sRGB components, not linear ones.
             // Let SwiftUI supply the correctly tagged CGColor instead of re-encoding.
             let accentColor = accent.resolve(in: environment).cgColor
-            var logo = context.resolve(Image("LogoText", bundle: logoBundle).renderingMode(.template))
-            logo.shading = .color(accent)
+            let logo = context.resolve(Image("LogoText", bundle: logoBundle).renderingMode(.template))
             var top = max(0, (size.height - plan.inkSize.height) / 2)
             for line in plan.lines {
                 let baseline = CGPoint(x: (size.width - line.ink.width) / 2 - line.ink.minX,
@@ -91,9 +90,17 @@ struct AuthPhraseInkCanvas: View, Animatable {
                     wordContext.translateBy(x: 0, y: (1 - visibility) * 5)
                     if visibility < 1 { wordContext.addFilter(.blur(radius: (1 - visibility) * 7)) }
                     if let rect = AuthInlineBrand.logoRect(in: run) {
-                        wordContext.draw(logo, in: CGRect(x: baseline.x + rect.minX,
-                                                         y: size.height - baseline.y - rect.maxY,
-                                                         width: rect.width, height: rect.height))
+                        let destination = CGRect(x: baseline.x + rect.minX,
+                                                 y: size.height - baseline.y - rect.maxY,
+                                                 width: rect.width, height: rect.height)
+                        // Explicit alpha-mask tint: resolved template SVGs can render
+                        // white despite ResolvedImage.shading. Tint inside the layer;
+                        // apply the word's reveal opacity/blur to its complete result.
+                        wordContext.drawLayer { tinted in
+                            tinted.draw(logo, in: destination)
+                            tinted.blendMode = .sourceIn
+                            tinted.fill(Path(destination), with: .color(accent))
+                        }
                         continue
                     }
                     wordContext.withCGContext { cg in
