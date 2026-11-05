@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import CoreText
 
 @main
 struct AuthPresentationTests {
@@ -10,6 +11,24 @@ struct AuthPresentationTests {
             precondition(condition, message)
             count += 1
         }
+        let fontURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("sloosh/Resources/Fonts/\(CatalogFallbackTitleStyle.fontFileName)")
+        var fontError: Unmanaged<CFError>?
+        check(CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, &fontError), "Bundled catalog font registers for auth phrases")
+        let font = CTFontCreateWithName(CatalogFallbackTitleStyle.postScriptName as CFString, AuthPhraseTypography.baseSize, nil)
+        check(CTFontCopyPostScriptName(font) as String == CatalogFallbackTitleStyle.postScriptName, "Auth font must not silently fall back to SF")
+        let letters = Array("АаБбВвДдЕеЁёЖжЙйЦцЩщЯяsloosh-ай".utf16)
+        var glyphs = [CGGlyph](repeating: 0, count: letters.count)
+        check(CTFontGetGlyphsForCharacters(font, letters, &glyphs, letters.count) && !glyphs.contains(0), "Mixed-case Cyrillic and the brand are covered")
+        check(AuthBackgroundSmoothing.noiseBytes.count == 64 * 64, "Tiny cached grain texture")
+        let meanNoise = AuthBackgroundSmoothing.noiseBytes.reduce(0.0) { $0 + Double($1) } / Double(AuthBackgroundSmoothing.noiseBytes.count)
+        check(abs(meanNoise - 127.5) < 4, "Noise remains neutral instead of tinting or lifting the background")
+        check(AuthBackgroundSmoothing.ditherOpacity <= 0.06, "Dither is restrained, not a visible grain effect")
+        let glow = AuthBackgroundSmoothing.glowStops.map(\.opacity)
+        check(glow.first == 1 && glow.last == 0, "Glow starts at the same intensity and feathers to zero")
+        check(zip(glow, glow.dropFirst()).allSatisfy { $0 >= $1 }, "Glow has no abrupt brightness reversals")
+        let beam = AuthBackgroundSmoothing.beamStops.map(\.opacity)
+        check(beam.first == 0 && (beam.last ?? 1) < 0.0001 && beam[16] == 1, "Beam edges are feathered, preserving peak intensity")
         let phrase = "  Один клик —\nи ты уже в кино  "
         let plan = AuthWordRevealPlan(phrase)
         check(plan.parts.map(\.text).joined() == phrase, "Preserve spaces, punctuation and manual line breaks")
@@ -49,7 +68,7 @@ struct AuthPresentationTests {
         let title = "Кино дома"
         func renderedTitle(_ elapsed: Double, width: CGFloat = 320) -> [UInt8] {
             pixels(AuthAnimatedPhrase(phrase: title, elapsed: elapsed, accent: .green)
-                .font(.system(size: 25, weight: .bold)).multilineTextAlignment(.center), width: width, height: 120)
+                .font(AuthPhraseTypography.font(at: AuthPhraseTypography.baseSize)).multilineTextAlignment(.center), width: width, height: 120)
         }
         let hidden = renderedTitle(0)
         let partial = renderedTitle(0.3)
@@ -62,7 +81,7 @@ struct AuthPresentationTests {
             let complete = AuthWordRevealPlan(text).duration
             for width in [CGFloat(208), 320] {
                 let image = pixels(AuthAnimatedPhrase(phrase: text, elapsed: complete, accent: .green)
-                    .font(.system(size: 32, weight: .bold)).multilineTextAlignment(.center), width: width, height: 240)
+                    .font(AuthPhraseTypography.font(at: 36)).multilineTextAlignment(.center), width: width, height: 240)
                 check(litCount(image) > 100, "Cyrillic/newlines/brand render with larger text and wrapping")
             }
         }
@@ -70,6 +89,12 @@ struct AuthPresentationTests {
         let background8 = pixels(AuthCinematicBackdrop(time: 8, accent: .green), width: 200, height: 400)
         check(litCount(background0) > 500, "Background has actual light/depth rather than solid black")
         check(background0 != background8, "Background light changes over time")
+        let withoutDither = pixels(AuthCinematicBackdrop(time: 0, accent: .green, includesDither: false), width: 200, height: 400)
+        let differences = zip(background0, withoutDither).map { abs(Int($0) - Int($1)) }
+        check(differences.filter { $0 > 0 }.count > 100, "Dither must actually affect rendered gradient pixels")
+        check((differences.max() ?? 255) <= 8, "Dither stays a few code values, never a visible wash")
+        check(background0 == pixels(AuthCinematicBackdrop(time: 0, accent: .green), width: 200, height: 400),
+              "Dither is stable at the same phase, not random flicker")
         let maxChannel = stride(from: 0, to: background0.count, by: 4).map { max(background0[$0], background0[$0 + 1], background0[$0 + 2]) }.max() ?? 255
         check(maxChannel < 150, "Background remains restrained enough for white hero text")
         print("✓ Auth presentation: \(count) checks passed")
