@@ -78,10 +78,20 @@ struct AuthPhraseLayout {
                     attributes[wordIndexKey] = wordIndex
                     attributes[accentKey] = word.contains("SLOOSH")
                 }
-                attributed.append(NSAttributedString(string: String(word), attributes: attributes))
+                if let suffix = AuthInlineBrand.suffix(of: String(word)) {
+                    var attachment = attributes
+                    attachment[AuthInlineBrand.attachmentKey] = true
+                    attachment[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = AuthInlineBrand.delegate(
+                        capHeight: CTFontGetCapHeight(font), hasSuffix: !suffix.isEmpty
+                    )
+                    attributed.append(NSAttributedString(string: "\u{FFFC}", attributes: attachment))
+                    attributed.append(NSAttributedString(string: suffix, attributes: attributes))
+                } else {
+                    attributed.append(NSAttributedString(string: String(word), attributes: attributes))
+                }
             }
             let shaped = CTLineCreateWithAttributedString(attributed)
-            let ink = CTLineGetBoundsWithOptions(shaped, [.useGlyphPathBounds])
+            let ink = AuthInlineBrand.inkBounds(of: shaped)
             return Line(text: string, pointSize: size, shaped: shaped, ink: ink.isNull ? .zero : ink)
         }
 
