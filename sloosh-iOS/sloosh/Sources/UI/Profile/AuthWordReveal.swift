@@ -1,17 +1,7 @@
 import SwiftUI
+import CoreText
 
-/// Same bundled SemiBold as catalog wordmarks, but editorial sentence case.
-/// Point size is scaled once by the parent; fixedSize prevents double scaling.
-enum AuthPhraseTypography {
-    static let baseSize: CGFloat = 28
-    static let lineSpacing: CGFloat = 2
-    static func font(at pointSize: CGFloat) -> Font {
-        .custom(CatalogFallbackTitleStyle.postScriptName, fixedSize: pointSize)
-    }
-}
-
-/// Preserve native Text wrapping, spaces and explicit line breaks. Only the ink
-/// is animated; word positions never move as more of the phrase is revealed.
+/// The reveal schedule is independent of visual line wrapping and letter case.
 struct AuthWordRevealPlan {
     struct Part {
         let text: String
@@ -59,35 +49,51 @@ struct AuthWordRevealPlan {
     }
 }
 
-private struct AuthWordIndex: TextAttribute {
-    let value: Int
-}
-
-private struct AuthWordRevealRenderer: TextRenderer {
+/// CoreText gives us exact glyph positions and bounds. Each word has its own
+/// blur/opacity layer, but all row sizes/positions are fixed before reveal starts.
+private struct AuthPhraseInkCanvas: View, Animatable {
+    let phrase: String
     var elapsed: Double
+    let accent: Color
+    let scale: CGFloat
+    @Environment(\.self) private var environment
+
     var animatableData: Double {
         get { elapsed }
         set { elapsed = newValue }
     }
 
-    var displayPadding: EdgeInsets { EdgeInsets(top: 8, leading: 8, bottom: 13, trailing: 8) }
-
-    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
-        for line in layout {
-            for run in line {
-                guard let word = run[AuthWordIndex.self] else {
-                    context.draw(run)
-                    continue
+    var body: some View {
+        Canvas { context, size in
+            let plan = AuthPhraseLayout.fit(phrase, in: size, scale: scale)
+            let resolvedAccent = accent.resolve(in: environment)
+            let accentColor = CGColor(colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
+                                      components: [CGFloat(resolvedAccent.red), CGFloat(resolvedAccent.green),
+                                                   CGFloat(resolvedAccent.blue), CGFloat(resolvedAccent.opacity)])!
+            var top = max(0, (size.height - plan.inkSize.height) / 2)
+            for line in plan.lines {
+                let baseline = CGPoint(x: (size.width - line.ink.width) / 2 - line.ink.minX,
+                                       y: size.height - top - line.ink.maxY)
+                for run in CTLineGetGlyphRuns(line.shaped) as! [CTRun] {
+                    let attributes = CTRunGetAttributes(run) as NSDictionary
+                    guard let index = attributes[AuthPhraseLayout.wordIndexKey.rawValue] as? Int else { continue }
+                    let visibility = AuthWordRevealPlan.visibility(of: index, at: elapsed)
+                    guard visibility > 0 else { continue }
+                    var wordContext = context
+                    wordContext.opacity *= visibility
+                    wordContext.translateBy(x: 0, y: (1 - visibility) * 5)
+                    if visibility < 1 { wordContext.addFilter(.blur(radius: (1 - visibility) * 7)) }
+                    let usesAccent = attributes[AuthPhraseLayout.accentKey.rawValue] as? Bool == true
+                    wordContext.withCGContext { cg in
+                        cg.translateBy(x: 0, y: size.height)
+                        cg.scaleBy(x: 1, y: -1)
+                        cg.textMatrix = .identity
+                        cg.textPosition = baseline
+                        cg.setFillColor(usesAccent ? accentColor : CGColor(gray: 1, alpha: 0.92))
+                        CTRunDraw(run, cg, CFRange(location: 0, length: 0))
+                    }
                 }
-                let visibility = AuthWordRevealPlan.visibility(of: word.value, at: elapsed)
-                guard visibility > 0 else { continue }
-                var wordContext = context
-                wordContext.opacity *= visibility
-                wordContext.translateBy(x: 0, y: (1 - visibility) * 5)
-                if visibility < 1 {
-                    wordContext.addFilter(.blur(radius: (1 - visibility) * 7))
-                }
-                wordContext.draw(run, options: .disablesSubpixelQuantization)
+                top += line.ink.height + plan.lineGap
             }
         }
     }
@@ -97,20 +103,10 @@ struct AuthAnimatedPhrase: View {
     let phrase: String
     let elapsed: Double
     let accent: Color
-
-    private var text: Text {
-        AuthWordRevealPlan(phrase).parts.reduce(Text("")) { result, part in
-            guard let index = part.wordIndex else { return result + Text(part.text) }
-            let color = part.text.localizedCaseInsensitiveContains("sloosh") ? accent : Color.white.opacity(0.92)
-            return result + Text(part.text)
-                .foregroundColor(color)
-                .customAttribute(AuthWordIndex(value: index))
-        }
-    }
+    var scale: CGFloat = 1
 
     var body: some View {
-        text
-            .textRenderer(AuthWordRevealRenderer(elapsed: elapsed))
+        AuthPhraseInkCanvas(phrase: phrase, elapsed: elapsed, accent: accent, scale: scale)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(phrase)
     }

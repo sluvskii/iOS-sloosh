@@ -255,7 +255,7 @@ iOS may cache launcher icons after an update; re-select the icon/restart if need
 
 `bash Tests/run-auth-presentation-tests.sh` runs on macOS CI. It tests production
 word tokenization, original spaces/newlines/brand punctuation, staggered timing,
-monotonic per-word focus, final visibility, actual TextRenderer frames at initial /
+monotonic per-word focus, final visibility, actual CoreText/Canvas word frames at initial /
 partial / full progress, narrow and larger text rendering, and actual background
 frames at different phases (including restrained luminance).
 
@@ -268,10 +268,9 @@ Only appearance changes; OAuth, API signatures, tokens and auth gating are untou
 
 ### Auth background smoothing / catalog font refinement
 
-Auth hero phrases reuse the exact bundled catalog SemiBold (28pt base, scaled once)
-without uppercasing. Button, errors, captions and catalog settings are unchanged.
-Auth tests register the real font, check lowercase Cyrillic/Ё/Й coverage, and render
-word reveal + larger/narrow mixed-case phrases with the production font helper.
+Auth hero phrases reuse the exact bundled catalog SemiBold. Button, errors,
+captions and catalog settings are unchanged. Auth tests register the real font,
+check Cyrillic/Ё/Й coverage, and render word reveal in narrow/larger layouts.
 
 Backdrop uses smooth sampled Gaussian glows and cosine-feathered beams instead
 of piecewise straight falloffs. A deterministic cached 64px neutral grain tile at
@@ -280,3 +279,26 @@ No animated noise, extra background blur surfaces, text blur or palette redesign
 Tests cover falloffs, grain size/mean/strength and stable repeated render frames.
 On iPhone inspect gradients at normal/reduced brightness (OLED banding may vary),
 2×/3× devices, all animation phases and Reduce Motion/low-power static frames.
+
+### Uppercase, equal-width auth rows
+
+`AuthPhraseLayout` measures real CoreText glyph ink. Every row gets its own font
+size to fill the same width (shorter row → larger font), with -0.018em tracking,
+0.16em word spaces and a 0.016 × block-width real-ink line gap. Height-limited blocks
+shrink together, retaining equal row widths; narrow screens / larger text can wrap
+at natural word boundaries when this improves the smallest row's readability.
+No horizontal/vertical glyph distortion, no font line-box padding, no truncation.
+
+Auth now reserves a responsive hero area instead of a fixed 110pt minimum. Canvas
+renders tagged CoreText word runs on explicit baselines with the original global
+word timing/blur/opacity. The original sentence remains the accessibility label.
+A bounded layout cache avoids re-shaping on animation frames. Background smoothing,
+Google action, auth/security, logo safe area and supporting SF copy are unchanged.
+
+Tests cover equal row ink widths, shorter-row enlargement, uppercase, all original
+words/punctuation, Ё/Й/Д/Ц/Щ fit, compact actual gaps, narrow/height/Dynamic Type
+matrices, global word indices after wrapping, and actual pixel-row widths/gaps.
+On iPhone inspect all phrase transitions, especially the large «ЛЕГКО», 2×/3×
+screens, small phones, larger text and error presentation. Keep the Google button
+fully accessible; never solve headline sizing by stretching letters or moving
+content under the notch.
