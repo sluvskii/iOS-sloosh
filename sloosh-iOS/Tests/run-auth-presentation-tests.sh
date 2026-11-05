@@ -5,6 +5,7 @@ test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 if ! swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/UI/Shared/CatalogFallbackTitleStyle.swift \
+  sloosh/Sources/UI/Shared/BackdropForeground.swift \
   sloosh/Sources/UI/Profile/AuthWordReveal.swift \
   sloosh/Sources/UI/Profile/AuthPhraseLayout.swift \
   sloosh/Sources/UI/Profile/AuthCinematicBackground.swift \

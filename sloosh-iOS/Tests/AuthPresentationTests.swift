@@ -143,6 +143,26 @@ struct AuthPresentationTests {
         check(renderedWidths.min()! > 300, "Text grows to the available width")
         check(rowBands[1].first! - rowBands[0].last! <= 8, "Actual interline ink gap is tight")
 
+        // Same hierarchy as the screen: blend only the hero block over an
+        // external colored backdrop. Black-only snapshots cannot prove blending.
+        let blendSurface = Color(red: 0.12, green: 0.18, blue: 0.27)
+        let blendPhrase = AuthAnimatedPhrase(phrase: "Кино\nsloosh-ай", elapsed: 10, accent: Color(red: 0.2, green: 0.8, blue: 0.1))
+        let normalInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.normal) }, width: 320, height: 180)
+        let additiveInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.plusLighter) }, width: 320, height: 180)
+        let productionInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }, width: 320, height: 180)
+        check(productionInk == additiveInk, "Production hero uses the same plusLighter blend as other dark cinematic text")
+        check(productionInk != normalInk, "Blending must actually affect foreground pixels over the backdrop")
+        check(Array(productionInk.prefix(4)) == Array(normalInk.prefix(4)), "Background outside the ink is unchanged")
+        // Accessibility environment values are read-only system traits. Test
+        // the shared fallback policy directly instead of mutating OS settings.
+        for contrast in [false, true] {
+            for reduceTransparency in [false, true] {
+                let appearance = BackdropForegroundAppearance(isDark: true, increasedContrast: contrast,
+                                                             reduceTransparency: reduceTransparency, opacity: 1)
+                check(appearance.blendMode == (contrast || reduceTransparency ? .normal : .plusLighter),
+                      "Shared policy preserves the normal-blend accessibility fallback")
+            }
+        }
         let background0 = pixels(AuthCinematicBackdrop(time: 0, accent: .green), width: 200, height: 400)
         let background8 = pixels(AuthCinematicBackdrop(time: 8, accent: .green), width: 200, height: 400)
         check(litCount(background0) > 500, "Background has actual light/depth rather than solid black")
