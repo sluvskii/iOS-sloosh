@@ -150,19 +150,25 @@ struct AuthPresentationTests {
         let normalInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.normal) }, width: 320, height: 180)
         let additiveInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.plusLighter) }, width: 320, height: 180)
         let productionInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }
-            .environment(\.colorSchemeContrast, .standard)
             .environment(\.accessibilityReduceTransparency, false), width: 320, height: 180)
         check(productionInk == additiveInk, "Production hero uses the same plusLighter blend as other dark cinematic text")
         check(productionInk != normalInk, "Blending must actually affect foreground pixels over the backdrop")
         check(Array(productionInk.prefix(4)) == Array(normalInk.prefix(4)), "Background outside the ink is unchanged")
-        for contrast in [ColorSchemeContrast.standard, .increased] {
+        // Contrast is a read-only system environment value. Cover its policy
+        // directly, and exercise the writable Reduce Transparency path in pixels.
+        for contrast in [false, true] {
             for reduceTransparency in [false, true] {
-                let image = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }
-                    .environment(\.colorSchemeContrast, contrast)
-                    .environment(\.accessibilityReduceTransparency, reduceTransparency), width: 320, height: 180)
-                check(image == (contrast == .increased || reduceTransparency ? normalInk : additiveInk),
-                      "Preserve the app's normal-blend accessibility fallback without recoloring the brand")
+                let appearance = BackdropForegroundAppearance(isDark: true, increasedContrast: contrast,
+                                                             reduceTransparency: reduceTransparency, opacity: 1)
+                check(appearance.blendMode == (contrast || reduceTransparency ? .normal : .plusLighter),
+                      "Shared policy preserves the normal-blend accessibility fallback")
             }
+        }
+        for reduceTransparency in [false, true] {
+            let image = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }
+                .environment(\.accessibilityReduceTransparency, reduceTransparency), width: 320, height: 180)
+            check(image == (reduceTransparency ? normalInk : additiveInk),
+                  "Production modifier applies Reduce Transparency without recoloring the brand")
         }
 
         let background0 = pixels(AuthCinematicBackdrop(time: 0, accent: .green), width: 200, height: 400)
