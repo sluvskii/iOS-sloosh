@@ -265,3 +265,18 @@ notch/safe areas + Google button/error remain unchanged. Check small and large
 phones, larger Dynamic Type, VoiceOver and Reduce Motion (static full phrase),
 background/foreground, closing/reopening auth, low-power mode (static backdrop).
 Only appearance changes; OAuth, API signatures, tokens and auth gating are untouched.
+
+### Auth background smoothing / catalog font refinement
+
+Auth hero phrases reuse the exact bundled catalog SemiBold (28pt base, scaled once)
+without uppercasing. Button, errors, captions and catalog settings are unchanged.
+Auth tests register the real font, check lowercase Cyrillic/Ё/Й coverage, and render
+word reveal + larger/narrow mixed-case phrases with the production font helper.
+
+Backdrop uses smooth sampled Gaussian glows and cosine-feathered beams instead
+of piecewise straight falloffs. A deterministic cached 64px neutral grain tile at
+physical-pixel scale gently masks 8-bit banding inside the backdrop Canvas only.
+No animated noise, extra background blur surfaces, text blur or palette redesign.
+Tests cover falloffs, grain size/mean/strength and stable repeated render frames.
+On iPhone inspect gradients at normal/reduced brightness (OLED banding may vary),
+2×/3× devices, all animation phases and Reduce Motion/low-power static frames.

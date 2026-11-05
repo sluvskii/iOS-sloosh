@@ -31,7 +31,7 @@ public struct CinematicAuthView: View {
     @State private var revealElapsed: Double = 0
     @State private var outgoingPhraseIndex: Int?
     @State private var outgoingOpacity: Double = 0
-    @ScaledMetric(relativeTo: .title2) private var phrasePointSize: CGFloat = 25
+    @ScaledMetric(relativeTo: .title2) private var phrasePointSize: CGFloat = AuthPhraseTypography.baseSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.scenePhase) private var scenePhase
@@ -146,9 +146,9 @@ public struct CinematicAuthView: View {
             }
             AuthAnimatedPhrase(phrase: phrases[phraseIndex], elapsed: revealElapsed, accent: .slooshAccent)
         }
-        .font(.system(size: phrasePointSize, weight: .bold, design: .default))
+        .font(AuthPhraseTypography.font(at: phrasePointSize))
         .multilineTextAlignment(.center)
-        .lineSpacing(6)
+        .lineSpacing(AuthPhraseTypography.lineSpacing)
         .frame(maxWidth: 320)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 110)

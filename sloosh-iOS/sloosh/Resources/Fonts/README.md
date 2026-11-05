@@ -4,7 +4,9 @@ SlooshCatalogCondensed-SemiBold.ttf is a static weight-600 instance of **Oswald*
 with full upstream character coverage (including Cyrillic and Ё), not a downloaded
 web font. Catalog text titles use it when year/genre are hidden, independently of
 the image-logo preference (including missing/loading/error image-logo fallbacks).
-With year/genre visible, text titles remain SF. Other app typography is unchanged.
+With year/genre visible, text titles remain SF. Auth hero phrases also use this
+same font, in original sentence case with word-by-word reveal. Buttons and other
+app typography remain SF.
 
 Upstream: https://github.com/google/fonts/tree/6c1dbe27dcf7d817d4b62cec033ba77fa8e2a5ec/ofl/oswald
 Source: `Oswald[wght].ttf`, SIL Open Font License 1.1 (included in OFL-Oswald.txt).

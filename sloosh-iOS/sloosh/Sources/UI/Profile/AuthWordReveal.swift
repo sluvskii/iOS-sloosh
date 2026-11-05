@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// Same bundled SemiBold as catalog wordmarks, but editorial sentence case.
+/// Point size is scaled once by the parent; fixedSize prevents double scaling.
+enum AuthPhraseTypography {
+    static let baseSize: CGFloat = 28
+    static let lineSpacing: CGFloat = 2
+    static func font(at pointSize: CGFloat) -> Font {
+        .custom(CatalogFallbackTitleStyle.postScriptName, fixedSize: pointSize)
+    }
+}
+
 /// Preserve native Text wrapping, spaces and explicit line breaks. Only the ink
 /// is animated; word positions never move as more of the phrase is revealed.
 struct AuthWordRevealPlan {
