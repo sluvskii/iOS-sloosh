@@ -143,6 +143,28 @@ struct AuthPresentationTests {
         check(renderedWidths.min()! > 300, "Text grows to the available width")
         check(rowBands[1].first! - rowBands[0].last! <= 8, "Actual interline ink gap is tight")
 
+        // Same hierarchy as the screen: blend only the hero block over an
+        // external colored backdrop. Black-only snapshots cannot prove blending.
+        let blendSurface = Color(red: 0.12, green: 0.18, blue: 0.27)
+        let blendPhrase = AuthAnimatedPhrase(phrase: "Кино\nsloosh-ай", elapsed: 10, accent: Color(red: 0.2, green: 0.8, blue: 0.1))
+        let normalInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.normal) }, width: 320, height: 180)
+        let additiveInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.plusLighter) }, width: 320, height: 180)
+        let productionInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }
+            .environment(\.colorSchemeContrast, .standard)
+            .environment(\.accessibilityReduceTransparency, false), width: 320, height: 180)
+        check(productionInk == additiveInk, "Production hero uses the same plusLighter blend as other dark cinematic text")
+        check(productionInk != normalInk, "Blending must actually affect foreground pixels over the backdrop")
+        check(Array(productionInk.prefix(4)) == Array(normalInk.prefix(4)), "Background outside the ink is unchanged")
+        for contrast in [ColorSchemeContrast.standard, .increased] {
+            for reduceTransparency in [false, true] {
+                let image = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }
+                    .environment(\.colorSchemeContrast, contrast)
+                    .environment(\.accessibilityReduceTransparency, reduceTransparency), width: 320, height: 180)
+                check(image == (contrast == .increased || reduceTransparency ? normalInk : additiveInk),
+                      "Preserve the app's normal-blend accessibility fallback without recoloring the brand")
+            }
+        }
+
         let background0 = pixels(AuthCinematicBackdrop(time: 0, accent: .green), width: 200, height: 400)
         let background8 = pixels(AuthCinematicBackdrop(time: 8, accent: .green), width: 200, height: 400)
         check(litCount(background0) > 500, "Background has actual light/depth rather than solid black")

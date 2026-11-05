@@ -302,3 +302,14 @@ On iPhone inspect all phrase transitions, especially the large «ЛЕГКО», 2
 screens, small phones, larger text and error presentation. Keep the Google button
 fully accessible; never solve headline sizing by stretching letters or moving
 content under the notch.
+
+### Auth hero backdrop blending
+
+`AuthPhraseForeground` reuses the existing cinematic foreground appearance policy,
+but applies only its blend mode: plusLighter on the dark auth backdrop, normal for
+increased contrast / Reduce Transparency. It wraps only the complete incoming +
+outgoing hero block, without isolating it from the real background or overwriting
+CoreText white/accent colors. Font fitting, word reveal, backdrop, buttons and
+supporting copy are unchanged. Pixel tests compare the production modifier with
+normal/plusLighter references over a colored surface, including both accessibility
+fallbacks and unchanged background pixels. Check transitions on iPhone too.

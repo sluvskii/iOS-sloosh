@@ -152,6 +152,7 @@ public struct CinematicAuthView: View {
         }
         .frame(maxWidth: 360)
         .frame(maxWidth: .infinity)
+        .modifier(AuthPhraseForeground())
     }
 
     // MARK: - Google Sign-In Button

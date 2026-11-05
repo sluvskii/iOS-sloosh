@@ -111,3 +111,18 @@ struct AuthAnimatedPhrase: View {
             .accessibilityLabel(phrase)
     }
 }
+
+/// Blend the hero ink into the actual cinematic backdrop, not into an isolated
+/// black surface. CoreText keeps ownership of white/accent colors and opacity.
+struct AuthPhraseForeground: ViewModifier {
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let appearance = BackdropForegroundAppearance(
+            isDark: true, increasedContrast: contrast == .increased,
+            reduceTransparency: reduceTransparency, opacity: 1
+        )
+        content.blendMode(appearance.blendMode)
+    }
+}
