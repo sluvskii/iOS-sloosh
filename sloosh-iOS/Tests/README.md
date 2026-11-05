@@ -250,3 +250,18 @@ Settings previews must match their light icons. It checks actual pixels, opaque
 regeneration. On iPhone verify both icon choices, all three Home Screen appearances,
 Settings previews, launch/auth/About branding, and unchanged Cyrillic/Glyph options.
 iOS may cache launcher icons after an update; re-select the icon/restart if needed.
+
+## Auth presentation (word reveal and atmospheric background)
+
+`bash Tests/run-auth-presentation-tests.sh` runs on macOS CI. It tests production
+word tokenization, original spaces/newlines/brand punctuation, staggered timing,
+monotonic per-word focus, final visibility, actual TextRenderer frames at initial /
+partial / full progress, narrow and larger text rendering, and actual background
+frames at different phases (including restrained luminance).
+
+Manual iPhone: first phrase and several transitions reveal by word with no layout
+jumps, brief overlaps never flash the whole incoming phrase, brand accent remains,
+notch/safe areas + Google button/error remain unchanged. Check small and large
+phones, larger Dynamic Type, VoiceOver and Reduce Motion (static full phrase),
+background/foreground, closing/reopening auth, low-power mode (static backdrop).
+Only appearance changes; OAuth, API signatures, tokens and auth gating are untouched.

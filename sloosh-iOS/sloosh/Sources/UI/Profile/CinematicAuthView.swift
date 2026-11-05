@@ -4,9 +4,9 @@ import UIKit
 /// Флагманский нативный экран обязательной авторизации sloosh.
 /// Чистый дизайн Apple TV / Liquid Glass:
 /// - Безупречное позиционирование в Safe Area: логотип строго под Dynamic Island / чёлкой с комфортным отступом
-/// - Непрерывный кинематографичный Cross-Dissolve с оптическим блюр-фокусом без исчезновения в пустоту
+/// - Последовательный выход слов из блюра с нативными переносами и мягкой сменой фраз
 /// - Идеальная капсула «Продолжить через Google» с тактильным откликом
-/// - Дышащий кинематографичный фон с акцентным неоновым ореолом slooshAccent
+/// - Многослойный атмосферный фон с медленным движением света
 public struct CinematicAuthView: View {
     @ObservedObject private var authRepo = AuthRepository.shared
 
@@ -28,7 +28,17 @@ public struct CinematicAuthView: View {
     ]
 
     @State private var phraseIndex: Int = 0
-    @State private var auroraPulse: Bool = false
+    @State private var revealElapsed: Double = 0
+    @State private var outgoingPhraseIndex: Int?
+    @State private var outgoingOpacity: Double = 0
+    @ScaledMetric(relativeTo: .title2) private var phrasePointSize: CGFloat = 25
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var animatesPhrases: Bool {
+        !reduceMotion && !voiceOverEnabled && scenePhase == .active
+    }
 
     public init(onDismiss: (() -> Void)? = nil) {
         self.onDismiss = onDismiss
@@ -41,7 +51,7 @@ public struct CinematicAuthView: View {
     public var body: some View {
         ZStack {
             // MARK: - Атмосферный фон на весь экран
-            cinematicBackground
+            AuthCinematicBackground(accent: .slooshAccent)
                 .ignoresSafeArea()
 
             // MARK: - Нативный контент строго внутри Safe Area (никогда не лезет под чёлку)
@@ -87,11 +97,8 @@ public struct CinematicAuthView: View {
             .padding(.horizontal, 24)
         }
         .preferredColorScheme(.dark)
-        .task {
-            withAnimation(.easeInOut(duration: 6.5).repeatForever(autoreverses: true)) {
-                auroraPulse = true
-            }
-            await runPhraseLoop()
+        .task(id: animatesPhrases) {
+            await runPhraseLoop(animated: animatesPhrases)
         }
     }
 
@@ -125,18 +132,24 @@ public struct CinematicAuthView: View {
         }
     }
 
-    // MARK: - Hero Phrase View (Оптический блюр-фокус)
+    // MARK: - Hero Phrase View
 
     private var heroPhraseView: some View {
         ZStack {
-            Text(formattedPhrase(phrases[phraseIndex]))
-                .font(.system(size: 25, weight: .bold, design: .default))
-                .multilineTextAlignment(.center)
-                .lineSpacing(6)
-                .frame(maxWidth: 320)
-                .id(phraseIndex)
-                .transition(.opticalBlurDissolve)
+            if let outgoingPhraseIndex {
+                AuthAnimatedPhrase(phrase: phrases[outgoingPhraseIndex],
+                                   elapsed: AuthWordRevealPlan(phrases[outgoingPhraseIndex]).duration,
+                                   accent: .slooshAccent)
+                    .opacity(outgoingOpacity)
+                    .blur(radius: (1 - outgoingOpacity) * 6)
+                    .accessibilityHidden(true)
+            }
+            AuthAnimatedPhrase(phrase: phrases[phraseIndex], elapsed: revealElapsed, accent: .slooshAccent)
         }
+        .font(.system(size: phrasePointSize, weight: .bold, design: .default))
+        .multilineTextAlignment(.center)
+        .lineSpacing(6)
+        .frame(maxWidth: 320)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 110)
     }
@@ -203,114 +216,51 @@ public struct CinematicAuthView: View {
         .frame(maxWidth: 360)
     }
 
-    // MARK: - Кинематографичный фон
-
-    private var cinematicBackground: some View {
-        ZStack {
-            Color.black
-
-            // Неоновое свечение slooshAccent (изумрудное)
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color.slooshAccent.opacity(0.24),
-                            Color.slooshAccent.opacity(0.06),
-                            Color.clear
-                        ],
-                        center: .center,
-                        startRadius: 10,
-                        endRadius: 220
-                    )
-                )
-                .frame(width: 440, height: 440)
-                .offset(x: auroraPulse ? 30 : -30, y: auroraPulse ? -100 : -60)
-                .blur(radius: 50)
-
-            // Глубокий оттенок индиго снизу
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.12, green: 0.22, blue: 0.40).opacity(0.25),
-                            Color(red: 0.12, green: 0.22, blue: 0.40).opacity(0.06),
-                            Color.clear
-                        ],
-                        center: .center,
-                        startRadius: 10,
-                        endRadius: 240
-                    )
-                )
-                .frame(width: 460, height: 460)
-                .offset(x: auroraPulse ? -40 : 40, y: auroraPulse ? 130 : 90)
-                .blur(radius: 60)
-        }
-    }
-
-    // MARK: - Непрерывный цикл смены кино-мыслей
+    // MARK: - Cancellable word reveal / phrase cycle
 
     @MainActor
-    private func runPhraseLoop() async {
+    private func runPhraseLoop(animated: Bool) async {
+        // Don't continually change a screen reader's content or animate with
+        // Reduce Motion. Resume with a fresh reveal after foregrounding.
+        guard animated else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                outgoingPhraseIndex = nil
+                revealElapsed = AuthWordRevealPlan(phrases[phraseIndex]).duration
+            }
+            return
+        }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            outgoingPhraseIndex = nil
+            revealElapsed = 0
+        }
         while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 3_800_000_000)
-            if Task.isCancelled { break }
-            withAnimation(.easeInOut(duration: 0.75)) {
+            // Commit the zero-progress frame before animating to the end value;
+            // otherwise SwiftUI may coalesce resets and reveal a whole phrase.
+            do { try await Task.sleep(for: .milliseconds(40)) } catch { return }
+            guard !Task.isCancelled else { return }
+            let duration = AuthWordRevealPlan(phrases[phraseIndex]).duration
+            withAnimation(.linear(duration: duration)) {
+                revealElapsed = duration
+            }
+            withAnimation(.easeOut(duration: 0.5)) {
+                outgoingOpacity = 0
+            }
+            do {
+                // Hold starts after the last word is fully in focus.
+                try await Task.sleep(for: .seconds(duration + 2.8))
+            } catch { return }
+            guard !Task.isCancelled else { return }
+            withTransaction(transaction) {
+                outgoingPhraseIndex = phraseIndex
+                outgoingOpacity = 1
                 phraseIndex = (phraseIndex + 1) % phrases.count
+                revealElapsed = 0
             }
         }
-    }
-
-    // MARK: - Форматирование реплики с подсветкой sloosh-ай
-
-    private func formattedPhrase(_ text: String) -> AttributedString {
-        var attr = AttributedString(text)
-        attr.foregroundColor = Color.white.opacity(0.92)
-
-        if let range = attr.range(of: "sloosh-ай", options: .caseInsensitive) {
-            attr[range].foregroundColor = Color.slooshAccent
-        } else if let range = attr.range(of: "sloosh", options: .caseInsensitive) {
-            attr[range].foregroundColor = Color.slooshAccent
-        }
-        return attr
-    }
-}
-
-// MARK: - Оптический блюр-переход (Optical Blur Dissolve)
-
-private struct BlurFadeInModifier: ViewModifier {
-    let isActive: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isActive ? 0 : 1)
-            .blur(radius: isActive ? 10 : 0)
-            .scaleEffect(isActive ? 0.97 : 1.0)
-    }
-}
-
-private struct BlurFadeOutModifier: ViewModifier {
-    let isActive: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isActive ? 0 : 1)
-            .blur(radius: isActive ? 10 : 0)
-            .scaleEffect(isActive ? 1.03 : 1.0)
-    }
-}
-
-private extension AnyTransition {
-    static var opticalBlurDissolve: AnyTransition {
-        .asymmetric(
-            insertion: .modifier(
-                active: BlurFadeInModifier(isActive: true),
-                identity: BlurFadeInModifier(isActive: false)
-            ),
-            removal: .modifier(
-                active: BlurFadeOutModifier(isActive: true),
-                identity: BlurFadeOutModifier(isActive: false)
-            )
-        )
     }
 }
 

@@ -58,6 +58,9 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
+      - name: Test auth word reveal and cinematic background
+        run: bash sloosh-iOS/Tests/run-auth-presentation-tests.sh
+
       - name: Test clip playback policy
         run: bash sloosh-iOS/Tests/run-clip-playback-tests.sh
 
