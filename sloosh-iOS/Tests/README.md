@@ -303,14 +303,29 @@ screens, small phones, larger text and error presentation. Keep the Google butto
 fully accessible; never solve headline sizing by stretching letters or moving
 content under the notch.
 
-### Auth hero backdrop blending
+### Auth hero backdrop blending and inline logo
 
-`AuthPhraseForeground` reuses the existing cinematic foreground appearance policy,
-but applies only its blend mode: plusLighter on the dark auth backdrop, normal for
-increased contrast / Reduce Transparency. It wraps only the complete incoming +
-outgoing hero block, without isolating it from the real background or overwriting
-CoreText white/accent colors. Font fitting, word reveal, backdrop, buttons and
-supporting copy are unchanged. Pixel tests compare the production modifier with
-normal/plusLighter references over a colored surface and check unchanged background
-pixels. Both accessibility fallbacks are covered by shared-policy tests (the system
-environment traits are read-only). Check transitions on iPhone too.
+Only neutral auth text uses the existing plusLighter foreground policy (normal
+for increased contrast / Reduce Transparency). The canonical LogoText vector and
+«-АЙ» suffix are a separate normal-blend sibling, retaining the exact theme accent.
+Outgoing opacity/blur are applied per ink layer before blending, never to a parent
+that would isolate neutral text from the real backdrop. All original word timing,
+uppercase equal-width fitting, background, buttons and supporting copy remain.
+
+`AuthInlineBrand` uses a CoreText run delegate to reserve a cap-height logo with
+the canonical SVG aspect ratio. Real glyph bounds + attachment rectangles take part
+in row fitting/reflow; no floating overlay or guessed replacement font. The logo
+and suffix share the original word index, so they reveal as one unit. VoiceOver
+keeps the original sentence. `Color.Resolved.cgColor` avoids the previous mistaken
+sRGB-to-linear re-encoding of suffix colors, as well as avoiding additive yellowing.
+
+The auth runner compiles the real LogoText imageset with actool into a temporary
+macOS resource bundle. Pixel tests draw the actual asset (not a mock), verify logo
+and suffix against a native accent swatch over a colored backdrop, and retain
+normal/additive reference checks for neutral ink. Layout tests cover proportions,
+attachment bounds, original word tags and equal row widths. Shared accessibility
+policy tests cover read-only system traits without trying to mutate them.
+
+On iPhone compare the header logo with both inline branded phrases across light
+movement and cross-dissolves; check no yellow tint, no suffix collision, all rows
+fit, and the logo/«-АЙ» reveal together. Other screens' logos/styles are unchanged.

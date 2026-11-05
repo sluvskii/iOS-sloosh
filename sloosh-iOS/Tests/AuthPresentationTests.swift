@@ -11,6 +11,18 @@ struct AuthPresentationTests {
             precondition(condition, message)
             count += 1
         }
+        guard let assetsPath = ProcessInfo.processInfo.environment["SLOOSH_AUTH_TEST_ASSETS"],
+              let brandBundle = Bundle(path: assetsPath),
+              brandBundle.url(forResource: "Assets", withExtension: "car") != nil else {
+            fatalError("Compile the actual LogoText asset bundle before running auth presentation tests")
+        }
+        func authPhrase(phrase: String, elapsed: Double, accent: Color, scale: CGFloat = 1) -> AuthAnimatedPhrase {
+            AuthAnimatedPhrase(phrase: phrase, elapsed: elapsed, accent: accent, scale: scale, logoBundle: brandBundle)
+        }
+        let svg = try! String(contentsOfFile: "sloosh/Resources/Assets.xcassets/LogoText.imageset/sloosh.svg", encoding: .utf8)
+        check(svg.contains("viewBox=\"0 0 625 173\""), "Inline logo ratio must match the canonical SVG")
+        check(AuthInlineBrand.suffix(of: "SLOOSH-АЙ") == "-АЙ" && AuthInlineBrand.suffix(of: "SLOOSH") == "", "Logo replaces only the brand; suffix remains text")
+        check(AuthInlineBrand.suffix(of: "SLOOSHING") == nil, "Do not replace unrelated words")
         let fontURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("sloosh/Resources/Fonts/\(CatalogFallbackTitleStyle.fontFileName)")
         var fontError: Unmanaged<CFError>?
@@ -82,6 +94,26 @@ struct AuthPresentationTests {
             }
         }
 
+        for text in ["Не только смотри,\nно и sloosh-ай", "Смотри глазами.\nsloosh-ай сердцем", "SLOOSH"] {
+            let layout = AuthPhraseLayout.fit(text, in: CGSize(width: 340, height: 190))
+            var logos = 0
+            for line in layout.lines {
+                for run in CTLineGetGlyphRuns(line.shaped) as! [CTRun] {
+                    if let rect = AuthInlineBrand.logoRect(in: run) {
+                        logos += 1
+                        check(abs(rect.width / rect.height - AuthInlineBrand.aspectRatio) < 0.0001, "Logo preserves canonical proportions")
+                        check(rect.minX >= line.ink.minX - 0.01 && rect.maxX <= line.ink.maxX + 0.01 && rect.maxY <= line.ink.maxY + 0.01,
+                              "Logo participates in actual ink bounds, not a floating overlay")
+                    }
+                }
+            }
+            check(logos == 1, "Replace exactly one SLOOSH token with an inline logo attachment")
+            if layout.lines.count > 1 {
+                let widths = layout.lines.map(\.ink.width)
+                check(widths.max()! - widths.min()! < 0.1, "Rows remain equal width with the real logo")
+            }
+        }
+
         func pixels<V: View>(_ view: V, width: CGFloat, height: CGFloat) -> [UInt8] {
             let renderer = ImageRenderer(content: view.frame(width: width, height: height).background(.black))
             renderer.scale = 1
@@ -101,7 +133,7 @@ struct AuthPresentationTests {
         }
         let title = "Кино дома"
         func renderedTitle(_ elapsed: Double, width: CGFloat = 320) -> [UInt8] {
-            pixels(AuthAnimatedPhrase(phrase: title, elapsed: elapsed, accent: .green), width: width, height: 150)
+            pixels(authPhrase(phrase: title, elapsed: elapsed, accent: .green), width: width, height: 150)
         }
         let hidden = renderedTitle(0)
         let partial = renderedTitle(0.3)
@@ -113,13 +145,13 @@ struct AuthPresentationTests {
         for text in ["Не только смотри,\nно и sloosh-ай", "Залипнуть на все выходные?\nЛегко"] {
             let complete = AuthWordRevealPlan(text).duration
             for width in [CGFloat(208), 320] {
-                let image = pixels(AuthAnimatedPhrase(phrase: text, elapsed: complete, accent: .green, scale: 1.4), width: width, height: 200)
+                let image = pixels(authPhrase(phrase: text, elapsed: complete, accent: .green, scale: 1.4), width: width, height: 200)
                 check(litCount(image) > 100, "Cyrillic/newlines/brand render with larger text and wrapping")
             }
         }
         // Compare actual pixels too, not only CTLine's measured widths. These
         // words have no detached accents, so two ink bands correspond to two rows.
-        let equalRows = pixels(AuthAnimatedPhrase(phrase: "Медиум дома\nКино дома", elapsed: 10, accent: .green), width: 340, height: 190)
+        let equalRows = pixels(authPhrase(phrase: "Медиум дома\nКино дома", elapsed: 10, accent: .green), width: 340, height: 190)
         var rowBands: [[Int]] = []
         for y in 0..<190 {
             let xs = (0..<340).filter { x in
@@ -143,16 +175,40 @@ struct AuthPresentationTests {
         check(renderedWidths.min()! > 300, "Text grows to the available width")
         check(rowBands[1].first! - rowBands[0].last! <= 8, "Actual interline ink gap is tight")
 
-        // Same hierarchy as the screen: blend only the hero block over an
-        // external colored backdrop. Black-only snapshots cannot prove blending.
+        // Neutral text still uses plusLighter over the real backdrop. Brand-only
+        // content must keep normal blending and the exact theme accent instead.
         let blendSurface = Color(red: 0.12, green: 0.18, blue: 0.27)
-        let blendPhrase = AuthAnimatedPhrase(phrase: "Кино\nsloosh-ай", elapsed: 10, accent: Color(red: 0.2, green: 0.8, blue: 0.1))
-        let normalInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.normal) }, width: 320, height: 180)
-        let additiveInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.blendMode(.plusLighter) }, width: 320, height: 180)
-        let productionInk = pixels(ZStack { blendSurface; ZStack { blendPhrase }.modifier(AuthPhraseForeground()) }, width: 320, height: 180)
-        check(productionInk == additiveInk, "Production hero uses the same plusLighter blend as other dark cinematic text")
-        check(productionInk != normalInk, "Blending must actually affect foreground pixels over the backdrop")
-        check(Array(productionInk.prefix(4)) == Array(normalInk.prefix(4)), "Background outside the ink is unchanged")
+        let brandAccent = Color(red: 0.70, green: 1, blue: 0)
+        let blendPhrase = authPhrase(phrase: "Кино\nдома", elapsed: 10, accent: brandAccent)
+        let neutralReference = AuthPhraseInkCanvas(phrase: "Кино\nдома", elapsed: 10, accent: brandAccent,
+                                                   scale: 1, role: .neutral, logoBundle: brandBundle)
+        let normalInk = pixels(ZStack { blendSurface; neutralReference }, width: 320, height: 180)
+        let additiveInk = pixels(ZStack { blendSurface; neutralReference.blendMode(.plusLighter) }, width: 320, height: 180)
+        let productionInk = pixels(ZStack { blendSurface; blendPhrase }, width: 320, height: 180)
+        check(productionInk == additiveInk, "Only neutral hero ink keeps the existing plusLighter treatment")
+        check(productionInk != normalInk, "Neutral blending must affect foreground pixels")
+        check(Array(productionInk.prefix(4)) == Array(normalInk.prefix(4)), "Background outside ink is unchanged")
+        let brandOnly = authPhrase(phrase: "sloosh-ай", elapsed: 10, accent: brandAccent)
+        let brandPixels = pixels(ZStack { blendSurface; brandOnly }, width: 320, height: 180)
+        let brandReference = AuthPhraseInkCanvas(phrase: "sloosh-ай", elapsed: 10, accent: brandAccent,
+                                                 scale: 1, role: .brand, logoBundle: brandBundle)
+        check(brandPixels == pixels(ZStack { blendSurface; brandReference }, width: 320, height: 180),
+              "Logo and suffix use normal blending, never additive tint")
+        check(brandPixels != pixels(ZStack { blendSurface; brandReference.blendMode(.plusLighter) }, width: 320, height: 180),
+              "Regression guard against turning green branding yellow over the backdrop")
+        let swatch = pixels(brandAccent, width: 1, height: 1)
+        func matchesSwatch(_ offset: Int) -> Bool {
+            (0..<3).allSatisfy { abs(Int(brandPixels[offset + $0]) - Int(swatch[$0])) <= 2 }
+        }
+        let leftMatches = stride(from: 0, to: brandPixels.count, by: 4).filter { ($0 / 4) % 320 < 106 && matchesSwatch($0) }.count
+        let rightMatches = stride(from: 0, to: brandPixels.count, by: 4).filter { ($0 / 4) % 320 > 214 && matchesSwatch($0) }.count
+        check(leftMatches > 50, "Actual logo pixels match a native SwiftUI accent swatch")
+        check(rightMatches > 20, "CoreText suffix matches the same swatch; no sRGB/linear double encoding")
+        check(litCount(pixels(authPhrase(phrase: "SLOOSH", elapsed: 10, accent: brandAccent), width: 320, height: 150)) > 100,
+              "The real logo asset draws even when there are no text glyphs")
+        check(litCount(pixels(authPhrase(phrase: "SLOOSH-АЙ", elapsed: 0, accent: brandAccent), width: 320, height: 150)) == 0,
+              "Logo and suffix stay hidden together before their word beat")
+
         // Accessibility environment values are read-only system traits. Test
         // the shared fallback policy directly instead of mutating OS settings.
         for contrast in [false, true] {

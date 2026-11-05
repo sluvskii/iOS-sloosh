@@ -143,16 +143,14 @@ public struct CinematicAuthView: View {
             if let outgoingPhraseIndex {
                 AuthAnimatedPhrase(phrase: phrases[outgoingPhraseIndex],
                                    elapsed: AuthWordRevealPlan(phrases[outgoingPhraseIndex]).duration,
-                                   accent: .slooshAccent, scale: phraseScale)
-                    .opacity(outgoingOpacity)
-                    .blur(radius: (1 - outgoingOpacity) * 6)
+                                   accent: .slooshAccent, scale: phraseScale,
+                                   phraseOpacity: outgoingOpacity, phraseBlur: (1 - outgoingOpacity) * 6)
                     .accessibilityHidden(true)
             }
             AuthAnimatedPhrase(phrase: phrases[phraseIndex], elapsed: revealElapsed, accent: .slooshAccent, scale: phraseScale)
         }
         .frame(maxWidth: 360)
         .frame(maxWidth: .infinity)
-        .modifier(AuthPhraseForeground())
     }
 
     // MARK: - Google Sign-In Button
