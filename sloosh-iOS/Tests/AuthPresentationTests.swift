@@ -202,6 +202,15 @@ struct AuthPresentationTests {
         }
         let leftMatches = stride(from: 0, to: brandPixels.count, by: 4).filter { ($0 / 4) % 320 < 106 && matchesSwatch($0) }.count
         let rightMatches = stride(from: 0, to: brandPixels.count, by: 4).filter { ($0 / 4) % 320 > 214 && matchesSwatch($0) }.count
+        func inkHistogram(in range: Range<Int>) -> String {
+            var values: [String: Int] = [:]
+            for offset in stride(from: 0, to: brandPixels.count, by: 4) where range.contains((offset / 4) % 320) {
+                let key = "\(brandPixels[offset]),\(brandPixels[offset + 1]),\(brandPixels[offset + 2]),\(brandPixels[offset + 3])"
+                values[key, default: 0] += 1
+            }
+            return values.sorted { $0.value > $1.value }.prefix(8).map { "\($0.key):\($0.value)" }.joined(separator: " ")
+        }
+        FileHandle.standardError.write(Data("::error::Brand pixel diagnostic: swatch=\(swatch), left=\(leftMatches), right=\(rightMatches), leftHistogram=\(inkHistogram(in: 0..<106)), rightHistogram=\(inkHistogram(in: 215..<320))\n".utf8))
         check(leftMatches > 50, "Actual logo pixels match a native SwiftUI accent swatch")
         check(rightMatches > 20, "CoreText suffix matches the same swatch; no sRGB/linear double encoding")
         check(litCount(pixels(authPhrase(phrase: "SLOOSH", elapsed: 10, accent: brandAccent), width: 320, height: 150)) > 100,
