@@ -355,17 +355,23 @@ stability and wide layouts. Existing logo-color, reveal and equal-width suites
 remain. Check the staged entrance and moving light on an iPhone too, including
 Low Power, Reduce Motion, app background/foreground and a cancelled Google flow.
 
-### Conversational auth phrase bank
+### Edited auth phrase bank
 
-`AuthPhraseCopy` is the shared production/test source for 32 distinct short phrases:
-recognizable viewing habits, light self-irony and movie reactions, not advertising
-promises or a stream of forced slang. Two approved inline-wordmark phrases remain,
-spaced through the sequence. Auth chooses a random starting index once per screen
-instance, then follows the existing cycle. Redraws, Google loading and accessibility
-changes do not reroll it. VoiceOver / Reduce Motion still keep the current phrase
-stable; no changes to reveal/hold timing or the approved visual presentation.
+`AuthPhraseCopy` is the shared production/test source for 12 short phrases. After
+user feedback, prefer straightforward observations about films to meme catchphrases,
+contradictory setups, forced sarcasm or padding the list to a target number. Keep
+«Осталось десять минут. / Ничего не ясно», which the user explicitly liked. Never
+restore the rejected season joke or «Комедия на вечер. / Жизнь не предлагать».
+Two established inline-wordmark phrases remain, spaced through the sequence.
+
+Auth still chooses a random starting index once per screen instance and follows
+the existing cycle. Redraws, Google loading and accessibility changes do not reroll
+it. VoiceOver / Reduce Motion keep the current phrase stable; reveal/hold timing,
+background and approved visual presentation are unchanged.
 
 Auth tests run the entire real bank through font coverage, word-beat/reflow and
 equal-width ink fitting at narrow/regular widths and larger text, plus actual
-narrow-screen rendering of every phrase. Keep authored two-row setup/reaction
-breaks, no emoji or unsupported glyphs, and short copy that fits the existing hold.
+narrow-screen rendering of every phrase. They retain the liked phrase and guard
+against restoring the two explicitly rejected entries. Copy quality itself still
+requires editorial/user review, not a test assertion. Keep two clean authored rows,
+no emoji/unsupported glyphs, and short copy that fits the existing hold.
