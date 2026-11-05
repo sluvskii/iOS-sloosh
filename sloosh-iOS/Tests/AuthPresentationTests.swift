@@ -110,7 +110,11 @@ struct AuthPresentationTests {
         check(AuthWordRevealPlan.visibility(of: 0, at: 0.17) > 0, "First word is already appearing")
 
         let copy = AuthPhraseCopy.phrases
-        check(copy.count == 32 && Set(copy).count == copy.count, "Expanded phrase bank has 32 distinct entries")
+        check(copy.count == 12 && Set(copy).count == copy.count, "Keep a small edited bank of 12 distinct entries, not filler")
+        check(copy.contains("Осталось десять минут.\nНичего не ясно"), "Preserve the explicitly liked phrase")
+        for rejected in ["Когда второй сезон?\nПервый ещё идёт", "Комедия на вечер.\nЖизнь не предлагать"] {
+            check(!copy.contains(rejected), "Never restore the explicitly rejected copy")
+        }
         check(copy.filter { $0.contains("sloosh-ай") }.count == 2, "Keep both approved inline-wordmark phrases")
         let copyCharacters = Array(copy.joined().uppercased().utf16).filter { $0 != 10 }
         var copyGlyphs = [CGGlyph](repeating: 0, count: copyCharacters.count)
