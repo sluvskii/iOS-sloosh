@@ -109,6 +109,36 @@ struct AuthPresentationTests {
         check(AuthWordRevealPlan.visibility(of: 1, at: 0.17) == 0, "Second word stays hidden while first word appears")
         check(AuthWordRevealPlan.visibility(of: 0, at: 0.17) > 0, "First word is already appearing")
 
+        let copy = AuthPhraseCopy.phrases
+        check(copy.count == 32 && Set(copy).count == copy.count, "Expanded phrase bank has 32 distinct entries")
+        check(copy.filter { $0.contains("sloosh-ай") }.count == 2, "Keep both approved inline-wordmark phrases")
+        let copyCharacters = Array(copy.joined().uppercased().utf16).filter { $0 != 10 }
+        var copyGlyphs = [CGGlyph](repeating: 0, count: copyCharacters.count)
+        check(CTFontGetGlyphsForCharacters(font, copyCharacters, &copyGlyphs, copyCharacters.count) && !copyGlyphs.contains(0),
+              "Every new phrase is covered by the actual hero font, without emoji/fallback glyphs")
+        for text in copy {
+            let rows = text.components(separatedBy: "\n")
+            check(rows.count == 2 && rows.allSatisfy { !$0.isEmpty && $0 == $0.trimmingCharacters(in: .whitespaces) },
+                  "Each joke has two clean authored rows: setup then reaction")
+            let reveal = AuthWordRevealPlan(text)
+            check(reveal.duration <= 2.5 && reveal.wordCount > 0, "Copy stays short enough for the existing reveal/hold rhythm")
+            for width in [CGFloat(208), 340] {
+                for scale in [CGFloat(1), 1.6] {
+                    let layout = AuthPhraseLayout.fit(text, in: CGSize(width: width, height: 160), scale: scale)
+                    check(!layout.lines.isEmpty && layout.inkSize.width <= width - 28 + 0.05 && layout.inkSize.height <= 132.05,
+                          "All production phrases fit narrow phones and larger text without clipping")
+                    let indices = Set(layout.lines.flatMap { line in
+                        (CTLineGetGlyphRuns(line.shaped) as! [CTRun]).compactMap { run in
+                            (CTRunGetAttributes(run) as NSDictionary)[AuthPhraseLayout.wordIndexKey.rawValue] as? Int
+                        }
+                    })
+                    check(indices == Set(0..<reveal.wordCount), "Reflow preserves every new phrase's original word beats")
+                    let widths = layout.lines.map(\.ink.width)
+                    check(widths.max()! - widths.min()! < 0.1, "Every production phrase retains equal visible row widths")
+                }
+            }
+        }
+
         let fitted = AuthPhraseLayout.fit("Твой личный кинозал\nВ кармане", in: CGSize(width: 340, height: 190))
         check(fitted.lines.count == 2, "Keep authored two-line layout when it fits")
         check(fitted.lines.last!.pointSize > fitted.lines.first!.pointSize * 1.5,
@@ -197,6 +227,10 @@ struct AuthPresentationTests {
                 let image = pixels(authPhrase(phrase: text, elapsed: complete, accent: .green, scale: 1.4), width: width, height: 200)
                 check(litCount(image) > 100, "Cyrillic/newlines/brand render with larger text and wrapping")
             }
+        }
+        for text in copy {
+            let image = pixels(authPhrase(phrase: text, elapsed: AuthWordRevealPlan(text).duration, accent: .green), width: 208, height: 200)
+            check(litCount(image) > 50, "Every production phrase renders visible ink on a narrow screen")
         }
         // Compare actual pixels too, not only CTLine's measured widths. These
         // words have no detached accents, so two ink bands correspond to two rows.
