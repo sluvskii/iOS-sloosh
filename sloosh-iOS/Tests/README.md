@@ -311,5 +311,6 @@ increased contrast / Reduce Transparency. It wraps only the complete incoming +
 outgoing hero block, without isolating it from the real background or overwriting
 CoreText white/accent colors. Font fitting, word reveal, backdrop, buttons and
 supporting copy are unchanged. Pixel tests compare the production modifier with
-normal/plusLighter references over a colored surface, including both accessibility
-fallbacks and unchanged background pixels. Check transitions on iPhone too.
+normal/plusLighter references over a colored surface and check unchanged background
+pixels. Both accessibility fallbacks are covered by shared-policy tests (the system
+environment traits are read-only). Check transitions on iPhone too.
