@@ -110,9 +110,10 @@ struct AuthPresentationTests {
         check(AuthWordRevealPlan.visibility(of: 0, at: 0.17) > 0, "First word is already appearing")
 
         let copy = AuthPhraseCopy.phrases
-        check(copy.count == 12 && Set(copy).count == copy.count, "Keep a small edited bank of 12 distinct entries, not filler")
+        check(copy.count == 6 && Set(copy).count == copy.count, "Keep six focused phrases, not another padded bank")
+        check(copy.contains("Слышь,\nой СЛУШ"), "Include the user's spoken brand wordplay")
         check(copy.contains("Осталось десять минут.\nНичего не ясно"), "Preserve the explicitly liked phrase")
-        for rejected in ["Когда второй сезон?\nПервый ещё идёт", "Комедия на вечер.\nЖизнь не предлагать"] {
+        for rejected in ["Когда второй сезон?\nПервый ещё идёт", "Комедия на вечер.\nЖизнь не предлагать", "Не помню название.\nНо помню сцену"] {
             check(!copy.contains(rejected), "Never restore the explicitly rejected copy")
         }
         check(copy.filter { $0.contains("sloosh-ай") }.count == 2, "Keep both approved inline-wordmark phrases")
@@ -142,6 +143,25 @@ struct AuthPresentationTests {
                 }
             }
         }
+
+        check(AuthInlineBrand.isAccentWord("СЛУШ") && AuthInlineBrand.isAccentWord("СЛУШ,")
+              && AuthInlineBrand.isAccentWord("«СЛУШ!»"), "Cyrillic brand supports surrounding punctuation")
+        check(!AuthInlineBrand.isAccentWord("СЛЫШЬ,") && !AuthInlineBrand.isAccentWord("СЛЫШ,")
+              && !AuthInlineBrand.isAccentWord("СЛУШАЙ"), "Do not color near-matching ordinary words")
+        check(AuthInlineBrand.suffix(of: "СЛУШ") == nil, "Cyrillic brand stays lettering, not the Latin logo")
+        let cyrillicPlan = AuthPhraseLayout.fit("Слышь,\nой СЛУШ", in: CGSize(width: 340, height: 190))
+        var accentIndices = Set<Int>()
+        for line in cyrillicPlan.lines {
+            for run in CTLineGetGlyphRuns(line.shaped) as! [CTRun] {
+                let attributes = CTRunGetAttributes(run) as NSDictionary
+                check(AuthInlineBrand.logoRect(in: run) == nil, "Requested Cyrillic phrase has no Latin attachment")
+                if attributes[AuthPhraseLayout.accentKey.rawValue] as? Bool == true,
+                   let index = attributes[AuthPhraseLayout.wordIndexKey.rawValue] as? Int {
+                    accentIndices.insert(index)
+                }
+            }
+        }
+        check(accentIndices == [2], "Only СЛУШ is accented; СЛЫШЬ and ОЙ remain neutral with original word beats")
 
         let fitted = AuthPhraseLayout.fit("Твой личный кинозал\nВ кармане", in: CGSize(width: 340, height: 190))
         check(fitted.lines.count == 2, "Keep authored two-line layout when it fits")
@@ -306,6 +326,19 @@ struct AuthPresentationTests {
               "The real logo asset draws even when there are no text glyphs")
         check(litCount(pixels(authPhrase(phrase: "SLOOSH-АЙ", elapsed: 0, accent: brandAccent), width: 320, height: 150)) == 0,
               "Logo and suffix stay hidden together before their word beat")
+
+        let cyrillicOnly = pixels(ZStack {
+            blendSurface
+            authPhrase(phrase: "СЛУШ", elapsed: 10, accent: brandAccent)
+        }, width: 320, height: 180)
+        let cyrillicMatches = stride(from: 0, to: cyrillicOnly.count, by: 4).filter { offset in
+            (0..<3).allSatisfy { abs(Int(cyrillicOnly[offset + $0]) - Int(swatch[$0])) <= 2 }
+        }.count
+        check(cyrillicMatches > 100, "Cyrillic СЛУШ matches exact native brand green over colored backdrop")
+        let neutralNearMatch = AuthPhraseInkCanvas(phrase: "СЛЫШЬ, ОЙ", elapsed: 10, accent: brandAccent,
+                                                  scale: 1, role: .brand, logoBundle: brandBundle)
+        check(litCount(pixels(neutralNearMatch, width: 320, height: 180)) == 0,
+              "СЛЫШЬ and ОЙ never leak into the branded color layer")
 
         // Accessibility environment values are read-only system traits. Test
         // the shared fallback policy directly instead of mutating OS settings.
