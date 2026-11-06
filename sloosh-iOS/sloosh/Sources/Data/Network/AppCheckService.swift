@@ -14,7 +14,7 @@ final class AppCheckService: @unchecked Sendable {
     static let shared = AppCheckService()
 
     private let deviceCheckTokenKey = "sloosh_devicecheck_token"
-    private let queue = DispatchQueue(label: "sloosh.appcheck")
+    private let lock = NSLock()
     private let session: URLSession
 
     // Публичные Firebase-идентификаторы приложения (by design не секреты — лежат в GoogleService-Info.plist)
@@ -56,27 +56,29 @@ final class AppCheckService: @unchecked Sendable {
     func currentToken() async -> String? {
         guard isConfigured, isDeviceCheckAvailable else { return nil }
 
-        queue.lock()
+        lock.lock()
         let cached = cache
-        queue.unlock()
+        lock.unlock()
 
         if let token = cached.token, Date() < cached.expiresAt {
             return token
         }
 
+        lock.lock()
         if refreshTask == nil {
             refreshTask = Task { [weak self] in
                 await self?.refreshToken()
             }
         }
+        lock.unlock()
         return nil
     }
 
     private func refreshToken() async -> String? {
         defer {
-            queue.lock()
+            lock.lock()
             refreshTask = nil
-            queue.unlock()
+            lock.unlock()
         }
 
         guard let deviceCheckToken = await ensureDeviceCheckToken() else { return nil }
@@ -111,9 +113,9 @@ final class AppCheckService: @unchecked Sendable {
                 ttlSeconds = 3600
             }
 
-            queue.lock()
+            lock.lock()
             cache = CacheState(token: token, expiresAt: Date().addingTimeInterval(ttlSeconds * 0.8))
-            queue.unlock()
+            lock.unlock()
             return token
         } catch {
             #if DEBUG
