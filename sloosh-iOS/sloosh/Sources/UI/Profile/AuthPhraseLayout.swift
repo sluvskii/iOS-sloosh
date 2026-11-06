@@ -76,7 +76,7 @@ struct AuthPhraseLayout {
                 var attributes = base
                 if index < tags.count, let wordIndex = tags[index].wordIndex {
                     attributes[wordIndexKey] = wordIndex
-                    attributes[accentKey] = word.contains("SLOOSH")
+                    attributes[accentKey] = AuthInlineBrand.isAccentWord(String(word))
                 }
                 if let suffix = AuthInlineBrand.suffix(of: String(word)) {
                     var attachment = attributes

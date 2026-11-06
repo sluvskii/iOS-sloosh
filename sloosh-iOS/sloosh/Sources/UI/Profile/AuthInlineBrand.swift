@@ -7,6 +7,13 @@ enum AuthInlineBrand {
     static let aspectRatio: CGFloat = 625.0 / 173.0
     static let attachmentKey = NSAttributedString.Key("sloosh.auth.logo")
 
+    /// Input is display-uppercase. Accent the standalone Cyrillic brand token,
+    /// including surrounding punctuation, never the similar-sounding «СЛЫШЬ».
+    /// Cyrillic lettering is not a Latin-logo attachment.
+    static func isAccentWord(_ word: String) -> Bool {
+        word.contains("SLOOSH") || word.trimmingCharacters(in: .punctuationCharacters) == "СЛУШ"
+    }
+
     static func suffix(of word: String) -> String? {
         guard word == "SLOOSH" || word == "SLOOSH-АЙ" else { return nil }
         return String(word.dropFirst(6))

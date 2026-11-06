@@ -355,23 +355,21 @@ stability and wide layouts. Existing logo-color, reveal and equal-width suites
 remain. Check the staged entrance and moving light on an iPhone too, including
 Low Power, Reduce Motion, app background/foreground and a cancelled Google flow.
 
-### Edited auth phrase bank
+### Spoken brand-wordplay auth copy
 
-`AuthPhraseCopy` is the shared production/test source for 12 short phrases. After
-user feedback, prefer straightforward observations about films to meme catchphrases,
-contradictory setups, forced sarcasm or padding the list to a target number. Keep
-«Осталось десять минут. / Ничего не ясно», which the user explicitly liked. Never
-restore the rejected season joke or «Комедия на вечер. / Жизнь не предлагать».
-Two established inline-wordmark phrases remain, spaced through the sequence.
+`AuthPhraseCopy` holds six short entries, centered on the user's direction
+«СЛЫШЬ, / ОЙ СЛУШ», plus two short conversational variations. The explicitly liked
+«Осталось десять минут. / Ничего не ясно» and two established Latin-wordmark phrases
+remain. Reflective captions such as «Не помню название. / Но помню сцену» are removed;
+do not expand the list with unreviewed jokes or generic cinema observations.
 
-Auth still chooses a random starting index once per screen instance and follows
-the existing cycle. Redraws, Google loading and accessibility changes do not reroll
-it. VoiceOver / Reduce Motion keep the current phrase stable; reveal/hold timing,
-background and approved visual presentation are unchanged.
+`AuthInlineBrand.isAccentWord` distinguishes the standalone Cyrillic СЛУШ (including
+surrounding punctuation) from СЛЫШЬ / СЛЫШ / СЛУШАЙ. Cyrillic СЛУШ remains real font
+glyphs in the normal-blend exact-accent layer, not a Latin logo substitution. The
+existing SLOOSH inline logo/suffix treatment is unchanged. Tests cover run tags,
+word beats, absence of logo attachments, exact rendered green and neutral near
+matches, alongside full-bank font/layout/rendering checks and rejected-copy guards.
 
-Auth tests run the entire real bank through font coverage, word-beat/reflow and
-equal-width ink fitting at narrow/regular widths and larger text, plus actual
-narrow-screen rendering of every phrase. They retain the liked phrase and guard
-against restoring the two explicitly rejected entries. Copy quality itself still
-requires editorial/user review, not a test assertion. Keep two clean authored rows,
-no emoji/unsupported glyphs, and short copy that fits the existing hold.
+Random opening, rotation, VoiceOver / Reduce Motion stability, reveal/hold timing,
+background and approved equal-width uppercase presentation are unchanged. Copy
+quality still needs editorial/user review; automated tests do not judge tone.
