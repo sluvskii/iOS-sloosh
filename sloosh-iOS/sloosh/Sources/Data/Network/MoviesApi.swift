@@ -92,22 +92,6 @@ class MoviesApi {
         }
     }
     
-    private static let apiKeyUserDefaultsKey = "sloosh_cached_api_key"
-
-    /// Мастер-ключ доступа к API sloosh (внедряется при CI-сборке из GitHub Secrets или динамически из endpoint.json)
-    public static var currentApiKey: String {
-        get {
-            if let cached = UserDefaults.standard.string(forKey: apiKeyUserDefaultsKey),
-               !cached.isEmpty {
-                return cached
-            }
-            return AppSecrets.apiKey
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: apiKeyUserDefaultsKey)
-        }
-    }
-    
     /// Активное системное объявление / статус обслуживания
     public private(set) var currentNotice: RemoteNotice?
     private var lastRemoteConfigCheckDate: Date?
@@ -189,21 +173,7 @@ class MoviesApi {
                         }
                     }
                     
-                    // 5. Dynamic API Key override (на случай смены/ротации ключа без выпуска IPA)
-                    if let remoteKey = (json["apiKey"] as? String ?? json["clientApiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !remoteKey.isEmpty {
-                        if MoviesApi.currentApiKey != remoteKey {
-                            print("[MoviesApi] Updated currentApiKey via remote config")
-                            MoviesApi.currentApiKey = remoteKey
-                        }
-                    }
-                    
-                    // 6. Fallback Stream Tokens (на случай сбоев бэкенда)
-                    if let tokens = json["streamTokens"] as? [String], !tokens.isEmpty {
-                        AllohaRepository.shared.updateFallbackTokens(tokens)
-                    }
-                    
-                    // 7. System Notice (объявления / тех. работы)
+                    // 5. System Notice (объявления / тех. работы)
                     if let noticeDict = json["notice"] as? [String: Any],
                        let id = noticeDict["id"] as? String,
                        let message = noticeDict["message"] as? String {
@@ -286,13 +256,15 @@ class MoviesApi {
                 request.httpBody = body
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             }
-            if !MoviesApi.currentApiKey.isEmpty {
-                request.setValue(MoviesApi.currentApiKey, forHTTPHeaderField: "X-API-Key")
-            }
+            // Единственный API-креденшал — Firebase ID токен пользователя (short-lived, авто-refresh).
+            // Никаких статических ключей в бинарнике: исходный код ничего не раскрывает.
             if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
-            RequestSigner.shared.sign(request: &request, path: url.path, method: method)
+            // Device-attestation (App Check): отсутствует на симуляторе — бэкенд в monitor-режиме не блокирует.
+            if let appCheckToken = await AppCheckService.shared.currentToken() {
+                request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+            }
             
             let maxRetries = baseCandidates.count > 1 ? 2 : 3
             
@@ -311,7 +283,7 @@ class MoviesApi {
                         continue
                     }
                     
-                    // 401 / 403 — ошибка авторизации. Возможно, ключ или эндпоинт устарели
+                    // 401 / 403 — ошибка авторизации. Истёкший/отозванный токен либо смена хоста
                     if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                         shouldTryRemoteConfigHealing = true
                         lastError = NetworkError.unauthorized
@@ -355,22 +327,26 @@ class MoviesApi {
         }
         
         // Self-Healing: если все кандидаты упали или получен 401/403, пробуем один раз
-        // обновить remote config с GitHub/Pages/jsDelivr и повторить запрос,
-        // если обновились хосты или API-ключ!
+        // принудительно обновить Firebase-токен (401 — истёкший токен) и remote config
+        // (сменившиеся хосты), после чего повторить запрос. Секретов в endpoint.json больше нет:
+        // remote config отвечает только за хосты/объявления/кампании.
         if allowSelfHealingRetry && (shouldTryRemoteConfigHealing || !baseCandidates.isEmpty) {
             let previousBase = MoviesApi.activeBaseURL
-            let previousKey = MoviesApi.currentApiKey
             let previousFallbacks = MoviesApi.fallbackBaseURLs
-            
+
+            if shouldTryRemoteConfigHealing {
+                // Принудительный refresh пользовательского токена — единственное авторизационное лечение
+                _ = await AuthRepository.shared.ensureFreshToken(force: true)
+            }
+
             await loadRemoteConfig(force: true)
-            
+
             let configChanged = (MoviesApi.activeBaseURL != previousBase) ||
-                                (MoviesApi.currentApiKey != previousKey) ||
                                 (MoviesApi.fallbackBaseURLs != previousFallbacks)
-            
-            if configChanged {
+
+            if configChanged || shouldTryRemoteConfigHealing {
                 #if DEBUG
-                print("[MoviesApi] Self-healing triggered: config updated, retrying request to \(endpoint)...")
+                print("[MoviesApi] Self-healing triggered: \(shouldTryRemoteConfigHealing ? "auth refreshed" : "config updated"), retrying request to \(endpoint)...")
                 #endif
                 return try await performRequest(
                     endpoint: endpoint,

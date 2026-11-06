@@ -5,8 +5,6 @@
     "https://api-sloosh.vercel.app"
   ],
   "balancerBaseUrl": "https://api.alloha.tv",
-  "streamTokens": [],
-  "apiKey": "",
   "notice": null,
   "mediaOverrides": {},
   "updatedAt": "2026-11-04T12:39:00Z",

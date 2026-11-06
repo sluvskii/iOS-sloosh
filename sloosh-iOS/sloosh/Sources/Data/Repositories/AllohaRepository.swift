@@ -642,12 +642,11 @@ final class AllohaRepository: @unchecked Sendable {
         }
     }
 
-    // Dynamic stream tokens delivered securely from the backend API or remote config fallback
+    // Динамические токены балансера. Пул выдаётся бэкендом только по валидному Firebase ID токену
+    // и никогда не лежит в бинарнике или публичном конфиге. Последний успешно полученный пул
+    // персистится локально и служит офлайн-фоллбэком до восстановления связи с бэкендом.
     private var remoteTokens: [String] = []
-    private static let fallbackTokensKey = "sloosh_cached_fallback_stream_tokens"
-    private var fallbackTokens: [String] = {
-        return UserDefaults.standard.stringArray(forKey: fallbackTokensKey) ?? []
-    }()
+    private static let cachedTokensKey = "sloosh_cached_stream_tokens"
     private var lastFetchDate: Date?
     private let tokensFetchTtl: TimeInterval = 10 * 60 // 10 minutes cache
     private var activeFetchTask: Task<[String], Never>?
@@ -655,21 +654,6 @@ final class AllohaRepository: @unchecked Sendable {
     private var failedTokens: [String: Date] = [:]
     private let tokenCooldownDuration: TimeInterval = 5 * 60 // 5 minutes cooldown
     private let tokenQueue = DispatchQueue(label: "ru.sloosh.alloharepo.tokens", attributes: .concurrent)
-
-    /// Обновляет резервные токены потоков из remote config (endpoint.json)
-    func updateFallbackTokens(_ tokens: [String]) {
-        let valid = tokens.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard !valid.isEmpty else { return }
-        tokenQueue.async(flags: .barrier) { [weak self] in
-            guard let self = self else { return }
-            self.fallbackTokens = valid
-            UserDefaults.standard.set(valid, forKey: Self.fallbackTokensKey)
-            if self.remoteTokens.isEmpty {
-                self.remoteTokens = valid
-                self.lastFetchDate = Date()
-            }
-        }
-    }
 
     /// Background prefetch of streaming tokens upon app launch
     func warmup() async {
@@ -700,6 +684,8 @@ final class AllohaRepository: @unchecked Sendable {
                         self.tokenQueue.async(flags: .barrier) {
                             self.remoteTokens = tokens
                             self.lastFetchDate = Date()
+                            // Персистим последний реально полученный пул — офлайн-фоллбэк на следующий запуск
+                            UserDefaults.standard.set(tokens, forKey: Self.cachedTokensKey)
                         }
                         #if DEBUG
                         print("[AllohaRepository] Dynamic stream tokens loaded from backend: \(tokens.count) tokens")
@@ -715,16 +701,16 @@ final class AllohaRepository: @unchecked Sendable {
                 if !existing.isEmpty {
                     return existing
                 }
-                let fallbacks = self.tokenQueue.sync { self.fallbackTokens }
-                if !fallbacks.isEmpty {
+                let persisted = UserDefaults.standard.stringArray(forKey: Self.cachedTokensKey) ?? []
+                if !persisted.isEmpty {
                     #if DEBUG
-                    print("[AllohaRepository] Using \(fallbacks.count) fallback stream tokens from remote config")
+                    print("[AllohaRepository] Using \(persisted.count) persisted stream tokens (offline fallback)")
                     #endif
                     self.tokenQueue.async(flags: .barrier) {
-                        self.remoteTokens = fallbacks
+                        self.remoteTokens = persisted
                         self.lastFetchDate = Date()
                     }
-                    return fallbacks
+                    return persisted
                 }
                 return []
             }
