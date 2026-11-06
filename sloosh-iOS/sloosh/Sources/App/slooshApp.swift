@@ -76,16 +76,26 @@ struct slooshApp: App {
             ])
         }
         
-        // Упреждающе подгружаем актуальный адрес бэкенда, разогреваем WebKit и подгружаем стрим-токены
+        // Упреждающе подгружаем актуальный адрес бэкенда и разогреваем WebKit.
+        // API-зависимый прогрев (стрим-токены, скрейперы, overrides) требует валидного Firebase ID
+        // токена и выполняется только после входа — сразу при активной сцене (см. onChange ниже).
         Task { @MainActor in
             await MoviesApi.shared.loadRemoteConfig()
             SharedWebViewProvider.shared.prewarm()
-            await AllohaRepository.shared.warmup()
-            await ScraperEngine.shared.warmup()
+            if AuthRepository.shared.isAuthenticated {
+                await warmupAuthenticatedServices()
+            }
             PlaybackAnalyticsService.shared.sendSessionHeartbeat()
-            await MediaOverridesRepository.shared.fetchOverrides()
             await ClipsRepository.shared.fetchFeed()
         }
+    }
+
+    /// Прогрев сервисов, требующих авторизации: пул стрим-токенов, скрейперы, кураторские overrides
+    @MainActor
+    private func warmupAuthenticatedServices() async {
+        await AllohaRepository.shared.warmup()
+        await ScraperEngine.shared.warmup()
+        await MediaOverridesRepository.shared.fetchOverrides()
     }
     
     @ObservedObject private var diagnostics = AppDiagnostics.shared
@@ -146,7 +156,11 @@ struct slooshApp: App {
                         Task {
                             await MoviesApi.shared.loadRemoteConfigIfNeeded()
                             await CloudSyncService.shared.syncAllDataAsync()
-                            await MediaOverridesRepository.shared.fetchOverrides()
+                            // После входа сцена становится active — догреваем авторизованные сервисы,
+                            // если прогрев при старте ещё не выполнялся
+                            if AuthRepository.shared.isAuthenticated {
+                                await warmupAuthenticatedServices()
+                            }
                             await ClipsRepository.shared.fetchFeed()
                         }
                     }

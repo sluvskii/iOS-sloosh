@@ -32,26 +32,31 @@ This workspace contains the flagship native iOS client for **sloosh**:
 
 ## Security & Secrets Architecture
 
-1. **Client API Key Hardening**:
-   - The master API key is **never** committed to Git in plaintext or obfuscated arrays.
-   - In code, `AppSecrets.apiKey` defaults to `""`.
-   - During official GitHub Actions CI builds, `${{ secrets.SLOOSH_API_KEY }}` is dynamically injected into `AppSecrets.swift` prior to compilation.
-   - Forks built without secrets compile with an empty key and receive `401 Unauthorized` from the backend, protecting infrastructure from abuse.
-2. **Dynamic Streaming Tokens & Fallbacks**:
-   - Balancer streaming tokens are **never** bundled in the iOS application binary.
-   - At startup and on demand, the client fetches the active pool of tokens from `GET /api/v1/config/streams` (authenticated via `X-API-Key`).
-   - The client implements in-memory caching (10 min TTL), background prewarming (`slooshApp.swift`), and smart runtime failover with 5-minute cooldown on exhausted/banned tokens.
-   - `endpoint.json` also supports emergency `streamTokens` fallback if the backend API token endpoint is temporarily unreachable.
-3. **Dynamic Remote Endpoint Resolution, Self-Healing & Zero-Update Hot-Fixing**:
+> **Zero Static Secrets model (current)**: there is **no master API key anywhere** — not in Git history going forward, not in the binary, not in remote config. Having the full source code yields nothing to steal. The only API credential is a **verified Firebase ID token** (RS256, Google JWKS on the backend), which every user already possesses due to mandatory sign-in: per-user, ~1h TTL, auto-refreshed, revocable per account.
+
+1. **Firebase JWT as the sole API credential**:
+   - Every `MoviesApi.performRequest` attaches `Authorization: Bearer <firebase idToken>` (plus `X-Firebase-AppCheck` when available). There is no `X-API-Key`, no `AppSecrets`, no HMAC `RequestSigner` — all removed.
+   - The backend (`sloosh-api`, `securityMiddleware`) rejects any `/api/*` request without a cryptographically valid Firebase ID token; `OPTIONS`, `/health` and the image proxy remain public. A `LEGACY_KEY_GRACE` env window on the backend keeps pre-migration client builds alive until the new rollout completes, then dies together with the key list (env-only, never hardcoded).
+   - On `401/403`, client self-healing force-refreshes the Firebase token once and retries; host failover self-healing is unchanged.
+2. **Firebase App Check (DeviceCheck, monitor-first)**:
+   - `AppCheckService` (no Firebase SDK) generates a DeviceCheck token **once** (Apple limits 2/day — it is persisted in `sloosh_devicecheck_token` and reused), exchanges it at `firebaseappcheck.googleapis.com` for a short-lived App Check JWT, cached at 80% TTL, sent as `X-Firebase-AppCheck`.
+   - Backend `APPCHECK_MODE=off|monitor|enforce`: start with `monitor` (log-only), flip to `enforce` after observation. Simulator/unattested requests keep working in monitor mode.
+   - Firebase console: register the DeviceCheck provider (.p8), enable App Check, then enforce for RTDB/Auth to kill scripted abuse of messenger/clips.
+3. **Dynamic Streaming Tokens**:
+   - Balancer tokens are **never** bundled in the binary nor distributed via `endpoint.json` (that channel is removed). The pool is fetched from `GET /api/v1/config/streams` with a valid Firebase ID token only; the endpoint responds `private, no-store` so tokens never enter the shared CDN cache.
+   - The last successfully fetched pool is persisted locally (`sloosh_cached_stream_tokens`) as an offline fallback; in-memory 10 min TTL, prewarming after sign-in (`slooshApp.warmupAuthenticatedServices`), 5-minute cooldown on exhausted/banned tokens.
+   - Backend rate limits: 10/min per UID for token pool, 20/min for scraper payloads, 120/min for catalog; admin artwork-override **writes** require a UID from `ADMIN_UIDS`.
+4. **Dynamic Remote Endpoint Resolution, Self-Healing & Zero-Update Hot-Fixing**:
    - The app does **not** hardcode a single immutable API, balancer, or image host.
    - At startup, `MoviesApi.shared.loadRemoteConfig()` checks `https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json` (and GitHub Pages / jsDelivr backups).
-   - `endpoint.json` dynamically provides `apiBaseUrl`, `imagesBaseUrl`, `fallbackUrls`, `balancerBaseUrl` (customizable balancer proxy host), emergency `apiKey` rotation, `streamTokens`, broadcast `notice` banners, and `mediaOverrides` (emergency artwork overrides).
+   - `endpoint.json` dynamically provides `apiBaseUrl`, `imagesBaseUrl`, `fallbackUrls`, `balancerBaseUrl` (customizable balancer proxy host), broadcast `notice` banners, and `mediaOverrides` (emergency artwork overrides). It carries **no secrets** — the historical emergency `apiKey`/`streamTokens` fields are removed permanently.
    - Active hosts are cached in `UserDefaults` (`sloosh_cached_api_base_url`, `sloosh_cached_images_base_url`, `sloosh_cached_balancer_base_url`). Legacy hosts containing `vercel.app` are automatically sanitized.
-   - **Self-Healing Architecture**: If API requests fail due to `401 Unauthorized`, `403 Forbidden`, or server downtime, `MoviesApi` triggers an automatic force-reload of remote config and immediately retries the request once if endpoints or keys were updated, fixing outages with zero app updates.
+   - **Self-Healing Architecture**: If API requests fail due to `401 Unauthorized`, `403 Forbidden`, or server downtime, `MoviesApi` force-refreshes the user token and/or force-reloads remote config, then retries the request once, fixing outages with zero app updates.
    - **System Notices**: `endpoint.json` can deliver broadcast announcements (`info`, `warning`, `error`, `critical`) shown once per notice ID via `ToastManager`.
-4. **Repository Confidentiality**:
-   - `sluvskii/iOS-sloosh` is the public client repository.
+5. **Repository Confidentiality**:
+   - `sluvskii/iOS-sloosh` is the public client repository. Because credentials are per-user JWTs and device attestations, publication of the source does not expose infrastructure.
    - `sluvskii/sloosh-api` is the private backend repository. Server endpoints, edge routing, and scraping algorithms remain completely confidential.
+   - The Cloudflare gateway caches only cacheable (`public`) responses; `config/streams` and scraper payloads are `no-store` end-to-end.
 
 ---
 

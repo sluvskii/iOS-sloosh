@@ -113,14 +113,6 @@ jobs:
           # Patch project.yml so xcodegen picks up the full version
           sed -i '' "s/MARKETING_VERSION: .*/MARKETING_VERSION: $FULL_VER/" project.yml
 
-      - name: Inject App Secrets
-        run: |
-          cd sloosh-iOS
-          sed -i '' "s/apiKey: String = \"\"/apiKey: String = \"${{ secrets.SLOOSH_API_KEY }}\"/" sloosh/Sources/Data/Network/AppSecrets.swift
-          if [ -n "${{ secrets.SLOOSH_HMAC_SECRET }}" ]; then
-            sed -i '' "s/hmacSecret: String = \".*\"/hmacSecret: String = \"${{ secrets.SLOOSH_HMAC_SECRET }}\"/" sloosh/Sources/Data/Network/RequestSigner.swift
-          fi
-
       - name: Generate Xcode Project
         run: |
           cd sloosh-iOS
