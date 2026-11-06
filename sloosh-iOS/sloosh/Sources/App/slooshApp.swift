@@ -83,7 +83,7 @@ struct slooshApp: App {
             await MoviesApi.shared.loadRemoteConfig()
             SharedWebViewProvider.shared.prewarm()
             if AuthRepository.shared.isAuthenticated {
-                await warmupAuthenticatedServices()
+                await Self.warmupAuthenticatedServices()
             }
             PlaybackAnalyticsService.shared.sendSessionHeartbeat()
             await ClipsRepository.shared.fetchFeed()
@@ -92,7 +92,7 @@ struct slooshApp: App {
 
     /// Прогрев сервисов, требующих авторизации: пул стрим-токенов, скрейперы, кураторские overrides
     @MainActor
-    private func warmupAuthenticatedServices() async {
+    private static func warmupAuthenticatedServices() async {
         await AllohaRepository.shared.warmup()
         await ScraperEngine.shared.warmup()
         await MediaOverridesRepository.shared.fetchOverrides()
@@ -159,7 +159,7 @@ struct slooshApp: App {
                             // После входа сцена становится active — догреваем авторизованные сервисы,
                             // если прогрев при старте ещё не выполнялся
                             if AuthRepository.shared.isAuthenticated {
-                                await warmupAuthenticatedServices()
+                                await Self.warmupAuthenticatedServices()
                             }
                             await ClipsRepository.shared.fetchFeed()
                         }
