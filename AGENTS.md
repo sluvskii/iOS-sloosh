@@ -35,13 +35,11 @@ This workspace contains the flagship native iOS client for **sloosh**:
 > **Zero Static Secrets model (current)**: there is **no master API key anywhere** — not in Git history going forward, not in the binary, not in remote config. Having the full source code yields nothing to steal. The only API credential is a **verified Firebase ID token** (RS256, Google JWKS on the backend), which every user already possesses due to mandatory sign-in: per-user, ~1h TTL, auto-refreshed, revocable per account.
 
 1. **Firebase JWT as the sole API credential**:
-   - Every `MoviesApi.performRequest` attaches `Authorization: Bearer <firebase idToken>` (plus `X-Firebase-AppCheck` when available). There is no `X-API-Key`, no `AppSecrets`, no HMAC `RequestSigner` — all removed.
-   - The backend (`sloosh-api`, `securityMiddleware`) rejects any `/api/*` request without a cryptographically valid Firebase ID token; `OPTIONS`, `/health` and the image proxy remain public. A `LEGACY_KEY_GRACE` env window on the backend keeps pre-migration client builds alive until the new rollout completes, then dies together with the key list (env-only, never hardcoded).
+   - Every `MoviesApi.performRequest` attaches `Authorization: Bearer <firebase idToken>`. There is no `X-API-Key`, no `AppSecrets`, no HMAC `RequestSigner` — all removed.
+   - The backend (`sloosh-api`, `securityMiddleware`) rejects any `/api/*` request without a cryptographically valid Firebase ID token; `OPTIONS`, `/health` and the image proxy remain public.
    - On `401/403`, client self-healing force-refreshes the Firebase token once and retries; host failover self-healing is unchanged.
-2. **Firebase App Check (DeviceCheck, monitor-first)**:
-   - `AppCheckService` (no Firebase SDK) generates a DeviceCheck token **once** (Apple limits 2/day — it is persisted in `sloosh_devicecheck_token` and reused), exchanges it at `firebaseappcheck.googleapis.com` for a short-lived App Check JWT, cached at 80% TTL, sent as `X-Firebase-AppCheck`.
-   - Backend `APPCHECK_MODE=off|monitor|enforce`: start with `monitor` (log-only), flip to `enforce` after observation. Simulator/unattested requests keep working in monitor mode.
-   - Firebase console: register the DeviceCheck provider (.p8), enable App Check, then enforce for RTDB/Auth to kill scripted abuse of messenger/clips.
+2. **Pure Zero Static Secrets**:
+   - Sideloaded IPA builds (signed via personal certificates, Scarlet, TrollStore, AltStore, ESign) are fully supported because authentication relies purely on Google OAuth JWT verification without device attestation restrictions.
 3. **Dynamic Streaming Tokens**:
    - Balancer tokens are **never** bundled in the binary nor distributed via `endpoint.json` (that channel is removed). The pool is fetched from `GET /api/v1/config/streams` with a valid Firebase ID token only; the endpoint responds `private, no-store` so tokens never enter the shared CDN cache.
    - The last successfully fetched pool is persisted locally (`sloosh_cached_stream_tokens`) as an offline fallback; in-memory 10 min TTL, prewarming after sign-in (`slooshApp.warmupAuthenticatedServices`), 5-minute cooldown on exhausted/banned tokens.

@@ -261,10 +261,6 @@ class MoviesApi {
             if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
-            // Device-attestation (App Check): отсутствует на симуляторе — бэкенд в monitor-режиме не блокирует.
-            if let appCheckToken = await AppCheckService.shared.currentToken() {
-                request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
-            }
             
             let maxRetries = baseCandidates.count > 1 ? 2 : 3
             
