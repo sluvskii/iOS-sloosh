@@ -12,3 +12,5 @@ Telegram-iOS/
 **/.env
 **/.env.local
 **/dist/
+.zcode/
+
