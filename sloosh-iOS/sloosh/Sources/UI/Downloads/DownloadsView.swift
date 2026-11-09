@@ -183,6 +183,7 @@ struct DownloadsView: View {
         .background(Color(UIColor.systemBackground))
         .onAppear {
             downloadManager.recalculateDiskSizesInBackground()
+            HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
         }
         .fullWidthSwipeBack()
         .fullScreenCover(item: $playerItem, onDismiss: {
@@ -437,9 +438,9 @@ private struct DownloadRowView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 if item.status == .downloading || item.status == .pending {
                     DownloadManager.shared.pauseDownload(id: item.id)
-                } else if item.status == .paused {
+                } else if item.status == .paused || item.status == .failed {
                     DownloadManager.shared.resumeDownload(id: item.id)
-                } else if item.status == .failed || item.status == .completed {
+                } else if item.status == .completed {
                     DownloadManager.shared.deleteDownload(id: item.id)
                 } else {
                     // if idle, usually start download (but here it's already in the list)

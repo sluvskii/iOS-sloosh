@@ -359,16 +359,39 @@ class HlsProxyServer {
             if FileManager.default.fileExists(atPath: fileUrl.path) {
                 do {
                     let fileData = try Data(contentsOf: fileUrl)
+                    let ext = fileUrl.pathExtension.lowercased()
                     let contentType: String
-                    if fileUrl.pathExtension == "m3u8" {
+                    if ext == "m3u8" {
                         contentType = "application/vnd.apple.mpegurl"
-                    } else if fileUrl.pathExtension == "ts" {
+                    } else if ext == "ts" {
                         contentType = "video/MP2T"
-                    } else if fileUrl.pathExtension == "bin" {
+                    } else if ext == "mp4" || ext == "m4s" {
+                        contentType = "video/mp4"
+                    } else if ext == "bin" || ext == "key" {
                         contentType = "application/octet-stream"
                     } else {
                         contentType = "application/octet-stream"
                     }
+                    if let rangeHeader = incomingHeaders["range"], rangeHeader.hasPrefix("bytes=") {
+                        let rangeSpec = String(rangeHeader.dropFirst(6))
+                        let rangeComponents = rangeSpec.components(separatedBy: "-")
+                        let totalLength = fileData.count
+                        if let startStr = rangeComponents.first, let start = Int(startStr) {
+                            let end: Int
+                            if rangeComponents.count > 1, let endParsed = Int(rangeComponents[1]), endParsed < totalLength {
+                                end = endParsed
+                            } else {
+                                end = totalLength - 1
+                            }
+                            if start <= end && start < totalLength {
+                                let subData = fileData.subdata(in: start..<(end + 1))
+                                let contentRange = "bytes \(start)-\(end)/\(totalLength)"
+                                self.sendResponse(data: subData, statusCode: 206, contentType: contentType, contentRange: contentRange, connection: connection)
+                                return
+                            }
+                        }
+                    }
+
                     self.sendResponse(data: fileData, statusCode: 200, contentType: contentType, contentRange: nil, connection: connection)
                 } catch {
                     self.send404(on: connection)
@@ -672,7 +695,7 @@ class HlsProxyServer {
     
     private func sendResponse(data: Data, statusCode: Int, contentType: String, contentRange: String?, connection: NWConnection) {
         let reason = statusCode == 206 ? "Partial Content" : (statusCode == 200 ? "OK" : "Error")
-        var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n"
+        var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\n"
         if let cr = contentRange {
             header += "Content-Range: \(cr)\r\n"
         }

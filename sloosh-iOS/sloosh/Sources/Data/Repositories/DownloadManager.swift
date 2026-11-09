@@ -116,9 +116,26 @@ struct DownloadItem: Identifiable, Codable, Equatable {
             return namedFileUrl
         }
         
-        let relative = "\(localDirectory)/\(localPlayableFileName)"
-        guard let encoded = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
-        return URL(string: "http://127.0.0.1:8181/local/\(encoded)")
+        let tsUrl = dirUrl.appendingPathComponent("video.ts")
+        if FileManager.default.fileExists(atPath: tsUrl.path) {
+            return tsUrl
+        }
+        
+        let m3u8Url = dirUrl.appendingPathComponent("local.m3u8")
+        if FileManager.default.fileExists(atPath: m3u8Url.path) {
+            let relative = "\(localDirectory)/local.m3u8"
+            guard let encoded = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+            return URL(string: "http://127.0.0.1:8181/local/\(encoded)")
+        }
+        
+        let fallbackNamed = dirUrl.appendingPathComponent(localPlayableFileName)
+        if FileManager.default.fileExists(atPath: fallbackNamed.path) {
+            let relative = "\(localDirectory)/\(localPlayableFileName)"
+            guard let encoded = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+            return URL(string: "http://127.0.0.1:8181/local/\(encoded)")
+        }
+        
+        return nil
     }
     
     var localPosterUrl: URL? {
@@ -313,8 +330,18 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         directStreamUrl: String? = nil,
         customHeaders: [String: String]? = nil
     ) {
-        let kpId = details.ids?.kp ?? 0
-        guard kpId > 0 else { return }
+        let kpId = [details.ids?.kp, details.externalIds?.kp].compactMap { $0 }.first { $0 > 0 }
+            ?? [details.ids?.tmdb, details.externalIds?.tmdb].compactMap { $0 }.first { $0 > 0 }
+            ?? Int(details.id ?? "")
+            ?? 0
+        guard kpId > 0 else {
+            ToastManager.shared.show(
+                title: "Ошибка",
+                subtitle: "Не удалось определить ID медиа",
+                icon: "exclamationmark.triangle.fill"
+            )
+            return
+        }
         
         let itemId = makeItemId(kpId: kpId, season: season, episode: episode)
         
@@ -341,6 +368,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             downloads[existingIdx].iframeUrl = iframeUrl
             downloads[existingIdx].directStreamUrl = directStreamUrl
             downloads[existingIdx].customHeaders = customHeaders
+            downloads[existingIdx].preferredQuality = preferredQuality
             item = downloads[existingIdx]
         } else {
             item = DownloadItem(
@@ -476,88 +504,140 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let taskDir = docs.appendingPathComponent(item.localDirectory)
         try? FileManager.default.createDirectory(at: taskDir, withIntermediateDirectories: true)
         
-        // Clean up any stale segment files from prior downloads in the same directory
-        if let oldFiles = try? FileManager.default.contentsOfDirectory(atPath: taskDir.path) {
-            for f in oldFiles where f.hasPrefix("segment_") || f == "key.bin" || f == "local.m3u8" || f == "manifest.json" {
-                try? FileManager.default.removeItem(at: taskDir.appendingPathComponent(f))
+        if let posterStr = item.posterUrl, let posterUrl = URL(string: posterStr) {
+            let posterFile = taskDir.appendingPathComponent("poster.jpg")
+            if !FileManager.default.fileExists(atPath: posterFile.path) {
+                if let posterData = try? await downloadDataDirectly(from: posterUrl, headers: [:]) {
+                    try? posterData.write(to: posterFile)
+                }
             }
         }
         
-        if let posterStr = item.posterUrl, let posterUrl = URL(string: posterStr) {
-            do {
-                let posterData = try await downloadDataDirectly(from: posterUrl, headers: [:])
-                try posterData.write(to: taskDir.appendingPathComponent("poster.jpg"))
-            } catch { print("Poster failed") }
-        }
+        var streamUrlString: String = ""
+        var headers: [String: String] = [:]
         
-        let streamUrlString: String
-        let headers: [String: String]
-        
-        if !item.iframeUrl.isEmpty {
+        // 1. Prioritize directStreamUrl if provided (e.g. Source 2 / Collaps)
+        if let direct = item.directStreamUrl, !direct.isEmpty {
+            streamUrlString = direct
+            headers = item.customHeaders ?? CollapsRepository.streamHeaders
+        } else if !item.iframeUrl.isEmpty {
+            // 2. Primary Source (Alloha) via runtime resolver
+            _ = await AllohaRepository.shared.ensureTokensLoaded()
             let resolver = AllohaRuntimeResolver()
-            let resolved: [String: Any]
+            var resolved: [String: Any]? = nil
             do {
                 resolved = try await resolver.resolve(iframeUrl: item.iframeUrl)
             } catch {
-                await finishWithError(id: itemId, message: "Не удалось получить источник")
-                return
+                AppDiagnostics.shared.log("[DownloadManager] Alloha resolver error for \(itemId): \(error.localizedDescription)")
             }
             
-            var resolvedStreamUrl = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
-            if let matchingVariant = audioVariants.first(where: { variant in
-                let title = (variant["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(title, item.translationName)
-            }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
-                resolvedStreamUrl = variantUrl
+            if let resolved {
+                var resolvedStreamUrl = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+                if let matchingVariant = audioVariants.first(where: { variant in
+                    let title = (variant["title"] as? String) ?? ""
+                    return allohaTranslationNamesMatch(title, item.translationName)
+                }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                    resolvedStreamUrl = variantUrl
+                }
+                streamUrlString = resolvedStreamUrl
+                var h = (resolved["headers"] as? [String: String]) ?? [:]
+                if h["Referer"] == nil && h["referer"] == nil {
+                    h["Referer"] = "https://api.alloha.tv/"
+                }
+                if h["Origin"] == nil && h["origin"] == nil {
+                    h["Origin"] = "https://api.alloha.tv"
+                }
+                if h["User-Agent"] == nil && h["user-agent"] == nil {
+                    h["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+                }
+                headers = h
             }
-            streamUrlString = resolvedStreamUrl
-            headers = (resolved["headers"] as? [String: String]) ?? [:]
-        } else if let direct = item.directStreamUrl, !direct.isEmpty {
-            streamUrlString = direct
-            headers = item.customHeaders ?? [:]
-        } else {
-            await finishWithError(id: itemId, message: "Не удалось получить источник")
+        }
+        
+        // 3. Multi-source fallback: if primary stream was not resolved, try Collaps automatically
+        if streamUrlString.isEmpty {
+            AppDiagnostics.shared.log("[DownloadManager] Primary stream empty, attempting Collaps fallback for item \(itemId)...")
+            let isTv = item.season != nil
+            if let collaps = try? await CollapsRepository.shared.fetchMedia(
+                kpId: item.kpId > 0 ? item.kpId : nil,
+                title: item.title,
+                isTv: isTv
+            ) {
+                let res = collaps.apiResult
+                var fallbackUrl: String? = nil
+                if let s = item.season, let e = item.episode {
+                    if let sObj = res.seasons.first(where: { $0.season == s }),
+                       let epObj = sObj.episodes.first(where: { $0.episode == e }) {
+                        fallbackUrl = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, item.translationName) })?.streamUrl
+                            ?? epObj.translations.first?.streamUrl
+                    }
+                } else if let movie = res.movie {
+                    fallbackUrl = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, item.translationName) })?.streamUrl
+                        ?? movie.translations.first?.streamUrl
+                }
+                if let fallbackUrl, !fallbackUrl.isEmpty {
+                    streamUrlString = fallbackUrl
+                    headers = CollapsRepository.streamHeaders
+                    updateItem(id: itemId) {
+                        $0.directStreamUrl = fallbackUrl
+                        $0.customHeaders = headers
+                    }
+                }
+            }
+        }
+        
+        guard !streamUrlString.isEmpty, let targetUrl = URL(string: streamUrlString) else {
+            await finishWithError(id: itemId, message: "Не удалось получить источник видео")
             return
         }
         
-        guard let masterPlaylistUrl = URL(string: streamUrlString) else {
-            await finishWithError(id: itemId, message: "Не удалось получить ссылку на поток")
+        // 4. Handle Direct MP4 Video Stream
+        let isDirectMp4 = targetUrl.pathExtension.lowercased() == "mp4" && !streamUrlString.lowercased().contains(".m3u8")
+        if isDirectMp4 {
+            var request = URLRequest(url: targetUrl)
+            for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
+            if request.value(forHTTPHeaderField: "User-Agent") == nil {
+                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
+            }
+            let task = session.downloadTask(with: request)
+            task.taskDescription = "\(itemId)|direct|0|\(item.localDirectory)"
+            task.resume()
             return
         }
         
+        // 5. Handle HLS Stream (M3U8)
         let playlistData: Data
         do {
-            playlistData = try await downloadDataDirectly(from: masterPlaylistUrl, headers: headers)
+            playlistData = try await downloadDataDirectly(from: targetUrl, headers: headers)
         } catch {
-            await finishWithError(id: itemId, message: "Не удалось скачать плейлист")
+            await finishWithError(id: itemId, message: "Не удалось загрузить плейлист")
             return
         }
+        
         guard let playlistContent = String(data: playlistData, encoding: .utf8) else {
-            await finishWithError(id: itemId, message: "Ошибка парсинга плейлиста")
+            await finishWithError(id: itemId, message: "Ошибка декодирования плейлиста")
             return
         }
         
-        var mediaPlaylistUrl = masterPlaylistUrl
+        var mediaPlaylistUrl = targetUrl
+        var mediaPlaylistContent = playlistContent
+        
         if playlistContent.contains("#EXT-X-STREAM-INF") {
-            if let chosenUrl = chooseMediaPlaylistUrl(from: playlistContent, baseUrl: masterPlaylistUrl, preferredQuality: preferredQuality) {
+            if let chosenUrl = chooseMediaPlaylistUrl(from: playlistContent, baseUrl: targetUrl, preferredQuality: preferredQuality) {
                 mediaPlaylistUrl = chosenUrl
-            } else {
-                await finishWithError(id: itemId, message: "Не удалось выбрать качество")
-                return
+                if chosenUrl != targetUrl {
+                    do {
+                        let subData = try await downloadDataDirectly(from: chosenUrl, headers: headers)
+                        if let subStr = String(data: subData, encoding: .utf8) {
+                            mediaPlaylistContent = subStr
+                        }
+                    } catch {
+                        await finishWithError(id: itemId, message: "Ошибка загрузки дорожки качества")
+                        return
+                    }
+                }
             }
-        }
-        
-        let mediaPlaylistData: Data
-        do {
-            mediaPlaylistData = try await downloadDataDirectly(from: mediaPlaylistUrl, headers: headers)
-        } catch {
-            await finishWithError(id: itemId, message: "Ошибка скачивания медиа-плейлиста")
-            return
-        }
-        guard let mediaPlaylistContent = String(data: mediaPlaylistData, encoding: .utf8) else {
-            await finishWithError(id: itemId, message: "Ошибка декодирования медиа-плейлиста")
-            return
         }
         
         let lines = mediaPlaylistContent.components(separatedBy: .newlines)
@@ -565,25 +645,38 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         var segmentLines: [Int] = []
         var keyUrl: URL? = nil
         var keyLineIndex: Int? = nil
+        var initMapUrl: URL? = nil
+        var initMapLineIndex: Int? = nil
         
         for (i, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
             
-            if trimmed.hasPrefix("#") {
-                if trimmed.contains("URI=") {
-                    if let range = trimmed.range(of: "URI=\"([^\"]+)\"", options: .regularExpression) {
-                        let match = String(trimmed[range])
-                        let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
-                        if !uriString.isEmpty && uriString != "none" {
-                            keyUrl = uriString.hasPrefix("http") ? URL(string: uriString) : URL(string: uriString, relativeTo: mediaPlaylistUrl)
-                            keyLineIndex = i
-                        }
+            if trimmed.hasPrefix("#EXT-X-KEY:") {
+                if trimmed.contains("METHOD=NONE") {
+                    keyUrl = nil
+                    keyLineIndex = nil
+                } else if let range = trimmed.range(of: #"URI="([^"]+)""#, options: .regularExpression) {
+                    let match = String(trimmed[range])
+                    let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
+                    if !uriString.isEmpty {
+                        keyUrl = uriString.hasPrefix("http") ? URL(string: uriString) : URL(string: uriString, relativeTo: mediaPlaylistUrl)
+                        keyLineIndex = i
                     }
                 }
+            } else if trimmed.hasPrefix("#EXT-X-MAP:") {
+                if let range = trimmed.range(of: #"URI="([^"]+)""#, options: .regularExpression) {
+                    let match = String(trimmed[range])
+                    let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
+                    if !uriString.isEmpty {
+                        initMapUrl = uriString.hasPrefix("http") ? URL(string: uriString) : URL(string: uriString, relativeTo: mediaPlaylistUrl)
+                        initMapLineIndex = i
+                    }
+                }
+            } else if trimmed.hasPrefix("#") {
+                continue
             } else {
-                let url = trimmed.hasPrefix("http") ? URL(string: trimmed) : URL(string: trimmed, relativeTo: mediaPlaylistUrl)
-                if let url = url {
+                if let url = URL(string: trimmed, relativeTo: mediaPlaylistUrl) {
                     segmentUrls.append(url)
                     segmentLines.append(i)
                 }
@@ -591,12 +684,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         
         if segmentUrls.isEmpty {
-            await finishWithError(id: itemId, message: "Нет сегментов для скачивания")
+            await finishWithError(id: itemId, message: "Плейлист не содержит фрагментов")
             return
         }
         
         updateItem(id: itemId) { $0.totalBytes = Int64(segmentUrls.count) }
         
+        // Download decryption key if present
         if let keyUrl {
             do {
                 let keyData = try await downloadDataDirectly(from: keyUrl, headers: headers)
@@ -607,17 +701,38 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 var mutableKeyFile = keyFile
                 try mutableKeyFile.setResourceValues(rv)
             } catch {
-                await finishWithError(id: itemId, message: "Ошибка ключа")
-                return
+                AppDiagnostics.shared.log("[DownloadManager] Failed to fetch key: \(error.localizedDescription)")
+            }
+        }
+        
+        // Download fMP4 init segment if present
+        if let initMapUrl {
+            do {
+                let initData = try await downloadDataDirectly(from: initMapUrl, headers: headers)
+                let initFile = taskDir.appendingPathComponent("init.mp4")
+                try initData.write(to: initFile, options: [.atomic, .completeFileProtection])
+                var rv = URLResourceValues()
+                rv.isExcludedFromBackup = true
+                var mutableInitFile = initFile
+                try mutableInitFile.setResourceValues(rv)
+            } catch {
+                AppDiagnostics.shared.log("[DownloadManager] Failed to fetch init map: \(error.localizedDescription)")
             }
         }
         
         var rewrittenLines = lines
         if let keyLineIndex, let originalKeyLine = rewrittenLines[safe: keyLineIndex] {
-            if let range = originalKeyLine.range(of: "URI=\"([^\"]+)\"", options: .regularExpression) {
+            if let range = originalKeyLine.range(of: #"URI="([^"]+)""#, options: .regularExpression) {
                 var modifiedLine = originalKeyLine
                 modifiedLine.replaceSubrange(range, with: "URI=\"key.bin\"")
                 rewrittenLines[keyLineIndex] = modifiedLine
+            }
+        }
+        if let initMapLineIndex, let originalInitLine = rewrittenLines[safe: initMapLineIndex] {
+            if let range = originalInitLine.range(of: #"URI="([^"]+)""#, options: .regularExpression) {
+                var modifiedLine = originalInitLine
+                modifiedLine.replaceSubrange(range, with: "URI=\"init.mp4\"")
+                rewrittenLines[initMapLineIndex] = modifiedLine
             }
         }
         for (segIdx, lineIdx) in segmentLines.enumerated() {
@@ -666,15 +781,15 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let downloadedCount = downloadedSet.count
         let missingIndices = (0..<totalSegments).filter { !downloadedSet.contains($0) }
         
-        let progress = Double(downloadedCount) / Double(totalSegments)
+        let progress = totalSegments > 0 ? (Double(downloadedCount) / Double(totalSegments)) : 0.0
         updateItem(id: itemId) {
             $0.progress = progress
             $0.downloadedBytes = Int64(downloadedCount)
             $0.totalBytes = Int64(totalSegments)
-            $0.status = downloadedCount == totalSegments ? .completed : .downloading
+            $0.status = (downloadedCount == totalSegments && totalSegments > 0) ? .completed : .downloading
         }
         
-        if downloadedCount == totalSegments {
+        if downloadedCount == totalSegments && totalSegments > 0 {
             activeManifests.removeValue(forKey: itemId)
             await finalizeAndAssembleMP4(for: itemId)
             return
@@ -708,13 +823,78 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     // MARK: - URLSessionDownloadDelegate
     
+    private struct TaskInfo {
+        let itemId: String
+        let isDirect: Bool
+        let index: Int
+        let retries: Int
+        let localDirectory: String
+    }
+    
+    private nonisolated func extractTaskInfo(desc: String) -> TaskInfo? {
+        let parts = desc.split(separator: "|")
+        if parts.count >= 4 {
+            let itemId = String(parts[0])
+            let isDirect = parts[1] == "direct"
+            let idx = isDirect ? 0 : (Int(parts[1]) ?? 0)
+            let retries = Int(parts[2]) ?? 0
+            let localDirectory = String(parts[3])
+            return TaskInfo(itemId: itemId, isDirect: isDirect, index: idx, retries: retries, localDirectory: localDirectory)
+        }
+        return nil
+    }
+    
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let comps = extractTaskInfo(desc: desc) else { return }
         
+        // Validate HTTP response code
+        if let httpResponse = downloadTask.response as? HTTPURLResponse {
+            guard (200...299).contains(httpResponse.statusCode) else {
+                AppDiagnostics.shared.log("[DownloadManager] HTTP \(httpResponse.statusCode) on \(comps.isDirect ? "direct" : "seg \(comps.index)") for \(comps.itemId)")
+                Task { @MainActor in
+                    await self.handleSegmentFailure(comps: comps, statusCode: httpResponse.statusCode)
+                }
+                return
+            }
+        }
+        
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: location.path)[.size] as? Int64) ?? 0
+        guard fileSize > 0 else {
+            AppDiagnostics.shared.log("[DownloadManager] Zero-byte download on \(comps.itemId)")
+            Task { @MainActor in
+                await self.handleSegmentFailure(comps: comps, statusCode: 0)
+            }
+            return
+        }
+        
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let taskDir = docs.appendingPathComponent(comps.localDirectory)
-        let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
+        try? FileManager.default.createDirectory(at: taskDir, withIntermediateDirectories: true)
         
+        if comps.isDirect {
+            let finalMp4 = taskDir.appendingPathComponent("video.mp4")
+            try? FileManager.default.removeItem(at: finalMp4)
+            try? FileManager.default.moveItem(at: location, to: finalMp4)
+            Task { @MainActor in
+                self.updateItem(id: comps.itemId) {
+                    $0.localPlayableFileName = "video.mp4"
+                    $0.downloadedBytes = fileSize
+                    $0.totalBytes = fileSize
+                    $0.progress = 1.0
+                    $0.status = .completed
+                }
+                if let item = self.downloads.first(where: { $0.id == comps.itemId }) {
+                    ToastManager.shared.show(
+                        title: "Загрузка завершена",
+                        subtitle: "«\(item.title)» сохранено",
+                        icon: "checkmark.circle.fill"
+                    )
+                }
+            }
+            return
+        }
+        
+        let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
         try? FileManager.default.removeItem(at: finalUrl)
         try? FileManager.default.moveItem(at: location, to: finalUrl)
         
@@ -732,7 +912,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     bgTaskId = .invalid
                 }
             }
-            self.downloadedSegmentsCache[comps.itemId]?.insert(comps.index)
+            if self.downloadedSegmentsCache[comps.itemId] != nil {
+                self.downloadedSegmentsCache[comps.itemId]?.insert(comps.index)
+            } else {
+                self.downloadedSegmentsCache[comps.itemId] = [comps.index]
+            }
             await self.enqueueNextBatch(for: comps.itemId)
         }
     }
@@ -744,19 +928,30 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
+        guard let error else { return }
+        
         Task { @MainActor in
-            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "RetrySegment_\(comps.itemId)_\(comps.index)") {
-                if bgTaskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(bgTaskId)
-                    bgTaskId = .invalid
-                }
+            let statusCode = (task.response as? HTTPURLResponse)?.statusCode ?? (error as NSError).code
+            await self.handleSegmentFailure(comps: comps, statusCode: statusCode)
+        }
+    }
+    
+    private func handleSegmentFailure(comps: TaskInfo, statusCode: Int) async {
+        // If 401 or 403 (token expired): re-resolve the stream manifest
+        if (statusCode == 401 || statusCode == 403) && comps.retries < 2 {
+            AppDiagnostics.shared.log("[DownloadManager] Token expired for \(comps.itemId). Re-resolving stream...")
+            if let item = downloads.first(where: { $0.id == comps.itemId }) {
+                await prepareAndEnqueue(itemId: comps.itemId, item: item, preferredQuality: item.preferredQuality)
+                return
             }
-            defer {
-                if bgTaskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(bgTaskId)
-                    bgTaskId = .invalid
+        }
+        
+        if comps.retries < 3 {
+            if comps.isDirect {
+                if let item = downloads.first(where: { $0.id == comps.itemId }) {
+                    await prepareAndEnqueue(itemId: comps.itemId, item: item, preferredQuality: item.preferredQuality)
                 }
+                return
             }
             
             // Ленивое восстановление манифеста при пробуждении в фоне
@@ -770,20 +965,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
             
             guard let manifest = self.activeManifests[comps.itemId] else { return }
-            
-            if error != nil {
-                if comps.retries < 3 {
-                    let url = manifest.segmentUrls[comps.index]
-                    var request = URLRequest(url: url)
-                    for (k, v) in manifest.headers { request.setValue(v, forHTTPHeaderField: k) }
-                    
-                    let newTask = self.session.downloadTask(with: request)
-                    newTask.taskDescription = "\(comps.itemId)|\(comps.index)|\(comps.retries + 1)|\(manifest.localDirectory)"
-                    newTask.resume()
-                } else {
-                    await self.finishWithError(id: comps.itemId, message: "Ошибка сети после 3 попыток")
-                }
-            }
+            let url = manifest.segmentUrls[comps.index]
+            var request = URLRequest(url: url)
+            for (k, v) in manifest.headers { request.setValue(v, forHTTPHeaderField: k) }
+            let newTask = self.session.downloadTask(with: request)
+            newTask.taskDescription = "\(comps.itemId)|\(comps.index)|\(comps.retries + 1)|\(comps.localDirectory)"
+            newTask.resume()
+        } else {
+            await finishWithError(id: comps.itemId, message: "Ошибка сети при загрузке (код \(statusCode))")
         }
     }
     
@@ -792,16 +981,6 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             self.backgroundCompletionHandler?()
             self.backgroundCompletionHandler = nil
         }
-    }
-    
-    private nonisolated func extractTaskInfo(desc: String) -> (itemId: String, index: Int, retries: Int, localDirectory: String)? {
-        let parts = desc.split(separator: "|")
-        if parts.count >= 4, let idx = Int(parts[1]) {
-            let retries = Int(parts[2]) ?? 0
-            let localDirectory = String(parts[3])
-            return (String(parts[0]), idx, retries, localDirectory)
-        }
-        return nil
     }
     
     private func finishWithError(id: String, message: String) async {
@@ -832,7 +1011,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         var request = URLRequest(url: url)
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
         let (data, response) = try await defaultSession.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
         }
         return data
@@ -914,7 +1093,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        if variants.isEmpty { return nil }
+        if variants.isEmpty { return baseUrl }
         
         let targetHeight: Int
         switch preferredQuality {
@@ -1349,8 +1528,10 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if let fileHandle = try? FileHandle(forWritingTo: tempStitchedUrl) {
                 defer { try? fileHandle.close() }
                 do {
-                    if let keyData, isFmp4Init {
-                        try fileHandle.write(contentsOf: keyData)
+                    if let initData {
+                        try fileHandle.write(contentsOf: initData)
+                    } else if let keyData, isFmp4Data(keyData) {
+                        try handle.write(contentsOf: keyData)
                     }
                     for segName in segmentFiles {
                         let segUrl = taskDir.appendingPathComponent(segName)
@@ -1364,82 +1545,52 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
             
-            guard writeSuccess else {
-                try? fm.removeItem(at: tempStitchedUrl)
-                return
-            }
-            
-            do {
-                try await remuxToCleanMp4(inputUrl: tempStitchedUrl, outputUrl: finalMp4Url, expectedDuration: playlistDurationSec)
-                try? fm.removeItem(at: tempStitchedUrl)
-            } catch {
-                AppDiagnostics.shared.log("finalizeAndAssembleMP4 fmp4 error: \(error.localizedDescription)")
-                try? fm.removeItem(at: tempStitchedUrl)
-            }
-        } else {
-            let isEncrypted = (keyData?.count == 16 && !isFmp4Init)
-            let mergedTsUrl = tempDir.appendingPathComponent("\(UUID().uuidString).ts")
-            fm.createFile(atPath: mergedTsUrl.path, contents: nil)
-            
-            var writeSuccess = false
-            if let fileHandle = try? FileHandle(forWritingTo: mergedTsUrl) {
-                defer { try? fileHandle.close() }
-                do {
-                    for (seqIdx, segName) in segmentFiles.enumerated() {
-                        let segUrl = taskDir.appendingPathComponent(segName)
-                        if let rawData = try? Data(contentsOf: segUrl) {
-                            let finalData: Data
-                            if isEncrypted, let key = keyData {
-                                finalData = decryptHlsSegment(data: rawData, key: key, sequence: seqIdx) ?? rawData
-                            } else {
-                                finalData = rawData
-                            }
-                            try fileHandle.write(contentsOf: finalData)
-                        }
+            if writeSuccess {
+                try? fm.removeItem(at: finalMp4Url)
+                try? fm.moveItem(at: tempStitchedUrl, to: finalMp4Url)
+                let exactSize = ((try? fm.attributesOfItem(atPath: finalMp4Url.path))?[.size] as? Int64) ?? 0
+                if fm.fileExists(atPath: finalMp4Url.path) && exactSize > 1000 {
+                    for segName in segmentFiles {
+                        try? fm.removeItem(at: taskDir.appendingPathComponent(segName))
                     }
-                    writeSuccess = true
-                } catch {
-                    AppDiagnostics.shared.log("finalizeAndAssembleMP4 ts write error: \(error.localizedDescription)")
+                    try? fm.removeItem(at: keyFile)
+                    try? fm.removeItem(at: initFile)
+                    try? fm.removeItem(at: taskDir.appendingPathComponent("local.m3u8"))
+                    
+                    updateItem(id: itemId) {
+                        $0.localPlayableFileName = "video.mp4"
+                        $0.downloadedBytes = exactSize
+                        $0.totalBytes = exactSize
+                        $0.status = .completed
+                        $0.progress = 1.0
+                    }
+                    
+                    ToastManager.shared.show(
+                        title: "Загрузка завершена",
+                        subtitle: "«\(item.title)» сохранено",
+                        icon: "checkmark.circle.fill"
+                    )
+                    return
                 }
-            }
-            
-            guard writeSuccess else {
-                try? fm.removeItem(at: mergedTsUrl)
-                return
-            }
-            
-            do {
-                try await remuxToCleanMp4(inputUrl: mergedTsUrl, outputUrl: finalMp4Url, expectedDuration: playlistDurationSec)
-                try? fm.removeItem(at: mergedTsUrl)
-            } catch {
-                AppDiagnostics.shared.log("finalizeAndAssembleMP4 ts error: \(error.localizedDescription)")
-                try? fm.removeItem(at: mergedTsUrl)
+            } else {
+                try? fm.removeItem(at: tempStitchedUrl)
             }
         }
         
-        let exactSize = ((try? fm.attributesOfItem(atPath: finalMp4Url.path))?[.size] as? Int64) ?? 0
-        if fm.fileExists(atPath: finalMp4Url.path) && exactSize > 1000 {
-            // Delete raw segment chunks to free up space!
-            for segName in segmentFiles {
-                try? fm.removeItem(at: taskDir.appendingPathComponent(segName))
-            }
-            try? fm.removeItem(at: keyFile)
-            try? fm.removeItem(at: taskDir.appendingPathComponent("local.m3u8"))
-            
-            updateItem(id: itemId) {
-                $0.localPlayableFileName = "video.mp4"
-                $0.downloadedBytes = exactSize
-                $0.totalBytes = exactSize
-                $0.status = .completed
-                $0.progress = 1.0
-            }
-            
-            ToastManager.shared.show(
-                title: "Загрузка завершена",
-                subtitle: "«\(item.title)» сохранено",
-                icon: "checkmark.circle.fill"
-            )
+        // For TS streams: local.m3u8 with downloaded segments is complete and playable offline
+        updateItem(id: itemId) {
+            $0.localPlayableFileName = "local.m3u8"
+            $0.downloadedBytes = totalSegmentBytes
+            $0.totalBytes = totalSegmentBytes
+            $0.status = .completed
+            $0.progress = 1.0
         }
+        
+        ToastManager.shared.show(
+            title: "Загрузка завершена",
+            subtitle: "«\(item.title)» сохранено",
+            icon: "checkmark.circle.fill"
+        )
     }
 
     func exportAsMP4(item: DownloadItem) async throws -> URL {
@@ -1481,10 +1632,41 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return exportUrl
         }
         
-        // 3. Fallback for legacy items: assemble into video.mp4 now
+        // 3. Fallback via AVAssetExportSession on local.m3u8
+        let m3u8Url = taskDir.appendingPathComponent("local.m3u8")
+        if fm.fileExists(atPath: m3u8Url.path) {
+            HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
+            let relative = "\(item.localDirectory)/local.m3u8"
+            if let encoded = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+               let proxyUrl = URL(string: "http://127.0.0.1:8181/local/\(encoded)") {
+                let asset = AVURLAsset(url: proxyUrl)
+                let presets = [
+                    AVAssetExportPresetHighestQuality,
+                    AVAssetExportPreset1280x720,
+                    AVAssetExportPresetPassthrough
+                ]
+                for preset in presets {
+                    try? fm.removeItem(at: exportUrl)
+                    if let session = AVAssetExportSession(asset: asset, presetName: preset) {
+                        session.outputURL = exportUrl
+                        session.outputFileType = .mp4
+                        session.shouldOptimizeForNetworkUse = true
+                        await session.export()
+                        let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
+                        if session.status == .completed && fm.fileExists(atPath: exportUrl.path) && size > 1000 {
+                            return exportUrl
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 4. Fallback for legacy items: assemble into video.mp4 now
         await finalizeAndAssembleMP4(for: item.id)
         if fm.fileExists(atPath: finalMp4Url.path) {
             try fm.copyItem(at: finalMp4Url, to: exportUrl)
+            return exportUrl
+        }
             return exportUrl
         }
         

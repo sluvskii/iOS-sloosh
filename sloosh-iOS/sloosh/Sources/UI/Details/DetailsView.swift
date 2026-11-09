@@ -2431,6 +2431,16 @@ struct EpisodeDetailsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var downloadManager = DownloadManager.shared
     
+    private var resolvedKpId: Int {
+        if let kp = details?.ids?.kp, kp > 0 { return kp }
+        if let kp = details?.externalIds?.kp, kp > 0 { return kp }
+        if let tmdb = details?.ids?.tmdb, tmdb > 0 { return tmdb }
+        if let tmdb = details?.externalIds?.tmdb, tmdb > 0 { return tmdb }
+        let clean = item.movieId.replacingOccurrences(of: "kp_", with: "").replacingOccurrences(of: "tmdb_", with: "")
+        if let parsed = Int(clean), parsed > 0 { return parsed }
+        return 0
+    }
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -2575,6 +2585,51 @@ struct EpisodeDetailsSheet: View {
                                 .buttonBorderShape(.capsule)
                                 .tint(.primary)
                                 .foregroundStyle(Color(UIColor.systemBackground))
+                                
+                                if let details = details {
+                                    let currentDownload = downloadManager.getDownloadItem(kpId: resolvedKpId, season: item.season, episode: item.episode)
+                                    Button {
+                                        handleEpisodeDownload(kpId: resolvedKpId, details: details, item: currentDownload)
+                                    } label: {
+                                        ZStack {
+                                            switch currentDownload?.status {
+                                            case .downloading, .paused:
+                                                ZStack {
+                                                    Circle()
+                                                        .stroke(Color.primary.opacity(0.15), lineWidth: 2)
+                                                    Circle()
+                                                        .trim(from: 0, to: min(1, max(0, currentDownload?.progress ?? 0)))
+                                                        .stroke(Color.slooshAccent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                                                        .rotationEffect(.degrees(-90))
+                                                    Image(systemName: currentDownload?.status == .paused ? "arrow.down.to.line" : "pause.fill")
+                                                        .font(.system(size: 11, weight: .semibold))
+                                                        .foregroundStyle(currentDownload?.status == .paused ? .primary : Color.slooshAccent)
+                                                }
+                                                .frame(width: 26, height: 26)
+                                            case .pending:
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            case .completed:
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 18, weight: .semibold))
+                                                    .foregroundStyle(Color.slooshAccent)
+                                            case .failed:
+                                                Image(systemName: "arrow.clockwise")
+                                                    .font(.system(size: 18, weight: .semibold))
+                                                    .foregroundStyle(.red)
+                                            case nil:
+                                                Image(systemName: "arrow.down.to.line")
+                                                    .font(.system(size: 18, weight: .semibold))
+                                                    .foregroundStyle(.primary)
+                                                    .glassForeground()
+                                            }
+                                        }
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.clear.glassEffect(in: Circle()))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(currentDownload?.status == .completed ? "Удалить загрузку серии" : "Скачать серию")
+                                }
                             }
                             .padding(.top, 8)
                         } else {
@@ -2705,24 +2760,41 @@ struct EpisodeDetailsSheet: View {
                 year: details.year,
                 isTv: true
             )
-            guard let result = vm.sourceResultWrapper?.allohaResult else { return }
             
+            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
             let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
             let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
             
-            guard let seasonObj = result.seasons.first(where: { $0.season == item.season }),
-                  let epObj = seasonObj.episodes.first(where: { $0.episode == item.episode }) else { return }
+            if let result = vm.sourceResultWrapper?.allohaResult,
+               let seasonObj = result.seasons.first(where: { $0.season == item.season }),
+               let epObj = seasonObj.episodes.first(where: { $0.episode == item.episode }),
+               let translation = bestTranslation(in: epObj.translations, preferredName: savedVoiceover ?? globalVoiceover) {
+                DownloadManager.shared.startDownload(
+                    details: details,
+                    season: item.season,
+                    episode: item.episode,
+                    translation: translation,
+                    preferredQuality: preferredQuality
+                )
+                return
+            }
             
-            guard let translation = bestTranslation(in: epObj.translations, preferredName: savedVoiceover ?? globalVoiceover) else { return }
-            
-            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
-            DownloadManager.shared.startDownload(
-                details: details,
-                season: item.season,
-                episode: item.episode,
-                translation: translation,
-                preferredQuality: preferredQuality
-            )
+            if let collaps = vm.sourceResultWrapper?.collapsResult,
+               let seasonObj = collaps.apiResult.seasons.first(where: { $0.season == item.season }),
+               let epObj = seasonObj.episodes.first(where: { $0.episode == item.episode }),
+               let translation = bestTranslation(in: epObj.translations, preferredName: savedVoiceover ?? globalVoiceover) {
+                let directUrl = (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil
+                DownloadManager.shared.startDownload(
+                    details: details,
+                    season: item.season,
+                    episode: item.episode,
+                    translation: translation,
+                    preferredQuality: preferredQuality,
+                    directStreamUrl: directUrl,
+                    customHeaders: CollapsRepository.streamHeaders
+                )
+                return
+            }
         }
     }
 }
@@ -2747,6 +2819,16 @@ struct EpisodeCellView: View {
     @State private var isWatchedState: Bool = false
     
     @ObservedObject private var downloadManager = DownloadManager.shared
+    
+    private var resolvedKpId: Int {
+        if let kp = details?.ids?.kp, kp > 0 { return kp }
+        if let kp = details?.externalIds?.kp, kp > 0 { return kp }
+        if let tmdb = details?.ids?.tmdb, tmdb > 0 { return tmdb }
+        if let tmdb = details?.externalIds?.tmdb, tmdb > 0 { return tmdb }
+        let clean = movieId.replacingOccurrences(of: "kp_", with: "").replacingOccurrences(of: "tmdb_", with: "")
+        if let parsed = Int(clean), parsed > 0 { return parsed }
+        return 0
+    }
     
     init(
         movieId: String,
@@ -2992,8 +3074,8 @@ struct EpisodeCellView: View {
                 }
                 
                 // Download Badge (Top-Right, shifted left if watched is present, only if available)
-                if isAvailable, let kpIdInt = Int(movieId) {
-                    let downloadItem = downloadManager.getDownloadItem(kpId: kpIdInt, season: season, episode: episode)
+                if isAvailable && resolvedKpId > 0 {
+                    let downloadItem = downloadManager.getDownloadItem(kpId: resolvedKpId, season: season, episode: episode)
                     if let dlItem = downloadItem {
                         VStack {
                             HStack {
@@ -3049,6 +3131,14 @@ struct EpisodeCellView: View {
                 }
                 
                 if isAvailable {
+                    if resolvedKpId > 0, let dlItem = downloadManager.getDownloadItem(kpId: resolvedKpId, season: season, episode: episode), dlItem.status == .completed {
+                        Button(role: .destructive) {
+                            downloadManager.deleteDownload(id: dlItem.id)
+                        } label: {
+                            Label("Удалить загрузку", systemImage: "trash")
+                        }
+                    }
+
                     Divider()
                     
                     if isWatchedState {
