@@ -201,20 +201,20 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: ${{ inputs.publish_public == true && format('Release {0}', env.FULL_VER) || format('Development Build #{0}', github.run_number) }}
+          name: Development Build #${{ github.run_number }}
           body: |
-            Auto-generated IPA build.
+            Auto-generated IPA build from the latest commit.
             **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
           files: sloosh-iOS/sloosh.ipa
           draft: false
-          prerelease: ${{ inputs.publish_public != true }}
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate AltStore JSON
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
-          IS_PUBLIC_INPUT: ${{ inputs.publish_public }}
+          IS_PUBLIC_INPUT: ${{ github.event.inputs.publish_public }}
           ALTSTORE_PRIVATE_PATH: ${{ secrets.ALTSTORE_PRIVATE_PATH }}
         run: |
           mkdir -p altstore
