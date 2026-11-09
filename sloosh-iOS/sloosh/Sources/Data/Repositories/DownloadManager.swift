@@ -1667,8 +1667,6 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             try fm.copyItem(at: finalMp4Url, to: exportUrl)
             return exportUrl
         }
-            return exportUrl
-        }
         
         throw NSError(domain: "ru.sloosh.export", code: 404, userInfo: [NSLocalizedDescriptionKey: "Файл видео не найден"])
     }
