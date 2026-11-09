@@ -234,7 +234,7 @@ jobs:
           {
             "name": "sloosh (Internal Dev)",
             "identifier": "com.sloosh.ios.repo.dev",
-            "sourceURL": "https://sluvskii.github.io/${{ github.repository }}/${DEV_SLUG}/apps.json",
+            "sourceURL": "https://sluvskii.github.io/iOS-sloosh/${DEV_SLUG}/apps.json",
             "apps": [
               {
                 "name": "sloosh",
@@ -260,7 +260,7 @@ jobs:
           {
             "name": "sloosh repo",
             "identifier": "com.sloosh.ios.repo",
-            "sourceURL": "https://sluvskii.github.io/${{ github.repository }}/apps.json",
+            "sourceURL": "https://sluvskii.github.io/iOS-sloosh/apps.json",
             "apps": [
               {
                 "name": "sloosh",
@@ -281,7 +281,7 @@ jobs:
           else
             echo "[AltStore] Development build: preserving existing PUBLIC apps.json"
             # Сохраняем текущий публичный apps.json: сначала пробуем скачать с живого Pages, fallback — локальный шаблон
-            if ! curl -sSfL "https://sluvskii.github.io/${{ github.repository }}/apps.json" -o altstore/apps.json; then
+            if ! curl -sSfL "https://sluvskii.github.io/iOS-sloosh/apps.json" -o altstore/apps.json; then
               if [ -f altstore-public.json ]; then
                 cp altstore-public.json altstore/apps.json
               fi
@@ -291,7 +291,7 @@ jobs:
           cp endpoint.json altstore/endpoint.json 2>/dev/null || true
 
           echo "### 📱 AltStore Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Private Dev Source**: \`https://sluvskii.github.io/${{ github.repository }}/${DEV_SLUG}/apps.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Private Dev Source**: \`https://sluvskii.github.io/iOS-sloosh/${DEV_SLUG}/apps.json\`" >> $GITHUB_STEP_SUMMARY
           if [ "$IS_PUBLIC_INPUT" = "true" ]; then
             echo "- **Public Source**: Updated to build #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           else
