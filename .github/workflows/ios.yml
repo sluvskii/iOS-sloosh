@@ -3,18 +3,31 @@ name: iOS Build
 
 on:
   push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+      - 'release-*'
     paths-ignore:
       - 'README.md'
       - 'AGENTS.md'
       - '.gitignore'
       - 'database.rules.json'
+      - 'altstore-public.json'
   pull_request:
     paths-ignore:
       - 'README.md'
       - 'AGENTS.md'
       - '.gitignore'
       - 'database.rules.json'
+      - 'altstore-public.json'
   workflow_dispatch:
+    inputs:
+      publish_public:
+        description: 'Publish release to Public AltStore (apps.json)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # Lint запускается параллельно только для PR, не блокирует сборку
@@ -191,15 +204,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: build-${{ github.run_number }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
           target_commitish: ${{ github.sha }}
-          name: Development Build #${{ github.run_number }}
+          name: ${{ (github.event.inputs.publish_public == 'true' || startsWith(github.ref, 'refs/tags/')) && format('Release {0}', env.FULL_VER) || format('Development Build #{0}', github.run_number) }}
           body: |
-            Auto-generated IPA build from the latest commit.
+            Auto-generated IPA build.
             **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
           files: sloosh-iOS/sloosh.ipa
           draft: false
-          prerelease: true
+          prerelease: ${{ !(github.event.inputs.publish_public == 'true' || startsWith(github.ref, 'refs/tags/')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -209,12 +222,21 @@ jobs:
           mkdir -p altstore
           SIZE=$(stat -f%z sloosh-iOS/sloosh.ipa || echo 0)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          # FULL_VER is set in GITHUB_ENV by "Inject Build Number" step (e.g. "1.5.1097")
-          cat <<EOF > altstore/apps.json
+
+          # Определяем приватный путь для личного AltStore
+          # Если в GitHub Secrets задан ALTSTORE_PRIVATE_PATH, используется он (никто не увидит в коде)
+          DEV_SLUG="${{ secrets.ALTSTORE_PRIVATE_PATH }}"
+          if [ -z "$DEV_SLUG" ]; then
+            DEV_SLUG="insider-preview"
+          fi
+
+          # 1. ВСЕГДА обновляем личный закрытый источник AltStore (для разработчика)
+          mkdir -p "altstore/${DEV_SLUG}"
+          cat <<EOF > "altstore/${DEV_SLUG}/apps.json"
           {
-            "name": "sloosh repo",
-            "identifier": "com.sloosh.ios.repo",
-            "sourceURL": "https://sluvskii.github.io/iOS-sloosh/apps.json",
+            "name": "sloosh (Internal Dev)",
+            "identifier": "com.sloosh.ios.repo.dev",
+            "sourceURL": "https://sluvskii.github.io/${{ github.repository }}/${DEV_SLUG}/apps.json",
             "apps": [
               {
                 "name": "sloosh",
@@ -222,7 +244,38 @@ jobs:
                 "developerName": "sluvskii",
                 "version": "$FULL_VER",
                 "versionDate": "$DATE",
-                "versionDescription": "Build #${{ github.run_number }}",
+                "versionDescription": "Internal Build #${{ github.run_number }}",
+                "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
+                "localizedDescription": "sloosh — стриминг фильмов и сериалов (внутренняя тестовая сборка)",
+                "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
+                "tintColor": "000000",
+                "size": $SIZE
+              }
+            ]
+          }
+          EOF
+
+          # 2. Определяем, является ли этот запуск официальным публичным релизом
+          IS_PUBLIC_RELEASE=false
+          if [ "${{ github.event.inputs.publish_public }}" = "true" ] || [[ "${{ github.ref }}" == refs/tags/v* ]] || [[ "${{ github.ref }}" == refs/tags/release-* ]]; then
+            IS_PUBLIC_RELEASE=true
+          fi
+
+          if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+            echo "[AltStore] Publishing build #${{ github.run_number }} to PUBLIC apps.json!"
+            cat <<EOF > altstore/apps.json
+          {
+            "name": "sloosh repo",
+            "identifier": "com.sloosh.ios.repo",
+            "sourceURL": "https://sluvskii.github.io/${{ github.repository }}/apps.json",
+            "apps": [
+              {
+                "name": "sloosh",
+                "bundleIdentifier": "com.sloosh.ios",
+                "developerName": "sluvskii",
+                "version": "$FULL_VER",
+                "versionDate": "$DATE",
+                "versionDescription": "Release #${{ github.run_number }}",
                 "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
                 "localizedDescription": "sloosh — стриминг фильмов и сериалов",
                 "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
@@ -232,7 +285,25 @@ jobs:
             ]
           }
           EOF
+          else
+            echo "[AltStore] Development build: preserving existing PUBLIC apps.json"
+            # Сохраняем текущий публичный apps.json: сначала пробуем скачать с живого Pages, fallback — локальный шаблон
+            if ! curl -sSfL "https://sluvskii.github.io/${{ github.repository }}/apps.json" -o altstore/apps.json; then
+              if [ -f altstore-public.json ]; then
+                cp altstore-public.json altstore/apps.json
+              fi
+            fi
+          fi
+
           cp endpoint.json altstore/endpoint.json 2>/dev/null || true
+
+          echo "### 📱 AltStore Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Private Dev Source**: \`https://sluvskii.github.io/${{ github.repository }}/${DEV_SLUG}/apps.json\`" >> $GITHUB_STEP_SUMMARY
+          if [ "$IS_PUBLIC_RELEASE" = "true" ]; then
+            echo "- **Public Source**: Updated to build #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Public Source**: Frozen (unchanged)" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Publish TV pairing page
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
