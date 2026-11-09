@@ -83,10 +83,14 @@ struct DetailsHeroDownloadButton: View {
     @ObservedObject private var manager = DownloadManager.shared
 
     private var item: DownloadItem? {
-        let kpId = [details.ids?.kp, details.externalIds?.kp].compactMap { $0 }.first { $0 > 0 }
-            ?? [details.ids?.tmdb, details.externalIds?.tmdb].compactMap { $0 }.first { $0 > 0 }
-            ?? Int(details.id ?? "")
-            ?? 0
+        let kpId: Int = {
+            if let kp = details.ids?.kp, kp > 0 { return kp }
+            if let kp = details.externalIds?.kp, kp > 0 { return kp }
+            if let tmdb = details.ids?.tmdb, tmdb > 0 { return tmdb }
+            if let tmdb = details.externalIds?.tmdb, tmdb > 0 { return tmdb }
+            if let rawId = details.id, let parsed = Int(rawId), parsed > 0 { return parsed }
+            return 0
+        }()
         guard kpId > 0 else { return nil }
         return manager.getDownloadItem(kpId: kpId, season: nil, episode: nil)
     }

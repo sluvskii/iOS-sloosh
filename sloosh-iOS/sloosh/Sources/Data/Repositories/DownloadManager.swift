@@ -330,10 +330,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         directStreamUrl: String? = nil,
         customHeaders: [String: String]? = nil
     ) {
-        let kpId = [details.ids?.kp, details.externalIds?.kp].compactMap { $0 }.first { $0 > 0 }
-            ?? [details.ids?.tmdb, details.externalIds?.tmdb].compactMap { $0 }.first { $0 > 0 }
-            ?? Int(details.id ?? "")
-            ?? 0
+        let kpId: Int = {
+            if let kp = details.ids?.kp, kp > 0 { return kp }
+            if let kp = details.externalIds?.kp, kp > 0 { return kp }
+            if let tmdb = details.ids?.tmdb, tmdb > 0 { return tmdb }
+            if let tmdb = details.externalIds?.tmdb, tmdb > 0 { return tmdb }
+            if let rawId = details.id, let parsed = Int(rawId), parsed > 0 { return parsed }
+            return 0
+        }()
         guard kpId > 0 else {
             ToastManager.shared.show(
                 title: "Ошибка",
@@ -1513,9 +1517,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
+        let initFile = taskDir.appendingPathComponent("init.mp4")
+        let initData = (try? Data(contentsOf: initFile))
         let keyFile = taskDir.appendingPathComponent("key.bin")
         let keyData = (try? Data(contentsOf: keyFile))
-        let isFmp4Init = (keyData != nil && (isFmp4Data(keyData!) || keyData!.count > 16))
+        let isFmp4Init = (initData != nil && isFmp4Data(initData!)) || (keyData != nil && (isFmp4Data(keyData!) || keyData!.count > 16))
         let firstSegData = (try? Data(contentsOf: taskDir.appendingPathComponent(segmentFiles[0]))) ?? Data()
         let isFmp4Segments = isFmp4Init || isFmp4Data(firstSegData)
         
@@ -1531,7 +1537,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     if let initData {
                         try fileHandle.write(contentsOf: initData)
                     } else if let keyData, isFmp4Data(keyData) {
-                        try handle.write(contentsOf: keyData)
+                        try fileHandle.write(contentsOf: keyData)
                     }
                     for segName in segmentFiles {
                         let segUrl = taskDir.appendingPathComponent(segName)
