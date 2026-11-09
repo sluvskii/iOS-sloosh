@@ -1,4 +1,4 @@
-{
+﻿{
   "rules": {
     ".read": false,
     ".write": false,
@@ -135,6 +135,34 @@
 
     "media_stats": {
       ".read": true,
+      "pairing": {
+        ".read": true,
+        "$codeHash": {
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['status', 'expiresAt'])",
+          "status": {
+            ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'granted')"
+          },
+          "device": {
+            ".validate": "newData.isString() && newData.val().length <= 32"
+          },
+          "ct": {
+            ".validate": "newData.isString() && newData.val().length <= 2048"
+          },
+          "uid": {
+            ".validate": "newData.isString() && newData.val().length <= 128"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "expiresAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "grantedAt": {
+            ".validate": "newData.isNumber()"
+          }
+        }
+      },
       "media_artwork_overrides": {
         ".read": true,
         ".write": "auth != null && root.child('admins').child(auth.uid).val() == true"
