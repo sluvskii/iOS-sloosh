@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050807">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Вход в sloosh на телевизоре</title>
+  <link rel="stylesheet" href="pair.css">
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+
+  <main class="card" role="main">
+    <div class="brand">sloosh</div>
+
+    <!-- Загрузка / проверка кода -->
+    <section id="view-loading" class="view">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="lead center">Проверяем код с телевизора…</p>
+    </section>
+
+    <!-- Ссылка битая -->
+    <section id="view-invalid" class="view hidden">
+      <h1>Ссылка не подходит</h1>
+      <p class="lead">
+        Похоже, ссылка открыта не целиком. Вернитесь на телевизор и отсканируйте
+        QR-код заново — целиком, одним движением.
+      </p>
+    </section>
+
+    <!-- Код не найден / истёк / уже использован -->
+    <section id="view-problem" class="view hidden">
+      <h1 id="problem-title">Код не найден</h1>
+      <p class="lead" id="problem-text"></p>
+    </section>
+
+    <!-- Вход -->
+    <section id="view-auth" class="view hidden">
+      <h1>Вход на телевизор</h1>
+      <p class="lead">
+        Войдите в свой аккаунт sloosh — телевизор подключится к нему автоматически.
+      </p>
+
+      <div class="code-chip" id="code-chip-auth">········</div>
+
+      <div id="google-slot" class="google-slot"></div>
+
+      <div id="google-hint" class="hint hidden">
+        Вход через Google тут не настроен. Войдите по e-mail — или откройте ссылку
+        в приложении sloosh на телефоне.
+      </div>
+
+      <div class="divider"><span>или по e-mail</span></div>
+
+      <form id="form-email" novalidate>
+        <label class="field">
+          <span>E-mail</span>
+          <input id="email" type="email" inputmode="email" autocomplete="email"
+                 autocapitalize="off" spellcheck="false" required placeholder="you@example.com">
+        </label>
+        <label class="field">
+          <span>Пароль</span>
+          <input id="password" type="password" autocomplete="current-password" required placeholder="••••••••">
+        </label>
+        <button id="btn-email" class="btn btn-primary" type="submit">Войти</button>
+      </form>
+
+      <p id="auth-error" class="error hidden" role="alert"></p>
+    </section>
+
+    <!-- Подтверждение -->
+    <section id="view-confirm" class="view hidden">
+      <h1>Разрешить вход?</h1>
+      <p class="lead">
+        Телевизор получит доступ к аккаунту <b id="account-email">—</b>.
+        Убедитесь, что код на экране телевизора совпадает:
+      </p>
+
+      <div class="code-chip" id="code-chip-confirm">········</div>
+
+      <button id="btn-approve" class="btn btn-primary" type="button">Разрешить вход</button>
+      <button id="btn-switch" class="btn btn-ghost" type="button">Другой аккаунт</button>
+
+      <p id="confirm-error" class="error hidden" role="alert"></p>
+    </section>
+
+    <!-- Готово -->
+    <section id="view-done" class="view hidden">
+      <div class="check" aria-hidden="true">✓</div>
+      <h1 class="center">Готово</h1>
+      <p class="lead center">
+        Телевизор подключён к вашему аккаунту. Вернитесь к нему — приложение
+        откроется само. Эту страницу можно закрыть.
+      </p>
+    </section>
+  </main>
+
+  <p class="footer">Код действует 5 минут и срабатывает один раз</p>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="pair.js"></script>
+</body>
+</html>

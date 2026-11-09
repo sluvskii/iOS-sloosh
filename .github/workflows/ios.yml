@@ -234,6 +234,14 @@ jobs:
           EOF
           cp endpoint.json altstore/endpoint.json 2>/dev/null || true
 
+      - name: Publish TV pairing page
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          # Страница привязки телевизора: https://sluvskii.github.io/iOS-sloosh/pair/
+          rm -rf altstore/pair
+          cp -R pair altstore/pair
+          test -f altstore/pair/index.html
+
       - name: Upload Pages Artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
