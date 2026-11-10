@@ -568,7 +568,12 @@ public final class AuthRepository: ObservableObject {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 10
 
-        let bodyString = "grant_type=refresh_token&refresh_token=\(refreshToken)"
+        var formCharacters = CharacterSet.alphanumerics
+        formCharacters.insert(charactersIn: "-._~")
+        guard let encodedRefreshToken = refreshToken.addingPercentEncoding(withAllowedCharacters: formCharacters) else {
+            return user.idToken
+        }
+        let bodyString = "grant_type=refresh_token&refresh_token=\(encodedRefreshToken)"
         request.httpBody = bodyString.data(using: .utf8)
 
         do {

@@ -72,6 +72,9 @@ jobs:
       - name: Test clip playback policy
         run: bash sloosh-iOS/Tests/run-clip-playback-tests.sh
 
+      - name: Test local media path containment
+        run: bash sloosh-iOS/Tests/run-local-media-path-tests.sh
+
       - name: Test watch party sync
         run: bash sloosh-iOS/Tests/run-watch-party-tests.sh
 
