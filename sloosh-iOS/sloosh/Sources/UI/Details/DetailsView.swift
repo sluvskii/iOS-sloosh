@@ -48,6 +48,7 @@ struct RemoteBackdropView: View {
 }
 
 struct BackdropCarouselView: View {
+    @AppStorage("posterQuality") private var posterQuality = "high"
     let urls: [String]
     let fallbackUrl: URL?
     let width: CGFloat
@@ -80,7 +81,7 @@ struct BackdropCarouselView: View {
                 )
             }
         }
-        .id(urls.joined(separator: "|"))
+        .id("\(posterQuality)|\(urls.joined(separator: "|"))|\(fallbackUrl?.absoluteString ?? "")")
         .frame(width: width, height: height)
         .mask(BackdropFadeMask())
     }
