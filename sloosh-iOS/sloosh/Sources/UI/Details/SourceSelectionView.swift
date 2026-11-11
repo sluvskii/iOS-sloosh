@@ -656,6 +656,7 @@ struct SingleSourceContentView: View {
     let seasonTranslationsMap: [Int: Set<String>]
     let episodeTranslationsMap: [EpisodeKey: Set<String>]
     let movieTranslationNames: Set<String>
+    let translationAvailability: TranslationAvailabilityPolicy
     let initialSeason: Int?
     let initialEpisode: Int?
 
@@ -804,6 +805,17 @@ struct SingleSourceContentView: View {
         self.episodeTranslationsMap = epTransMap
         self.movieTranslationNames = movieNames
 
+        var nestedEpisodeNames: [Int: [Int: Set<String>]] = [:]
+        for (key, names) in epTransMap {
+            nestedEpisodeNames[key.season, default: [:]][key.episode] = names
+        }
+        self.translationAvailability = TranslationAvailabilityPolicy(
+            isSerial: effectiveIsSerial,
+            movieNames: movieNames,
+            seasonNames: sTransMap,
+            episodeNames: nestedEpisodeNames
+        )
+
         let initial = Self.computeInitialSelection(
             result: result,
             kpId: kpId,
@@ -824,12 +836,7 @@ struct SingleSourceContentView: View {
 
     // Instant O(1) Available checking
     func isTranslationAvailable(_ name: String) -> Bool {
-        if isSerial {
-            guard let s = selectedSeason, let e = selectedEpisode else { return false }
-            return episodeTranslationsMap[EpisodeKey(season: s, episode: e)]?.contains(name) ?? false
-        } else {
-            return movieTranslationNames.contains(name)
-        }
+        translationAvailability.isAvailable(name: name, season: selectedSeason, episode: selectedEpisode)
     }
 
     func seasonHasTranslation(season: Int, name: String) -> Bool {
@@ -1139,7 +1146,7 @@ struct SingleSourceContentView: View {
                         WatchSelectorChip(
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
-                            isAvailable: true,
+                            isAvailable: isTranslationAvailable(item.name),
                             badge: translationBadge(for: item.name),
                             studio: item.studio,
                             flag: item.flag

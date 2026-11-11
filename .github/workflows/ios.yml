@@ -81,6 +81,9 @@ jobs:
       - name: Test messenger search
         run: bash sloosh-iOS/Tests/run-messenger-search-tests.sh
 
+      - name: Test translation availability
+        run: bash sloosh-iOS/Tests/run-translation-availability-tests.sh
+
       - name: Test remote campaigns
         run: bash sloosh-iOS/Tests/run-campaign-tests.sh
 
