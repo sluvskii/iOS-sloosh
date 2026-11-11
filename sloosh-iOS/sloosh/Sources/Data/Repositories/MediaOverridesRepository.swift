@@ -373,11 +373,13 @@ public final class MediaOverridesRepository: ObservableObject {
         }
         saveToCache()
 
-        // 2. Отправляем на бэкенд sloosh-api (который инвалидирует кэш и сохраняет изменения)
-        _ = try? await MoviesApi.shared.saveMediaOverride(item)
-
-        // 3. Дублируем напрямую в постоянное хранилище Firebase RTDB для гарантированной сохранности
+        // 2. Сохраняем напрямую в Firebase RTDB (быстрый и надёжный путь, ждём только его)
         await pushDirectToFirebase(item)
+
+        // 3. Бэкенд sloosh-api инвалидирует свои кэши в фоне: холодный старт не должен блокировать UI
+        Task.detached(priority: .utility) {
+            _ = try? await MoviesApi.shared.saveMediaOverride(item)
+        }
 
         AppDiagnostics.shared.log("MediaOverridesRepository: saved override persistently for mediaId=\(mediaId)")
     }
@@ -398,22 +400,22 @@ public final class MediaOverridesRepository: ObservableObject {
         }
         saveToCache()
 
-        // 2. Удаляем на бэкенде sloosh-api
-        _ = try? await MoviesApi.shared.deleteMediaOverride(id: mediaId)
-        if let tmdb = tmdbId, tmdb > 0, "\(tmdb)" != mediaId {
-            _ = try? await MoviesApi.shared.deleteMediaOverride(id: "\(tmdb)")
-        }
-        if let kp = kpId, kp > 0, "kp_\(kp)" != mediaId {
-            _ = try? await MoviesApi.shared.deleteMediaOverride(id: "kp_\(kp)")
+        var ids = [mediaId]
+        if let tmdb = tmdbId, tmdb > 0, "\(tmdb)" != mediaId { ids.append("\(tmdb)") }
+        if let kp = kpId, kp > 0, "kp_\(kp)" != mediaId { ids.append("kp_\(kp)") }
+
+        // 2. Удаляем напрямую из Firebase RTDB параллельно (ждём только этот путь)
+        await withTaskGroup(of: Void.self) { group in
+            for id in ids {
+                group.addTask { await self.deleteDirectFromFirebase(id) }
+            }
         }
 
-        // 3. Удаляем напрямую из постоянного хранилища Firebase RTDB
-        await deleteDirectFromFirebase(mediaId)
-        if let tmdb = tmdbId, tmdb > 0, "\(tmdb)" != mediaId {
-            await deleteDirectFromFirebase("\(tmdb)")
-        }
-        if let kp = kpId, kp > 0, "kp_\(kp)" != mediaId {
-            await deleteDirectFromFirebase("kp_\(kp)")
+        // 3. Бэкенд sloosh-api чистит свои кэши в фоне
+        Task.detached(priority: .utility) {
+            for id in ids {
+                _ = try? await MoviesApi.shared.deleteMediaOverride(id: id)
+            }
         }
 
         AppDiagnostics.shared.log("MediaOverridesRepository: deleted override persistently for mediaId=\(mediaId)")
