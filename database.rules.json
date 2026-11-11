@@ -1,4 +1,4 @@
-﻿{
+{
   "rules": {
     ".read": false,
     ".write": false,
@@ -134,12 +134,12 @@
     },
 
     "media_stats": {
-      ".read": true,
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() == true",
       "pairing": {
-        ".read": true,
         "$codeHash": {
-          ".write": "auth != null",
-          ".validate": "newData.hasChildren(['status', 'expiresAt'])",
+          ".read": true,
+          ".write": "auth != null && (!data.exists() || !newData.exists() || data.child('status').val() == 'pending' || data.child('expiresAt').val() < now)",
+          ".validate": "newData.hasChildren(['status', 'expiresAt']) && (newData.child('status').val() == 'pending' || (data.child('status').val() == 'pending' && newData.child('uid').val() == auth.uid))",
           "status": {
             ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'granted')"
           },
@@ -210,7 +210,15 @@
         }
       },
       "$mediaKey": {
-        ".write": "auth != null && $mediaKey != 'media_artwork_overrides' && $mediaKey != 'clips' && $mediaKey != 'clips_likes' && $mediaKey != 'clips_views' && $mediaKey != 'clips_comments'"
+        ".read": "$mediaKey != 'pairing'",
+        ".write": "auth != null && $mediaKey != 'pairing' && $mediaKey != 'media_artwork_overrides' && $mediaKey != 'clips' && $mediaKey != 'clips_likes' && $mediaKey != 'clips_views' && $mediaKey != 'clips_comments'",
+        "title": { ".validate": "newData.isString() && newData.val().length <= 300" },
+        "posterUrl": { ".validate": "newData.isString() && newData.val().length <= 2048" },
+        "totalPlays": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "lastPlayedMs": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "translations": {
+          "$voice": { ".validate": "newData.isNumber() && newData.val() >= 0" }
+        }
       }
     },
 
@@ -227,7 +235,7 @@
         ".indexOn": ["createdAtMs"],
         "$commentId": {
           ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && (data.child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))",
-          ".validate": "newData.hasChildren(['authorId', 'authorName', 'text', 'createdAtMs']) && newData.child('text').isString()",
+          ".validate": "newData.hasChildren(['authorId', 'authorName', 'text', 'createdAtMs']) && newData.child('text').isString() && newData.child('text').val().length <= 4000 && newData.child('authorName').isString() && newData.child('authorName').val().length <= 200",
           "likedBy": {
             "$uid": {
               ".write": "auth != null && auth.uid == $uid",
@@ -251,13 +259,16 @@
     "watch_parties": {
       "$partyId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() == auth.uid) || (data.exists() && (data.child('hostUid').val() == auth.uid || data.child('guestUid').val() == auth.uid || (!data.child('guestUid').exists() && newData.child('guestUid').val() == auth.uid))))"
       }
     },
 
     "global_stats": {
       ".read": true,
-      ".write": "auth != null"
+      "translations": {
+        ".write": "auth != null",
+        "$voice": { ".validate": "newData.isNumber() && newData.val() >= 0" }
+      }
     }
   }
 }

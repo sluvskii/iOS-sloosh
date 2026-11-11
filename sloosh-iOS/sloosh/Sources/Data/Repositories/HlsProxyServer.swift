@@ -121,6 +121,8 @@ class HlsProxyServer {
         do {
             let parameters = NWParameters.tcp
             parameters.allowLocalEndpointReuse = true
+            // AVPlayer and downloaded playlists use loopback; never expose the proxy on Wi-Fi.
+            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
             let newListener = try NWListener(using: parameters, on: port)
             newListener.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
@@ -322,7 +324,9 @@ class HlsProxyServer {
             
             if let decodedData = Data(base64Encoded: base64String),
                let decodedString = String(data: decodedData, encoding: .utf8),
-               let realUrl = URL(string: decodedString) {
+               let realUrl = URL(string: decodedString),
+               ["http", "https"].contains(realUrl.scheme?.lowercased() ?? ""),
+               realUrl.host != nil {
                 // isPlaylist: true if decoded URL contains .m3u8 OR if the proxy path suffix
                 // implies a playlist (e.g. proxied URL had no extension → assigned stream.m3u8).
                 // This fixes signed CDN URLs (VKVideo, etc.) that return m3u8 without extension.
@@ -354,7 +358,12 @@ class HlsProxyServer {
         } else if urlComponents.path.hasPrefix("/local/") {
             let relativePath = String(urlComponents.path.dropFirst(7)) // drop "/local/"
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let fileUrl = docs.appendingPathComponent(relativePath)
+            // Only downloaded media may be served, never preferences or other app data.
+            // Resolve symlinks as well as '..' before checking the directory boundary.
+            guard let fileUrl = LocalMediaPathPolicy.resolve(relativePath, documents: docs) else {
+                self.send404(on: connection)
+                return
+            }
             
             if FileManager.default.fileExists(atPath: fileUrl.path) {
                 do {
@@ -383,7 +392,7 @@ class HlsProxyServer {
                             } else {
                                 end = totalLength - 1
                             }
-                            if start <= end && start < totalLength {
+                            if start >= 0 && start <= end && start < totalLength {
                                 let subData = fileData.subdata(in: start..<(end + 1))
                                 let contentRange = "bytes \(start)-\(end)/\(totalLength)"
                                 self.sendResponse(data: subData, statusCode: 206, contentType: contentType, contentRange: contentRange, connection: connection)
