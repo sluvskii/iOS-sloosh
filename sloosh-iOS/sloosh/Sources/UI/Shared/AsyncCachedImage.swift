@@ -4,6 +4,19 @@ import UIKit
 public final class ImageCache {
     public static let shared = ImageCache()
     private let cache = NSCache<NSString, UIImage>()
+
+    /// Сеть для картинок: короткий таймаут ожидания ответа, чтобы при блокировке
+    /// хостинга постеры не «висели» по минуте (системный таймаут по умолчанию — 60 с).
+    /// timeoutIntervalForRequest — это простой между пакетами, поэтому медленная,
+    /// но живая загрузка больших кадров не обрывается.
+    public static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 12
+        config.timeoutIntervalForResource = 40
+        config.requestCachePolicy = .useProtocolCachePolicy
+        config.httpMaximumConnectionsPerHost = 6
+        return URLSession(configuration: config)
+    }()
     
     private init() {
         // Set maximum cost of 50 MB in memory to prevent memory pressure
@@ -109,7 +122,7 @@ public final class ImageCache {
                     return
                 }
                 
-                if let (data, resp) = try? await URLSession.shared.data(for: request),
+                if let (data, resp) = try? await ImageCache.session.data(for: request),
                    let http = resp as? HTTPURLResponse, http.statusCode == 200,
                    let img = UIImage(data: data) {
                     let cachedResponse = CachedURLResponse(response: http, data: data)
@@ -277,7 +290,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await ImageCache.session.data(for: request)
             let isSuccessful: Bool
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 404 {
@@ -352,7 +365,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             }
             
             do {
-                let (data, response) = try await URLSession.shared.data(for: fallbackRequest)
+                let (data, response) = try await ImageCache.session.data(for: fallbackRequest)
                 let isSuccessful: Bool
                 if let httpResponse = response as? HTTPURLResponse {
                     isSuccessful = httpResponse.statusCode == 200

@@ -79,12 +79,15 @@ struct slooshApp: App {
         // Упреждающе подгружаем актуальный адрес бэкенда и разогреваем WebKit.
         // API-зависимый прогрев (стрим-токены, скрейперы, overrides) требует валидного Firebase ID
         // токена и выполняется только после входа — сразу при активной сцене (см. onChange ниже).
+        // Конфиг и разогрев WebKit идут параллельно: раньше запуск ждал загрузку endpoint.json
+        // с внешних хостов, которые в России часто недоступны.
         Task { @MainActor in
-            await MoviesApi.shared.loadRemoteConfig()
             SharedWebViewProvider.shared.prewarm()
+            async let configLoad: Void = MoviesApi.shared.loadRemoteConfig()
             if AuthRepository.shared.isAuthenticated {
                 await Self.warmupAuthenticatedServices()
             }
+            await configLoad
             PlaybackAnalyticsService.shared.sendSessionHeartbeat()
             await ClipsRepository.shared.fetchFeed()
         }

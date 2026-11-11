@@ -1342,7 +1342,7 @@ private final class PhotoPageViewController: UIViewController, UIScrollViewDeleg
         spinner.startAnimating()
         loadTask = Task { [weak self] in
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await ImageCache.session.data(for: request)
                 guard !Task.isCancelled else { return }
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       let img = UIImage(data: data) else {

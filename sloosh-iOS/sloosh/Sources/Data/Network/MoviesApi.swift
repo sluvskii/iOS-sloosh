@@ -91,6 +91,76 @@ class MoviesApi {
             UserDefaults.standard.set(newValue, forKey: fallbackUrlsKey)
         }
     }
+
+    // MARK: - Host Health (быстрый отказ от заблокированных хостов)
+
+    // В России отдельные хосты (workers.dev, vercel.app, GitHub raw) периодически
+    // блокируются на уровне провайдера: соединение не отказывает, а «висит» до таймаута.
+    // Поэтому хост, который только что не ответил, на пару минут уходит в конец очереди,
+    // чтобы каждый следующий экран не ждал его заново.
+    nonisolated(unsafe) private static let hostHealthLock = NSLock()
+    nonisolated(unsafe) private static var failingHosts: [String: Date] = [:]
+    private static let hostFailureCooldown: TimeInterval = 120
+
+    static func isHostHealthy(_ base: String) -> Bool {
+        hostHealthLock.lock()
+        defer { hostHealthLock.unlock() }
+        guard let failedAt = failingHosts[base] else { return true }
+        guard Date().timeIntervalSince(failedAt) < hostFailureCooldown else {
+            failingHosts.removeValue(forKey: base)
+            return true
+        }
+        return false
+    }
+
+    static func markHostFailed(_ base: String) {
+        hostHealthLock.lock()
+        defer { hostHealthLock.unlock() }
+        if failingHosts.count > 20 { failingHosts.removeAll() }
+        failingHosts[base] = Date()
+    }
+
+    static func markHostHealthy(_ base: String) {
+        hostHealthLock.lock()
+        defer { hostHealthLock.unlock() }
+        failingHosts.removeValue(forKey: base)
+    }
+
+    /// Сбрасывает отметки о недоступных хостах (например, после смены сети или VPN),
+    /// чтобы приложение не считало рабочий хост «мёртвым» по старой ошибке.
+    static func resetHostHealth() {
+        hostHealthLock.lock()
+        failingHosts.removeAll()
+        hostHealthLock.unlock()
+
+        configLock.lock()
+        lastRemoteConfigAttemptDate = nil
+        configLock.unlock()
+    }
+
+    // MARK: - Remote Config State
+
+    nonisolated(unsafe) static let configLock = NSLock()
+    nonisolated(unsafe) static var configTask: Task<Void, Never>?
+    static var lastRemoteConfigSuccessDate: Date? {
+        get {
+            let value = UserDefaults.standard.double(forKey: "sloosh_remote_config_success_ts")
+            return value > 0 ? Date(timeIntervalSince1970: value) : nil
+        }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue.timeIntervalSince1970, forKey: "sloosh_remote_config_success_ts")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "sloosh_remote_config_success_ts")
+            }
+        }
+    }
+    /// Не перезагружаем конфиг чаще, чем раз в 5 минут: при блокировках это
+    /// превращалось в шторм запросов к GitHub на каждый сетевой сбой.
+    static let remoteConfigHealingCooldown: TimeInterval = 300
+    /// Даже неудачные попытки не повторяем чаще раза в минуту.
+    nonisolated(unsafe) static var lastRemoteConfigAttemptDate: Date?
+    static let remoteConfigAttemptCooldown: TimeInterval = 60
     
     /// Активное системное объявление / статус обслуживания
     public private(set) var currentNotice: RemoteNotice?
@@ -117,121 +187,188 @@ class MoviesApi {
         await loadRemoteConfig()
     }
 
+    private static func acquireOrJoinConfigTask(force: Bool) -> Task<Void, Never>? {
+        configLock.lock()
+        defer { configLock.unlock() }
+
+        if let inFlight = configTask {
+            return inFlight
+        }
+
+        if !force, let last = lastRemoteConfigSuccessDate,
+           Date().timeIntervalSince(last) < remoteConfigHealingCooldown {
+            return nil
+        }
+
+        if let lastAttempt = lastRemoteConfigAttemptDate,
+           Date().timeIntervalSince(lastAttempt) < remoteConfigAttemptCooldown {
+            return nil
+        }
+
+        lastRemoteConfigAttemptDate = Date()
+        let task = Task { await MoviesApi.shared.performRemoteConfigLoad() }
+        configTask = task
+        return task
+    }
+
+    private static func clearConfigTask() {
+        configLock.lock()
+        defer { configLock.unlock() }
+        configTask = nil
+    }
+
     /// Загружает актуальную ссылку на API, картинки, балансер и ключи из GitHub/Pages/jsDelivr (endpoint.json) без обновления приложения
     public func loadRemoteConfig(force: Bool = false) async {
-        let configURLs = [
-            "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json",
-            "https://sluvskii.github.io/iOS-sloosh/endpoint.json",
-            "https://cdn.jsdelivr.net/gh/sluvskii/iOS-sloosh@main/endpoint.json"
-        ]
+        // Одновременные запросы (старт + сбой + восстановление) ждут одну и ту же загрузку,
+        // а частые повторы при недоступном GitHub отсекаются кулдауном.
+        guard let task = MoviesApi.acquireOrJoinConfigTask(force: force) else {
+            return
+        }
+        await task.value
+    }
 
-        for urlString in configURLs {
-            guard let url = URL(string: urlString) else { continue }
-            do {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 6
-                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-                    continue
-                }
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    self.lastRemoteConfigCheckDate = Date()
-                    
-                    // 1. API Base URL
-                    if let remoteBase = (json["apiBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !remoteBase.isEmpty {
-                        let cleanBase = remoteBase.hasSuffix("/") ? String(remoteBase.dropLast()) : remoteBase
-                        if !cleanBase.contains("vercel.app") && MoviesApi.activeBaseURL != cleanBase {
-                            print("[MoviesApi] Updated activeBaseURL via remote config to: \(cleanBase)")
-                            MoviesApi.activeBaseURL = cleanBase
-                        }
-                    }
-                    
-                    // 2. Images Base URL
-                    if let remoteImages = (json["imagesBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !remoteImages.isEmpty {
-                        let cleanImages = remoteImages.hasSuffix("/") ? String(remoteImages.dropLast()) : remoteImages
-                        if !cleanImages.contains("vercel.app") && MoviesApi.activeImagesBaseURL != cleanImages {
-                            print("[MoviesApi] Updated activeImagesBaseURL via remote config to: \(cleanImages)")
-                            MoviesApi.activeImagesBaseURL = cleanImages
-                        }
-                    }
-                    
-                    // 3. Fallback URLs (зеркала)
-                    if let fallbacks = json["fallbackUrls"] as? [String] {
-                        MoviesApi.fallbackBaseURLs = fallbacks.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
-                    }
-                    
-                    // 4. Balancer Base URL
-                    if let balancer = (json["balancerBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !balancer.isEmpty {
-                        let cleanBalancer = balancer.hasSuffix("/") ? String(balancer.dropLast()) : balancer
-                        if AllohaRepository.activeBalancerBaseURL != cleanBalancer {
-                            print("[MoviesApi] Updated balancerBaseURL to: \(cleanBalancer)")
-                            AllohaRepository.activeBalancerBaseURL = cleanBalancer
-                        }
-                    }
-                    
-                    // 5. System Notice (объявления / тех. работы)
-                    if let noticeDict = json["notice"] as? [String: Any],
-                       let id = noticeDict["id"] as? String,
-                       let message = noticeDict["message"] as? String {
-                        let title = noticeDict["title"] as? String
-                        let type = noticeDict["type"] as? String
-                        let actionUrl = noticeDict["actionUrl"] as? String
-                        let notice = RemoteNotice(id: id, title: title, message: message, type: type, actionUrl: actionUrl)
-                        self.currentNotice = notice
-                        
-                        let dismissedKey = "sloosh_dismissed_notice_\(id)"
-                        if !UserDefaults.standard.bool(forKey: dismissedKey) {
-                            let icon: String
-                            let color: Color
-                            switch type {
-                            case "warning":
-                                icon = "exclamationmark.triangle.fill"
-                                color = .orange
-                            case "error", "critical":
-                                icon = "xmark.octagon.fill"
-                                color = .red
-                            default:
-                                icon = "info.circle.fill"
-                                color = Color.slooshAccent
-                            }
-                            await MainActor.run {
-                                ToastManager.shared.show(
-                                    title: title ?? "Сообщение системы",
-                                    subtitle: message,
-                                    icon: icon,
-                                    iconColor: color,
-                                    duration: 8.0
-                                )
-                            }
-                        }
-                    } else {
-                        self.currentNotice = nil
-                    }
-                    
-                    // Editorial campaigns are independently decoded: malformed
-                    // content must never break API/stream endpoint recovery.
-                    let campaignData = (json["campaigns"] as? [String: Any]).flatMap {
-                        try? JSONSerialization.data(withJSONObject: $0)
-                    }
-                    await MainActor.run {
-                        RemoteCampaignStore.shared.apply(campaignData)
-                    }
+    private func performRemoteConfigLoad() async {
+        defer {
+            MoviesApi.clearConfigTask()
+        }
 
-                    Task {
-                        await MediaOverridesRepository.shared.fetchOverrides()
-                    }
-                    return
-                }
-            } catch {
-                // Пытаемся следующий источник зеркала
+        // Все источники опрашиваются одновременно: один заблокированный хост больше не
+        // добавляет seconds к запуску (раньше 3 адреса шли по очереди с таймаутом 6с каждый).
+        guard let data = await MoviesApi.fetchRemoteConfigData(),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+
+        MoviesApi.lastRemoteConfigSuccessDate = Date()
+        self.lastRemoteConfigCheckDate = Date()
+
+        // 1. API Base URL
+        if let remoteBase = (json["apiBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !remoteBase.isEmpty {
+            let cleanBase = remoteBase.hasSuffix("/") ? String(remoteBase.dropLast()) : remoteBase
+            if !cleanBase.contains("vercel.app") && MoviesApi.activeBaseURL != cleanBase {
+                print("[MoviesApi] Updated activeBaseURL via remote config to: \(cleanBase)")
+                MoviesApi.activeBaseURL = cleanBase
             }
         }
+
+        // 2. Images Base URL
+        if let remoteImages = (json["imagesBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !remoteImages.isEmpty {
+            let cleanImages = remoteImages.hasSuffix("/") ? String(remoteImages.dropLast()) : remoteImages
+            if !cleanImages.contains("vercel.app") && MoviesApi.activeImagesBaseURL != cleanImages {
+                print("[MoviesApi] Updated activeImagesBaseURL via remote config to: \(cleanImages)")
+                MoviesApi.activeImagesBaseURL = cleanImages
+            }
+        }
+
+        // 3. Fallback URLs (зеркала)
+        if let fallbacks = json["fallbackUrls"] as? [String] {
+            MoviesApi.fallbackBaseURLs = fallbacks.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
+        }
+
+        // 4. Balancer Base URL
+        if let balancer = (json["balancerBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !balancer.isEmpty {
+            let cleanBalancer = balancer.hasSuffix("/") ? String(balancer.dropLast()) : balancer
+            if AllohaRepository.activeBalancerBaseURL != cleanBalancer {
+                print("[MoviesApi] Updated balancerBaseURL to: \(cleanBalancer)")
+                AllohaRepository.activeBalancerBaseURL = cleanBalancer
+            }
+        }
+
+        // 5. System Notice (объявления / тех. работы)
+        if let noticeDict = json["notice"] as? [String: Any],
+           let id = noticeDict["id"] as? String,
+           let message = noticeDict["message"] as? String {
+            let title = noticeDict["title"] as? String
+            let type = noticeDict["type"] as? String
+            let actionUrl = noticeDict["actionUrl"] as? String
+            let notice = RemoteNotice(id: id, title: title, message: message, type: type, actionUrl: actionUrl)
+            self.currentNotice = notice
+
+            let dismissedKey = "sloosh_dismissed_notice_\(id)"
+            if !UserDefaults.standard.bool(forKey: dismissedKey) {
+                let icon: String
+                let color: Color
+                switch type {
+                case "warning":
+                    icon = "exclamationmark.triangle.fill"
+                    color = .orange
+                case "error", "critical":
+                    icon = "xmark.octagon.fill"
+                    color = .red
+                default:
+                    icon = "info.circle.fill"
+                    color = Color.slooshAccent
+                }
+                await MainActor.run {
+                    ToastManager.shared.show(
+                        title: title ?? "Сообщение системы",
+                        subtitle: message,
+                        icon: icon,
+                        iconColor: color,
+                        duration: 8.0
+                    )
+                }
+            }
+        } else {
+            self.currentNotice = nil
+        }
+
+        // Editorial campaigns are independently decoded: malformed
+        // content must never break API/stream endpoint recovery.
+        let campaignData = (json["campaigns"] as? [String: Any]).flatMap {
+            try? JSONSerialization.data(withJSONObject: $0)
+        }
+        await MainActor.run {
+            RemoteCampaignStore.shared.apply(campaignData)
+        }
+
+        Task {
+            await MediaOverridesRepository.shared.fetchOverrides()
+        }
     }
-    
+
+    /// Гонка источников: берём первый ответивший, а не ждём по очереди все.
+    private static func fetchRemoteConfigData() async -> Data? {
+        let configURLs = [
+            "https://sluvskii.github.io/iOS-sloosh/endpoint.json",
+            "https://cdn.jsdelivr.net/gh/sluvskii/iOS-sloosh@main/endpoint.json",
+            "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json"
+        ]
+
+        return await withTaskGroup(of: (Int, Data?).self) { group in
+            for (index, urlString) in configURLs.enumerated() {
+                group.addTask {
+                    guard let url = URL(string: urlString) else { return (index, nil) }
+                    var request = URLRequest(url: url)
+                    request.timeoutInterval = 4
+                    request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                    do {
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        guard let http = response as? HTTPURLResponse,
+                              (200...299).contains(http.statusCode),
+                              !data.isEmpty else {
+                            return (index, nil)
+                        }
+                        return (index, data)
+                    } catch {
+                        return (index, nil)
+                    }
+                }
+            }
+
+            for await result in group {
+                if let data = result.1 {
+                    group.cancelAll()
+                    return data
+                }
+            }
+            return nil
+        }
+    }
+
     private func performRequest<T: Codable>(
         endpoint: String,
         method: String = "GET",
@@ -239,9 +376,13 @@ class MoviesApi {
         body: Data? = nil,
         allowSelfHealingRetry: Bool = true
     ) async throws -> T {
-        let baseCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
+        let allCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
+        // Сначала пробуем хосты, которые недавно работали. Если таких нет — пробуем все.
+        let healthy = allCandidates.filter { MoviesApi.isHostHealthy($0) }
+        let baseCandidates = healthy.isEmpty ? allCandidates : healthy
         var lastError: Error = NetworkError.timeout
         var shouldTryRemoteConfigHealing = false
+        var sawConnectivityFailure = false
 
         for currentBase in baseCandidates {
             var components = URLComponents(string: "\(currentBase)/\(endpoint)")
@@ -298,6 +439,7 @@ class MoviesApi {
                     }
                     
                     // Успешный ответ! Сохраняем рабочий хост как активный
+                    MoviesApi.markHostHealthy(currentBase)
                     if currentBase != MoviesApi.activeBaseURL {
                         MoviesApi.activeBaseURL = currentBase
                     }
@@ -313,8 +455,12 @@ class MoviesApi {
                     if urlError.code == .cancelled {
                         throw URLError(.cancelled)
                     }
+                    // Провайдер может «чёрной дырой» съедать пакеты: повторять тот же хост
+                    // бессмысленно и дорого (ещё один полный таймаут). Сразу идём к зеркалу.
+                    MoviesApi.markHostFailed(currentBase)
+                    sawConnectivityFailure = true
                     lastError = (urlError.code == .timedOut) ? NetworkError.timeout : NetworkError.noInternetConnection
-                    continue
+                    break
                 } catch {
                     print("Decoding error: \(error)")
                     throw NetworkError.decodingError
@@ -326,7 +472,10 @@ class MoviesApi {
         // принудительно обновить Firebase-токен (401 — истёкший токен) и remote config
         // (сменившиеся хосты), после чего повторить запрос. Секретов в endpoint.json больше нет:
         // remote config отвечает только за хосты/объявления/кампании.
-        if allowSelfHealingRetry && (shouldTryRemoteConfigHealing || !baseCandidates.isEmpty) {
+        // Если упала именно сеть (а не авторизация), обновлять конфиг из GitHub бессмысленно:
+        // это лишние секунды ожидания на заблокированном канале.
+        let hasFreshConfig = (Date().timeIntervalSince(MoviesApi.lastRemoteConfigSuccessDate ?? .distantPast) < MoviesApi.remoteConfigHealingCooldown)
+        if allowSelfHealingRetry && (shouldTryRemoteConfigHealing || (!sawConnectivityFailure && !hasFreshConfig)) {
             let previousBase = MoviesApi.activeBaseURL
             let previousFallbacks = MoviesApi.fallbackBaseURLs
 
@@ -335,7 +484,7 @@ class MoviesApi {
                 _ = await AuthRepository.shared.ensureFreshToken(force: true)
             }
 
-            await loadRemoteConfig(force: true)
+            await loadRemoteConfig(force: !hasFreshConfig)
 
             let configChanged = (MoviesApi.activeBaseURL != previousBase) ||
                                 (MoviesApi.fallbackBaseURLs != previousFallbacks)

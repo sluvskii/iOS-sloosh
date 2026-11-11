@@ -37,6 +37,7 @@ public final class NetworkMonitor: ObservableObject {
                             icon: "wifi"
                         )
                         Task {
+                            MoviesApi.resetHostHealth()
                             await MoviesApi.shared.loadRemoteConfig()
                             await AllohaRepository.shared.warmup()
                         }

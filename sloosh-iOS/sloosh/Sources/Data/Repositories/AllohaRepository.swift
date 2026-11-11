@@ -663,7 +663,13 @@ final class AllohaRepository: @unchecked Sendable {
     /// Ensures stream tokens are loaded from backend and up to date
     func ensureTokensLoaded() async -> [String] {
         let now = Date()
-        let (cachedTokens, shouldRefresh) = tokenQueue.sync {
+        let (cachedTokens, shouldRefresh) = tokenQueue.sync(flags: .barrier) { () -> ([String], Bool) in
+            if self.remoteTokens.isEmpty {
+                let persisted = UserDefaults.standard.stringArray(forKey: Self.cachedTokensKey) ?? []
+                if !persisted.isEmpty {
+                    self.remoteTokens = persisted
+                }
+            }
             let tokens = self.remoteTokens
             let expired = self.lastFetchDate.map { now.timeIntervalSince($0) > self.tokensFetchTtl } ?? true
             return (tokens, tokens.isEmpty || expired)
@@ -673,15 +679,20 @@ final class AllohaRepository: @unchecked Sendable {
             return getHealthyCandidateTokens()
         }
 
-        let fetchTask: Task<[String], Never> = tokenQueue.sync {
+        let fetchTask: Task<[String], Never> = tokenQueue.sync(flags: .barrier) {
             if let inFlight = self.activeFetchTask {
                 return inFlight
             }
             let task = Task<[String], Never> {
+                defer {
+                    self.tokenQueue.async(flags: .barrier) {
+                        self.activeFetchTask = nil
+                    }
+                }
                 do {
                     let tokens = try await MoviesApi.shared.getStreamTokens()
                     if !tokens.isEmpty {
-                        self.tokenQueue.async(flags: .barrier) {
+                        self.tokenQueue.sync(flags: .barrier) {
                             self.remoteTokens = tokens
                             self.lastFetchDate = Date()
                             // Персистим последний реально полученный пул — офлайн-фоллбэк на следующий запуск
@@ -699,6 +710,10 @@ final class AllohaRepository: @unchecked Sendable {
                 }
                 let existing = self.tokenQueue.sync { self.remoteTokens }
                 if !existing.isEmpty {
+                    // Не дёргаем заблокированный шлюз на каждый клик, если пул уже есть
+                    self.tokenQueue.async(flags: .barrier) {
+                        self.lastFetchDate = Date()
+                    }
                     return existing
                 }
                 let persisted = UserDefaults.standard.stringArray(forKey: Self.cachedTokensKey) ?? []
@@ -706,7 +721,7 @@ final class AllohaRepository: @unchecked Sendable {
                     #if DEBUG
                     print("[AllohaRepository] Using \(persisted.count) persisted stream tokens (offline fallback)")
                     #endif
-                    self.tokenQueue.async(flags: .barrier) {
+                    self.tokenQueue.sync(flags: .barrier) {
                         self.remoteTokens = persisted
                         self.lastFetchDate = Date()
                     }
@@ -718,11 +733,14 @@ final class AllohaRepository: @unchecked Sendable {
             return task
         }
 
-        _ = await fetchTask.value
-        tokenQueue.async(flags: .barrier) {
-            self.activeFetchTask = nil
+        // Если сохранённые токены уже есть — сразу отдаём их плееру (0 мс ожидания),
+        // а обновление пула с бэкенда спокойно добежит в фоне. Ждём сеть только при
+        // самом первом запуске, когда локального пула ещё ни разу не было.
+        if !cachedTokens.isEmpty {
+            return getHealthyCandidateTokens()
         }
 
+        _ = await fetchTask.value
         return getHealthyCandidateTokens()
     }
 
@@ -783,6 +801,10 @@ final class AllohaRepository: @unchecked Sendable {
     // Create a URLSession that ignores SSL certificate errors
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
+        // Таймаут «простоя»: если балансер заблокирован провайдером, соединение висит
+        // до системных 60 с — на это время зависает вся карточка фильма.
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 20
         let delegate = TrustAllSessionDelegate()
         return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }()

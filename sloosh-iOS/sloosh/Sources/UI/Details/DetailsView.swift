@@ -455,7 +455,7 @@ private final class BackdropSlideViewController: UIViewController {
             }
 
             do {
-                let (data, resp) = try await URLSession.shared.data(for: request)
+                let (data, resp) = try await ImageCache.session.data(for: request)
                 if Task.isCancelled { return }
                 if let http = resp as? HTTPURLResponse, http.statusCode == 200,
                    let img = UIImage(data: data) {
