@@ -373,3 +373,41 @@ matches, alongside full-bank font/layout/rendering checks and rejected-copy guar
 Random opening, rotation, VoiceOver / Reduce Motion stability, reveal/hold timing,
 background and approved equal-width uppercase presentation are unchanged. Copy
 quality still needs editorial/user review; automated tests do not judge tone.
+
+### Artwork consistency: posters, logos, favorites and admin edits
+
+The catalog suite compiles the production `ArtworkOverrideStore`, typed identity,
+DTO accessors, versioned asset URLs, catalog artwork cache and image request/failure
+policies. It covers equal-number movie/TV isolation, legacy alias cleanup, full
+snapshot replacement including null/empty, SSE root/field/multi-path patches,
+field/record deletion, reset source keys, curator priority in both logo modes,
+URL revisions preserving query parameters, typed textless/regular candidates,
+cache invalidation, and request identity/backoff. The UI state uses both resolved
+primary + fallback URLs, policy and revision as its identity; cancelled requests
+are checked after network/decode before publishing. Only effective URLs are used
+as decoded-image keys, so low/high quality results cannot poison raw aliases.
+
+Textless posters remain supported via explicit DTO/curator paths or the existing
+typed images endpoint. Numeric-only poster proxy guesses (and stale copies in
+old list/favorites caches) are rejected: movie, TV and KP numbers are not one
+namespace. While resolving a textless candidate, keep that title's known regular
+poster, never another title's guessed image. Favorites refresh artwork from the
+typed endpoint instead of permanently trusting a saved poster snapshot. Cell and
+navigation-animation IDs include media type, without changing API/playback IDs.
+
+Overrides store only canonical records, not synthetic numeric aliases. The durable
+Firebase snapshot (including empty/null) is authoritative; backend is read fallback
+when unavailable. No automatic upload of cached ghosts. SSE and local writes fence
+older fetches; only real changes publish notifications and invalidate catalog cache.
+Admin writes/reset use checked durable HTTP success before local publication; errors
+are propagated, no false "all devices updated" toast. Backend cache refresh is
+best-effort after durable success. No production database writes are performed by
+the tests. Existing old ambiguous overrides need a proven KP match or re-saving
+with a typed ID; they must not be guessed onto a same-number film/series.
+
+On device verify Home/Search/Favorites/Details/Continue in both card styles and
+logo modes, low/high quality switches, quick navigation/reused cells, missing images
+and offline fallback, admin regular/textless/logo/backdrop edits, same-URL reselection,
+reset and refresh on another device. Simulate failed admin writes and confirm the
+sheet does not report success. Renderer/policy/compiler CI is not a device test or
+a live Firebase/backend end-to-end validation.

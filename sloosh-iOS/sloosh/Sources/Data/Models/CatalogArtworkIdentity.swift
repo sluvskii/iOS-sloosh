@@ -31,14 +31,19 @@ struct CatalogArtworkIdentity: Hashable {
     }
 
     func matchesOverride(_ item: MediaArtworkOverride, kpId: Int?) -> Bool {
+        // Explicit type disagreement wins even if an erroneous alias carries a KP ID.
+        let other = CatalogArtworkIdentity(id: item.mediaId, type: item.mediaType)
+        if let mediaType, let otherType = other?.mediaType, mediaType != otherType { return false }
         if let kpId, kpId > 0, item.kpId == kpId { return true }
-        if isKinopoisk {
-            return item.mediaId == requestId || item.kpId == Int(number)
-        }
-        // Legacy untyped override aliases cannot prove movie vs TV identity.
-        guard item.mediaId.hasPrefix("tv_") || item.mediaId.hasPrefix("movie_") else { return false }
-        guard let other = CatalogArtworkIdentity(id: item.mediaId, type: nil) else { return false }
-        return other == self
+        if isKinopoisk { return item.mediaId == requestId || item.kpId == Int(number) }
+        guard let other, !other.isKinopoisk else { return false }
+        return other.requestId == requestId
+    }
+
+    func acceptsPosterURL(_ url: String) -> Bool {
+        // Old numeric-only poster URLs have exactly the same namespace ambiguity
+        // as logo proxies. Keep explicit image paths, never guess from a number.
+        !url.contains("/api/v1/images/posters/")
     }
 
     func acceptsLogoURL(_ url: String) -> Bool {

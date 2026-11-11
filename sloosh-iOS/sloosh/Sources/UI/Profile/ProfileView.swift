@@ -398,9 +398,9 @@ struct ProfileCategoryContentView: View {
                     let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                     let padding: CGFloat = cardDensity == .compact ? 12 : 16
                     LazyVGrid(columns: columns, spacing: spacing) {
-                        ForEach(favorites) { favorite in
+                        ForEach(favorites, id: \.artworkIdentifier) { favorite in
                             let media = favorite.toMediaDto()
-                            MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
+                            MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition, refreshArtwork: true)
                             .contextMenu {
                                 Group {
                                     Button {

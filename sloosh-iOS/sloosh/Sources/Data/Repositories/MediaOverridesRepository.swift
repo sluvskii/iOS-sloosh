@@ -12,412 +12,176 @@ public extension Notification.Name {
 @MainActor
 public final class MediaOverridesRepository: ObservableObject {
     public static let shared = MediaOverridesRepository()
-
     @Published public private(set) var overrides: [String: MediaArtworkOverride] = [:]
-    @Published public private(set) var isLoading: Bool = false
-
+    @Published public private(set) var isLoading = false
     private let cacheKey = "sloosh_media_artwork_overrides"
     private let firebaseOverridesUrl = "https://sloosh-77434-default-rtdb.firebaseio.com/media_stats/media_artwork_overrides"
-
+    private var store = ArtworkOverrideStore()
+    private var generation = 0
+    private var isWriting = false
     private var streamTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var threadSafeOverrides: [String: MediaArtworkOverride] = [:]
 
     private init() {
-        loadFromCache()
-        Task {
-            await fetchOverrides()
-            startRealtimeStream()
-            startHeartbeat()
+        if let data = UserDefaults.standard.data(forKey: cacheKey),
+           let cached = try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: data) {
+            store = ArtworkOverrideStore(records: cached)
+            publish()
         }
-        setupLifecycleObservers()
-    }
-
-    private func setupLifecycleObservers() {
-        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
-            .sink { [weak self] _ in
-                Task { [weak self] in
-                    await self?.fetchOverrides()
-                    self?.startRealtimeStream()
-                }
-            }
-            .store(in: &cancellables)
-    }
-
-    private func startHeartbeat() {
-        heartbeatTask?.cancel()
+        Task { await fetchOverrides(); startRealtimeStream() }
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30_000_000_000) // Every 30 seconds
-                if Task.isCancelled { break }
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 await self?.fetchOverrides()
             }
         }
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { await self?.fetchOverrides(); self?.startRealtimeStream() }
+            }.store(in: &cancellables)
+    }
+
+    private func publish() {
+        let next = store.records
+        guard next != overrides else { return }
+        // Update nonisolated readers before publishing objectWillChange.
+        Self.lock.withLock { Self.threadSafeOverrides = next }
+        overrides = next
+        CatalogLogoRepository.shared.invalidate()
+        if let data = try? JSONEncoder().encode(next) { UserDefaults.standard.set(data, forKey: cacheKey) }
+        NotificationCenter.default.post(name: .mediaArtworkOverridesDidChange, object: nil)
+    }
+
+    nonisolated func catalogOverride(id: String?, type: String?, kpId: Int?) -> MediaArtworkOverride? {
+        override(for: id, kpId: kpId, type: type)
+    }
+
+    nonisolated public func override(for rawId: String?, tmdbId: Int? = nil, kpId: Int? = nil, type: String? = nil) -> MediaArtworkOverride? {
+        Self.lock.withLock {
+            ArtworkOverrideStore.resolve(Array(Self.threadSafeOverrides.values), id: rawId, type: type, tmdbId: tmdbId, kpId: kpId)
+        }
+    }
+
+    private func firebaseRequest(path: String = "", method: String = "GET", body: Data? = nil) async throws -> URLRequest {
+        var components = URLComponents(string: firebaseOverridesUrl + path + ".json")!
+        if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
+            components.queryItems = [URLQueryItem(name: "auth", value: token)]
+        } else if method != "GET" { throw URLError(.userAuthenticationRequired) }
+        guard let url = components.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.httpMethod = method
+        request.httpBody = body
+        request.timeoutInterval = 8
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return request
+    }
+
+    private func checkedData(for request: URLRequest) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+
+    public func fetchOverrides() async {
+        guard !isLoading, !isWriting else { return }
+        isLoading = true
+        defer { isLoading = false }
+        let started = generation
+        var snapshot: [String: MediaArtworkOverride]?
+        // Read the durable source first. Empty/null is a successful snapshot, not
+        // a reason to resurrect stale cache/backend records or upload local ghosts.
+        do {
+            let request = try await firebaseRequest()
+            let data = try await checkedData(for: request)
+            if String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) == "null" { snapshot = [:] }
+            else { snapshot = try JSONDecoder().decode([String: MediaArtworkOverride].self, from: data) }
+        } catch {
+            do {
+                let response = try await MoviesApi.shared.getMediaOverrides()
+                if response.success != false { snapshot = response.data }
+            } catch { AppDiagnostics.shared.log("Artwork snapshot unavailable; retaining last confirmed state") }
+        }
+        guard let snapshot, started == generation, !isWriting else { return }
+        store = ArtworkOverrideStore(records: snapshot)
+        publish()
     }
 
     private func startRealtimeStream() {
         streamTask?.cancel()
         streamTask = Task { [weak self] in
             while !Task.isCancelled {
-                guard let url = URL(string: "\(self?.firebaseOverridesUrl ?? "https://sloosh-77434-default-rtdb.firebaseio.com/media_stats/media_artwork_overrides").json") else { break }
-                var req = URLRequest(url: url)
-                req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                req.timeoutInterval = 300
-
+                guard let self else { return }
                 do {
-                    let (asyncBytes, response) = try await URLSession.shared.bytes(for: req)
-                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                        try? await Task.sleep(nanoseconds: 5_000_000_000)
-                        continue
-                    }
-
-                    var currentEvent = ""
-                    for try await line in asyncBytes.lines {
-                        if Task.isCancelled { break }
-                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if trimmed.hasPrefix("event: ") {
-                            currentEvent = String(trimmed.dropFirst(7)).trimmingCharacters(in: .whitespaces)
-                        } else if trimmed.hasPrefix("data: ") {
-                            let dataStr = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
-                            if currentEvent == "put" || currentEvent == "patch" {
-                                await self?.handleStreamPayload(dataStr)
+                    var request = try await self.firebaseRequest()
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = 300
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw URLError(.badServerResponse) }
+                    var event = ""
+                    for try await line in bytes.lines {
+                        guard !Task.isCancelled else { return }
+                        if line.hasPrefix("event:") { event = line.dropFirst(6).trimmingCharacters(in: .whitespaces) }
+                        else if line.hasPrefix("data:"), !self.isWriting {
+                            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                            if self.store.apply(event: event, payload: payload) {
+                                self.generation += 1
+                                self.publish()
                             }
                         }
                     }
-                } catch {
-                    // Stream dropped or network switched
-                }
-
-                if Task.isCancelled { break }
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                } catch { /* Reconnect without logging authenticated URLs. */ }
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
     }
 
-    private func handleStreamPayload(_ jsonString: String) {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let path = json["path"] as? String else {
-            return
-        }
-
-        let rawData = json["data"]
-
-        if path == "/" {
-            if let dict = rawData as? [String: Any] {
-                if let encoded = try? JSONSerialization.data(withJSONObject: dict),
-                   let items = try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: encoded) {
-                    for (k, v) in items {
-                        self.overrides[k] = v
-                        if let tmdb = v.tmdbId, tmdb > 0 {
-                            self.overrides["\(tmdb)"] = v
-                            self.overrides["tmdb_\(tmdb)"] = v
-                        }
-                        if let kp = v.kpId, kp > 0 {
-                            self.overrides["\(kp)"] = v
-                            self.overrides["kp_\(kp)"] = v
-                        }
-                    }
-                    saveToCache()
-                    AppDiagnostics.shared.log("MediaOverridesRepository: live SSE initial sync (\(items.count) items)")
-                }
-            } else if rawData == nil || (rawData is NSNull) {
-                self.overrides.removeAll()
-                saveToCache()
-            }
-        } else {
-            let key = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard !key.isEmpty else { return }
-
-            if rawData == nil || (rawData is NSNull) {
-                self.overrides.removeValue(forKey: key)
-                self.overrides.removeValue(forKey: "tmdb_\(key)")
-                self.overrides.removeValue(forKey: "kp_\(key)")
-                saveToCache()
-                AppDiagnostics.shared.log("MediaOverridesRepository: live SSE deleted \(key)")
-            } else if let dict = rawData as? [String: Any] {
-                var finalDict = dict
-                if finalDict["mediaId"] == nil {
-                    finalDict["mediaId"] = key
-                }
-                if let encoded = try? JSONSerialization.data(withJSONObject: finalDict),
-                   let item = try? JSONDecoder().decode(MediaArtworkOverride.self, from: encoded) {
-                    self.overrides[item.mediaId] = item
-                    if let tmdb = item.tmdbId, tmdb > 0 {
-                        self.overrides["\(tmdb)"] = item
-                        self.overrides["tmdb_\(tmdb)"] = item
-                    }
-                    if let kp = item.kpId, kp > 0 {
-                        self.overrides["\(kp)"] = item
-                        self.overrides["kp_\(kp)"] = item
-                    }
-                    saveToCache()
-                    AppDiagnostics.shared.log("MediaOverridesRepository: live SSE updated \(item.mediaId)")
-                }
-            }
-        }
+    public func saveOverride(mediaId: String, mediaType: String? = nil, kpId: Int? = nil, tmdbId: Int? = nil,
+                             title: String? = nil, posterUrl: String? = nil, textlessPosterUrl: String? = nil,
+                             logoUrl: String? = nil, backdropUrl: String? = nil, backdropUrls: [String]? = nil) async throws {
+        guard AuthRepository.shared.isAdmin else { throw URLError(.userAuthenticationRequired) }
+        guard !isWriting else { throw URLError(.resourceUnavailable) }
+        guard let identity = CatalogArtworkIdentity(id: mediaId, type: mediaType) else { throw URLError(.badURL) }
+        isWriting = true
+        generation += 1
+        defer { isWriting = false; generation += 1; startRealtimeStream() }
+        let item = MediaArtworkOverride(mediaId: identity.requestId, mediaType: identity.mediaType, kpId: kpId, tmdbId: tmdbId,
+                                        title: title, posterUrl: posterUrl, textlessPosterUrl: textlessPosterUrl,
+                                        logoUrl: logoUrl, backdropUrl: backdropUrl, backdropUrls: backdropUrls,
+                                        updatedAt: Date().timeIntervalSince1970,
+                                        updatedBy: AuthRepository.shared.currentUser?.displayName ?? "admin")
+        let body = try JSONEncoder().encode(item)
+        let request = try await firebaseRequest(path: "/\(identity.requestId)", method: "PUT", body: body)
+        _ = try await checkedData(for: request)
+        // No optimistic success: publish only after durable HTTP success.
+        store.put(item)
+        publish()
+        do { _ = try await MoviesApi.shared.saveMediaOverride(item) }
+        catch { AppDiagnostics.shared.log("Artwork saved durably; backend cache refresh pending") }
     }
 
-    // MARK: - In-Memory & Local Cache
-
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var threadSafeOverrides: [String: MediaArtworkOverride] = [:]
-
-    private func syncThreadSafe() {
-        Self.lock.withLock {
-            Self.threadSafeOverrides = self.overrides
+    public func deleteOverride(mediaId: String, mediaType: String? = nil, kpId: Int? = nil, tmdbId: Int? = nil) async throws {
+        guard AuthRepository.shared.isAdmin else { throw URLError(.userAuthenticationRequired) }
+        guard !isWriting else { throw URLError(.resourceUnavailable) }
+        guard let identity = CatalogArtworkIdentity(id: mediaId, type: mediaType) else { throw URLError(.badURL) }
+        isWriting = true
+        generation += 1
+        defer { isWriting = false; generation += 1; startRealtimeStream() }
+        // Remove every proven source key atomically, never guessed numeric aliases.
+        let keys = Set(store.sourceKeys(matching: identity, kpId: kpId) + [identity.requestId])
+        let patch = Dictionary(uniqueKeysWithValues: keys.map { ($0, NSNull()) })
+        let request = try await firebaseRequest(method: "PATCH", body: JSONSerialization.data(withJSONObject: patch))
+        _ = try await checkedData(for: request)
+        store.remove(keys: Array(keys))
+        publish()
+        for key in keys {
+            do { _ = try await MoviesApi.shared.deleteMediaOverride(id: key) }
+            catch { AppDiagnostics.shared.log("Artwork reset durably; backend cache refresh pending") }
         }
-    }
-
-    private func loadFromCache() {
-        if let data = UserDefaults.standard.data(forKey: cacheKey),
-           let cached = try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: data) {
-            // Очищаем устаревшие зашитые системные сиды, если они присутствовали
-            self.overrides = cached.filter { $0.value.updatedBy != "system" }
-        }
-        syncThreadSafe()
-    }
-
-    private func saveToCache() {
-        if let data = try? JSONEncoder().encode(overrides) {
-            UserDefaults.standard.set(data, forKey: cacheKey)
-        }
-        syncThreadSafe()
-        NotificationCenter.default.post(name: .mediaArtworkOverridesDidChange, object: nil)
-    }
-
-    // MARK: - Resolution Lookup
-
-    /// Catalog artwork must not trust numeric aliases shared by movie/TV or KP IDs.
-    nonisolated func catalogOverride(id: String?, type: String?, kpId: Int?) -> MediaArtworkOverride? {
-        guard let identity = CatalogArtworkIdentity(id: id, type: type) else { return nil }
-        return Self.lock.withLock {
-            let map = Self.threadSafeOverrides
-            if let exact = map[identity.requestId], identity.matchesOverride(exact, kpId: kpId) { return exact }
-            if let kpId, let exact = map["kp_\(kpId)"], identity.matchesOverride(exact, kpId: kpId) { return exact }
-            return map.values.filter { identity.matchesOverride($0, kpId: kpId) }
-                .max { ($0.updatedAt ?? 0) < ($1.updatedAt ?? 0) }
-        }
-    }
-
-    nonisolated public func override(for rawId: String?, tmdbId: Int? = nil, kpId: Int? = nil) -> MediaArtworkOverride? {
-        Self.lock.withLock {
-            let map = Self.threadSafeOverrides
-            // 1. Direct raw ID match (e.g. "kp_12345", "67890")
-            if let rawId = rawId, !rawId.isEmpty {
-                if let found = map[rawId] { return found }
-                let clean = rawId.replacingOccurrences(of: "kp_", with: "").replacingOccurrences(of: "tmdb_", with: "")
-                if let found = map[clean] { return found }
-            }
-
-            // 2. TMDB ID match
-            if let tmdbId = tmdbId, tmdbId > 0 {
-                if let found = map["\(tmdbId)"] ?? map["tmdb_\(tmdbId)"] {
-                    return found
-                }
-            }
-
-            // 3. Kinopoisk ID match
-            if let kpId = kpId, kpId > 0 {
-                if let found = map["kp_\(kpId)"] ?? map["\(kpId)"] {
-                    return found
-                }
-            }
-
-            return nil
-        }
-    }
-
-    // MARK: - Dedicated Backend & Durable Store Sync
-
-    public func fetchOverrides() async {
-        isLoading = true
-        defer { isLoading = false }
-
-        var remoteMap: [String: MediaArtworkOverride] = [:]
-
-        // 1. Пытаемся получить оверрайды с бэкенда sloosh-api
-        do {
-            let envelope = try await MoviesApi.shared.getMediaOverrides()
-            if let dict = envelope.data, !dict.isEmpty {
-                remoteMap = dict
-            }
-        } catch {
-            AppDiagnostics.shared.log("MediaOverridesRepository fetch from backend error: \(error.localizedDescription)")
-        }
-
-        // 2. Если бэкенд вернул пустоту или упал, используем прямое подключение к Firebase RTDB
-        if remoteMap.isEmpty {
-            if let fbMap = await fetchDirectFromFirebase(), !fbMap.isEmpty {
-                remoteMap = fbMap
-                AppDiagnostics.shared.log("MediaOverridesRepository: fallback loaded \(fbMap.count) overrides directly from Firebase")
-            }
-        }
-
-        // 3. Сохраняем полученные с сервера оверрайды в локальную базу
-        var updated = false
-        for (k, v) in remoteMap {
-            self.overrides[k] = v
-            if let tmdb = v.tmdbId, tmdb > 0 {
-                self.overrides["\(tmdb)"] = v
-                self.overrides["tmdb_\(tmdb)"] = v
-            }
-            if let kp = v.kpId, kp > 0 {
-                self.overrides["\(kp)"] = v
-                self.overrides["kp_\(kp)"] = v
-            }
-            updated = true
-        }
-
-        // 4. Авто-миграция локальных правок: если на этом устройстве сохранены оверрайды,
-        // которых еще нет в удаленном хранилище (например, настроенные ранее администратором),
-        // автоматически выгружаем их на бэкенд и в Firebase, чтобы они появились на других телефонах и Android!
-        let missingOnRemote = self.overrides.values.filter { localItem in
-            let id = localItem.mediaId
-            return remoteMap[id] == nil && remoteMap["\(localItem.tmdbId ?? 0)"] == nil
-        }
-        if !missingOnRemote.isEmpty && AuthRepository.shared.isAdmin {
-            AppDiagnostics.shared.log("MediaOverridesRepository: uploading \(missingOnRemote.count) local unpushed overrides to backend...")
-            for item in missingOnRemote {
-                _ = try? await MoviesApi.shared.saveMediaOverride(item)
-                await pushDirectToFirebase(item)
-            }
-        }
-
-        if updated || (!missingOnRemote.isEmpty && AuthRepository.shared.isAdmin) {
-            saveToCache()
-            AppDiagnostics.shared.log("MediaOverridesRepository: synchronized \(self.overrides.count) overrides successfully")
-        }
-    }
-
-    private func fetchDirectFromFirebase() async -> [String: MediaArtworkOverride]? {
-        guard let url = URL(string: "\(firebaseOverridesUrl).json") else { return nil }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 4.0
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            if let http = resp as? HTTPURLResponse, http.statusCode == 200 {
-                return try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: data)
-            }
-        } catch {
-            // Firebase direct read failed
-        }
-        return nil
-    }
-
-    private func pushDirectToFirebase(_ item: MediaArtworkOverride) async {
-        guard AuthRepository.shared.isAdmin else { return }
-        guard let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty else { return }
-        guard let cleanId = item.mediaId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json?auth=\(token)") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "PUT"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 4.0
-        if let body = try? JSONEncoder().encode(item) {
-            req.httpBody = body
-            _ = try? await URLSession.shared.data(for: req)
-        }
-    }
-
-    private func deleteDirectFromFirebase(_ id: String) async {
-        guard AuthRepository.shared.isAdmin else { return }
-        guard let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty else { return }
-        guard let cleanId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json?auth=\(token)") else { return }
-        var req = URLRequest(url: url)
-        req.httpMethod = "DELETE"
-        req.timeoutInterval = 4.0
-        _ = try? await URLSession.shared.data(for: req)
-    }
-
-    // MARK: - Save & Delete Overrides
-
-    public func saveOverride(
-        mediaId: String,
-        kpId: Int? = nil,
-        tmdbId: Int? = nil,
-        title: String? = nil,
-        posterUrl: String? = nil,
-        textlessPosterUrl: String? = nil,
-        logoUrl: String? = nil,
-        backdropUrl: String? = nil,
-        backdropUrls: [String]? = nil
-    ) async throws {
-        guard AuthRepository.shared.isAdmin else {
-            throw URLError(.userAuthenticationRequired)
-        }
-        let item = MediaArtworkOverride(
-            mediaId: mediaId,
-            kpId: kpId,
-            tmdbId: tmdbId,
-            title: title,
-            posterUrl: posterUrl,
-            textlessPosterUrl: textlessPosterUrl,
-            logoUrl: logoUrl,
-            backdropUrl: backdropUrl,
-            backdropUrls: backdropUrls,
-            updatedAt: Date().timeIntervalSince1970,
-            updatedBy: AuthRepository.shared.currentUser?.displayName ?? "admin"
-        )
-
-        // 1. Немедленно обновляем локальный кэш для мгновенного отклика UI
-        self.overrides[mediaId] = item
-        if let tmdb = tmdbId, tmdb > 0 {
-            self.overrides["\(tmdb)"] = item
-            self.overrides["tmdb_\(tmdb)"] = item
-        }
-        if let kp = kpId, kp > 0 {
-            self.overrides["kp_\(kp)"] = item
-            self.overrides["\(kp)"] = item
-        }
-        saveToCache()
-
-        // 2. Сохраняем напрямую в Firebase RTDB (быстрый и надёжный путь, ждём только его)
-        await pushDirectToFirebase(item)
-
-        // 3. Бэкенд sloosh-api инвалидирует свои кэши в фоне: холодный старт не должен блокировать UI
-        Task.detached(priority: .utility) {
-            _ = try? await MoviesApi.shared.saveMediaOverride(item)
-        }
-
-        AppDiagnostics.shared.log("MediaOverridesRepository: saved override persistently for mediaId=\(mediaId)")
-    }
-
-    public func deleteOverride(mediaId: String, kpId: Int? = nil, tmdbId: Int? = nil) async throws {
-        guard AuthRepository.shared.isAdmin else {
-            throw URLError(.userAuthenticationRequired)
-        }
-        // 1. Удаляем из локального кэша
-        self.overrides.removeValue(forKey: mediaId)
-        if let tmdb = tmdbId, tmdb > 0 {
-            self.overrides.removeValue(forKey: "\(tmdb)")
-            self.overrides.removeValue(forKey: "tmdb_\(tmdb)")
-        }
-        if let kp = kpId, kp > 0 {
-            self.overrides.removeValue(forKey: "kp_\(kp)")
-            self.overrides.removeValue(forKey: "\(kp)")
-        }
-        saveToCache()
-
-        var ids = [mediaId]
-        if let tmdb = tmdbId, tmdb > 0, "\(tmdb)" != mediaId { ids.append("\(tmdb)") }
-        if let kp = kpId, kp > 0, "kp_\(kp)" != mediaId { ids.append("kp_\(kp)") }
-
-        // 2. Удаляем напрямую из Firebase RTDB параллельно (ждём только этот путь)
-        await withTaskGroup(of: Void.self) { group in
-            for id in ids {
-                group.addTask { await self.deleteDirectFromFirebase(id) }
-            }
-        }
-
-        // 3. Бэкенд sloosh-api чистит свои кэши в фоне
-        Task.detached(priority: .utility) {
-            for id in ids {
-                _ = try? await MoviesApi.shared.deleteMediaOverride(id: id)
-            }
-        }
-
-        AppDiagnostics.shared.log("MediaOverridesRepository: deleted override persistently for mediaId=\(mediaId)")
     }
 }

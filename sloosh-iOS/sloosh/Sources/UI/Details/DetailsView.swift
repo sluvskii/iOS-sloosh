@@ -429,7 +429,7 @@ private final class BackdropSlideViewController: UIViewController {
         let key = effectiveUrl?.absoluteString ?? url.absoluteString
 
         // 1. Instant check from RAM cache
-        if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: url.absoluteString) {
+        if let cached = ImageCache.shared.image(forKey: key) {
             self.imageView.image = cached
             return
         }
@@ -445,7 +445,6 @@ private final class BackdropSlideViewController: UIViewController {
                let img = UIImage(data: cached.data) {
                 let decoded = await img.byPreparingForDisplay() ?? img
                 ImageCache.shared.insertImage(decoded, forKey: key)
-                ImageCache.shared.insertImage(decoded, forKey: url.absoluteString)
                 if !Task.isCancelled {
                     await MainActor.run {
                         self.imageView.image = decoded
@@ -463,7 +462,6 @@ private final class BackdropSlideViewController: UIViewController {
                     URLCache.shared.storeCachedResponse(cachedResponse, for: request)
                     let decoded = await img.byPreparingForDisplay() ?? img
                     ImageCache.shared.insertImage(decoded, forKey: key)
-                    ImageCache.shared.insertImage(decoded, forKey: url.absoluteString)
                     if !Task.isCancelled {
                         await MainActor.run {
                             self.imageView.image = decoded
@@ -487,7 +485,7 @@ private final class BackdropSlideViewController: UIViewController {
         guard let fallback = fallbackUrl else { return }
         let effectiveFallback = ImageCache.resolveEffectiveUrl(fallback)
         let key = effectiveFallback?.absoluteString ?? fallback.absoluteString
-        if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: fallback.absoluteString) {
+        if let cached = ImageCache.shared.image(forKey: key) {
             self.imageView.image = cached
         }
     }
@@ -4345,7 +4343,7 @@ private struct RelatedStudioSection: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
-                        ForEach(items) { movie in
+                        ForEach(items, id: \.artworkIdentifier) { movie in
                             NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                 MoviePosterCard(movie: movie)
                                     .frame(width: 120)
@@ -4389,7 +4387,7 @@ private struct SimilarMediaSection: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(items) { item in
+                    ForEach(items, id: \.artworkIdentifier) { item in
                         NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                             MoviePosterCard(movie: item)
                                 .frame(width: 120)

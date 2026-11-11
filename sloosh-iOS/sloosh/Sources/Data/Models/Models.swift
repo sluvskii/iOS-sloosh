@@ -197,59 +197,44 @@ struct MediaDto: Codable, Identifiable {
         return "fallback|\(typePart)|\(titlePart)|\(yearPart)|\(posterPart)"
     }
     
+    /// UI reuse/transition identity only; keep raw API/playback IDs unchanged.
+    var artworkIdentifier: String {
+        CatalogArtworkIdentity(id: originalId?.stringValue, type: type)?.requestId ?? "\(type ?? "unknown")|\(identifier)"
+    }
+
     var displayTitle: String {
         title ?? name ?? originalTitle ?? "Unknown"
     }
     
+    /// Textless candidates must be explicit or fetched with a typed identity.
+    /// Never strip movie_/tv_/kp_ into a numeric proxy shared by other titles.
+    func displayTextlessPosterUrl() -> String? {
+        let id = originalId?.stringValue
+        let item = MediaOverridesRepository.shared.catalogOverride(id: id, type: type, kpId: externalIds?.kp)
+        if let chosen = item?.artworkURL(item?.textlessPosterUrl) ?? item?.artworkURL(item?.posterUrl) { return chosen }
+        for candidate in [textlessPoster, textlessPosterUrl] {
+            if let candidate, !candidate.isEmpty, !candidate.contains("/api/v1/images/posters/") {
+                return normalizeImageUrl(path: candidate, id: id)
+            }
+        }
+        if Thread.isMainThread, let id {
+            let cached = MainActor.assumeIsolated { MoviesRepository.shared.getCachedDetails(id: id, type: type) }
+            if let candidate = cached?.textlessPoster ?? cached?.textlessPosterUrl,
+               !candidate.contains("/api/v1/images/posters/") {
+                return normalizeImageUrl(path: candidate, id: id)
+            }
+        }
+        return nil
+    }
+
     func displayPosterUrl(forLogoMode: Bool) -> String? {
-        let origId = originalId?.stringValue
-        let override = MediaOverridesRepository.shared.catalogOverride(id: origId, type: type, kpId: externalIds?.kp)
-        let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
-        let targetSize = isLowQuality ? "w185" : "w500"
-
-        if forLogoMode {
-            // 1. Curated textless override first
-            if let overrideTextless = override?.textlessPosterUrl, !overrideTextless.isEmpty {
-                return overrideTextless
-            }
-            // 2. Direct textless poster from DTO
-            if let tp = textlessPoster ?? textlessPosterUrl, !tp.isEmpty {
-                return normalizeImageUrl(path: tp, id: origId, isBackdrop: false) ?? tp
-            }
-            // 3. Cached details textless poster
-            if Thread.isMainThread, let idToLookup = origId {
-                let cached = MainActor.assumeIsolated {
-                    MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type)
-                }
-                if let cachedTp = cached?.textlessPoster ?? cached?.textlessPosterUrl, !cachedTp.isEmpty {
-                    return normalizeImageUrl(path: cachedTp, id: origId, isBackdrop: false) ?? cachedTp
-                }
-            }
-            // Keep the established textless-poster fallback in logo mode.
-            // This poster route is independent of the removed logo-proxy guess.
-            if let rawId = origId {
-                let posterId = rawId
-                    .replacingOccurrences(of: "kp_", with: "")
-                    .replacingOccurrences(of: "tmdb_", with: "")
-                    .replacingOccurrences(of: "tv_", with: "")
-                    .replacingOccurrences(of: "movie_", with: "")
-                if !posterId.isEmpty {
-                    return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/posters/\(posterId)/\(targetSize)/textless"
-                }
-            }
-        }
-
-        if let overridePoster = override?.posterUrl, !overridePoster.isEmpty {
-            return overridePoster
-        }
-        if let p = poster, !p.isEmpty {
-            return normalizeImageUrl(path: p, id: origId, isBackdrop: false)
-        }
-        if let p = posterUrl, !p.isEmpty {
-            return normalizeImageUrl(path: p, id: origId, isBackdrop: false)
-        }
-        if let path = poster_path, !path.isEmpty {
-            return normalizeImageUrl(path: path, id: origId, isBackdrop: false) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/\(targetSize)\(path)")
+        let id = originalId?.stringValue
+        if forLogoMode, let textless = displayTextlessPosterUrl() { return textless }
+        let item = MediaOverridesRepository.shared.catalogOverride(id: id, type: type, kpId: externalIds?.kp)
+        if let chosen = item?.artworkURL(item?.posterUrl) { return chosen }
+        for candidate in [poster, posterUrl, poster_path] {
+            if let candidate, !candidate.contains("/api/v1/images/posters/"),
+               let url = normalizeImageUrl(path: candidate, id: id) { return url }
         }
         return nil
     }
@@ -259,6 +244,8 @@ struct MediaDto: Codable, Identifiable {
     }
 
     var displayBackdropUrl: String? {
+        let item = MediaOverridesRepository.shared.catalogOverride(id: originalId?.stringValue, type: type, kpId: externalIds?.kp)
+        if let chosen = item?.artworkURL(item?.backdropUrl ?? item?.backdropUrls?.first) { return chosen }
         if let b = backdrop, !b.isEmpty {
             return normalizeImageUrl(path: b, id: originalId?.stringValue, isBackdrop: true) ?? b
         }
@@ -280,7 +267,9 @@ struct MediaDto: Codable, Identifiable {
         // 1. Check curated artwork overrides first
         if let overrideLogo = MediaOverridesRepository.shared.catalogOverride(id: origId, type: type, kpId: externalIds?.kp)?.logoUrl,
            !overrideLogo.isEmpty, accepted(overrideLogo) {
-            return isCompact ? adjustLogoUrl(urlStr: overrideLogo, targetSize: "w300") : overrideLogo
+            let item = MediaOverridesRepository.shared.catalogOverride(id: origId, type: type, kpId: externalIds?.kp)
+            let selected = item?.artworkURL(overrideLogo) ?? overrideLogo
+            return isCompact ? adjustLogoUrl(urlStr: selected, targetSize: "w300") : selected
         }
         
         // 2. Check if MediaDto has a logo property
@@ -541,17 +530,8 @@ func normalizeImageUrl(path: String?, id: String? = nil, isBackdrop: Bool = fals
         }
     }
     
-    // Fallback to ID-based poster only if path was not explicitly empty or marked no-poster
-    guard let pathStr = path, !pathStr.isEmpty, !pathStr.contains("no-poster") else {
-        return nil
-    }
-    
-    let sanitizedId = id?.replacingOccurrences(of: "kp_", with: "")
-    guard let validId = sanitizedId, validId.allSatisfy({ $0.isNumber }) else {
-        return nil
-    }
-    let qualityPath = isLowQuality ? "kp_small" : "kp"
-    return "\(baseUrl)/api/v1/images/\(qualityPath)/\(validId)?fallback=true"
+    return nil
+
 }
 
 struct MediaDetailsDto: Codable {
@@ -854,21 +834,22 @@ struct MediaDetailsDto: Codable {
 
     var displayPosterUrl: String? {
         if let id = id,
-           let overridePoster = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.posterUrl,
+           let overridePoster = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb ?? ids?.tmdb, kpId: externalIds?.kp ?? ids?.kp, type: type)?.posterUrl,
            !overridePoster.isEmpty {
-            return overridePoster
+            let item = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb ?? ids?.tmdb, kpId: externalIds?.kp ?? ids?.kp, type: type)
+            return item?.artworkURL(overridePoster)
         }
         return normalizeImageUrl(path: poster, id: id)
     }
     
     var displayBackdropUrl: String? {
         if let id = id,
-           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp) {
+           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb ?? ids?.tmdb, kpId: externalIds?.kp ?? ids?.kp, type: type) {
             if let customBackdrop = override.backdropUrl, !customBackdrop.isEmpty {
-                return customBackdrop
+                return override.artworkURL(customBackdrop) ?? customBackdrop
             }
             if let first = override.backdropUrls?.first, !first.isEmpty {
-                return first
+                return override.artworkURL(first) ?? first
             }
         }
         if let backdrop = backdrop, !backdrop.isEmpty {
@@ -877,7 +858,7 @@ struct MediaDetailsDto: Codable {
         if let poster = poster, !poster.isEmpty {
             return normalizeImageUrl(path: poster, id: id, isBackdrop: false) ?? poster
         }
-        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
+        guard let validId = externalIds?.kp ?? ids?.kp ?? (id?.hasPrefix("kp_") == true ? Int(String(id!.dropFirst(3))) : nil), validId > 0 else { return nil }
         let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
         let quality = isLowQuality ? "small" : "original"
         return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/backdrops/\(validId)/\(quality)"
@@ -885,12 +866,12 @@ struct MediaDetailsDto: Codable {
 
     var displayBackdropUrls: [String] {
         if let id = id,
-           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp) {
+           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb ?? ids?.tmdb, kpId: externalIds?.kp ?? ids?.kp, type: type) {
             if let customList = override.backdropUrls, !customList.isEmpty {
-                return customList
+                return customList.compactMap { override.artworkURL($0) }
             }
             if let single = override.backdropUrl, !single.isEmpty {
-                var list = [single]
+                var list = [override.artworkURL(single) ?? single]
                 if let backdrops = backdrops, !backdrops.isEmpty {
                     for b in backdrops {
                         let norm = normalizeImageUrl(path: b, id: id, isBackdrop: true) ?? b
@@ -928,17 +909,18 @@ struct MediaDetailsDto: Codable {
         if let poster = poster, !poster.isEmpty {
             return normalizeImageUrl(path: poster, id: id, isBackdrop: false) ?? poster
         }
-        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
+        guard let validId = externalIds?.kp ?? ids?.kp ?? (id?.hasPrefix("kp_") == true ? Int(String(id!.dropFirst(3))) : nil), validId > 0 else { return nil }
         return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/backdrops/\(validId)/small"
     }
 
     var displayLogoUrl: String? {
         if let id = id,
-           let overrideLogo = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl,
+           let overrideLogo = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb ?? ids?.tmdb, kpId: externalIds?.kp ?? ids?.kp, type: type)?.logoUrl,
            !overrideLogo.isEmpty {
-            return overrideLogo
+            let item = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb ?? ids?.tmdb, kpId: externalIds?.kp ?? ids?.kp, type: type)
+            return item?.artworkURL(overrideLogo)
         }
-        if let logo = logo, !logo.isEmpty {
+        if let logo = logo, !logo.isEmpty, !logo.contains("/api/v1/images/logos/") {
             return normalizeImageUrl(path: logo, id: id) ?? logo
         }
         return nil
@@ -1549,10 +1531,15 @@ public struct FavoriteDto: Codable, Identifiable {
         self.releaseDate = releaseDate
     }
     
+    var artworkIdentifier: String {
+        CatalogArtworkIdentity(id: mediaId, type: type)?.requestId
+            ?? "favorite|\(type ?? "unknown")|\(mediaId ?? id ?? title ?? "unknown")"
+    }
+
     // Mapping to MediaDto for UI reuse
     func toMediaDto() -> MediaDto {
         return MediaDto(
-            originalId: .string(mediaId ?? UUID().uuidString),
+            originalId: .string(mediaId ?? id ?? artworkIdentifier),
             title: title,
             originalTitle: nil,
             year: year != nil ? .string(year!) : nil,

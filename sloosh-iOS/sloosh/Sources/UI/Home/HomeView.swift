@@ -212,7 +212,7 @@ struct HomeCategoryContentView: View {
 
                 if let items = items, !items.isEmpty {
                     LazyVGrid(columns: columns, spacing: spacing) {
-                        ForEach(items) { movie in
+                        ForEach(items, id: \.artworkIdentifier) { movie in
                             MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
                                 .contextMenu {
                                     Group {
@@ -307,15 +307,15 @@ struct MovieDetailsNavigationLink<Label: View>: View {
     init(movieId: String, mediaType: String? = nil, transitionID: String? = nil, navigationTransition: Namespace.ID, studio: StudioBrand? = nil, @ViewBuilder label: @escaping () -> Label) {
         self.movieId = movieId
         self.mediaType = mediaType
-        self.transitionID = transitionID ?? "movie-card-\(movieId)"
+        self.transitionID = transitionID ?? "movie-card-\(CatalogArtworkIdentity(id: movieId, type: mediaType)?.requestId ?? movieId)"
         self.navigationTransition = navigationTransition
         self.studio = studio
         self.label = label
     }
 
-    init(movie: MediaDto, navigationTransition: Namespace.ID, studio: StudioBrand? = nil) where Label == MoviePosterCard {
+    init(movie: MediaDto, navigationTransition: Namespace.ID, studio: StudioBrand? = nil, refreshArtwork: Bool = false) where Label == MoviePosterCard {
         self.init(movieId: movie.id, mediaType: movie.type, navigationTransition: navigationTransition, studio: studio) {
-            MoviePosterCard(movie: movie)
+            MoviePosterCard(movie: movie, refreshArtwork: refreshArtwork)
         }
     }
 
@@ -516,24 +516,53 @@ extension RemotePosterView where Overlay == EmptyView {
 
 struct MoviePosterCard: View {
     let movie: MediaDto
+    var refreshArtwork = false
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @AppStorage("useLogosInCatalog") private var useLogosInCatalog: Bool = false
     @AppStorage("showCatalogMetadata") private var showCatalogMetadata = true
 
+    @State private var fetchedPoster: (identity: CatalogArtworkIdentity, artwork: CatalogLogoRepository.Artwork)?
+    @State private var artworkRevision = 0
+    private var artworkIdentity: CatalogArtworkIdentity? {
+        CatalogArtworkIdentity(id: movie.originalId?.stringValue, type: movie.type)
+    }
+    private var posterURL: URL? {
+        let remote = fetchedPoster.flatMap { $0.identity == artworkIdentity ? $0.artwork : nil }
+        let curated = mediaOverrides.catalogOverride(id: movie.originalId?.stringValue, type: movie.type, kpId: movie.externalIds?.kp)
+        let selected = useLogosInCatalog
+            ? (curated?.artworkURL(curated?.textlessPosterUrl) ?? curated?.artworkURL(curated?.posterUrl))
+            : curated?.artworkURL(curated?.posterUrl)
+        let ordinary = (refreshArtwork ? remote?.poster : nil) ?? movie.displayPosterUrl(forLogoMode: false)
+        let value = selected ?? (useLogosInCatalog ? (movie.displayTextlessPosterUrl() ?? remote?.textlessPoster ?? ordinary) : ordinary)
+        return value.flatMap(URL.init(string:))
+    }
+
     var body: some View {
-        switch cardStyle {
-        case .classic:
-            classicBody
-        case .overlay:
-            overlayBody
+        Group {
+            switch cardStyle {
+            case .classic: classicBody
+            case .overlay: overlayBody
+            }
+        }
+        .task(id: "\(useLogosInCatalog)|\(artworkIdentity?.requestId ?? movie.identifier)|\(artworkRevision)") {
+            fetchedPoster = nil
+            guard refreshArtwork || (useLogosInCatalog && movie.displayTextlessPosterUrl() == nil),
+                  let identity = artworkIdentity else { return }
+            let artwork = await CatalogLogoRepository.shared.artwork(for: identity)
+            guard !Task.isCancelled else { return }
+            fetchedPoster = (identity, artwork)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaArtworkOverridesDidChange)) { _ in
+            fetchedPoster = nil
+            artworkRevision += 1
         }
     }
 
     private var classicBody: some View {
         VStack(alignment: .leading, spacing: 8) {
-            let url = URL(string: movie.displayPosterUrl(forLogoMode: useLogosInCatalog) ?? "")
+            let url = posterURL
             
             ZStack(alignment: .topLeading) {
                 RemotePosterView(url: url)
@@ -568,7 +597,7 @@ struct MoviePosterCard: View {
     }
 
     private var overlayBody: some View {
-        RemotePosterView(url: URL(string: movie.displayPosterUrl(forLogoMode: useLogosInCatalog) ?? ""), cornerRadius: 12) {
+        RemotePosterView(url: posterURL, cornerRadius: 12) {
             ZStack(alignment: .bottomLeading) {
                 // Progressive blur with dark tint at the bottom of the poster
                 VariableBlurView(
@@ -657,6 +686,7 @@ struct MovieCardTitleOrLogoView: View {
     private var layout: CatalogCaptionLayout {
         CatalogCaptionLayout(isOverlay: isOverlay, showsMetadata: showsMetadata, scale: captionScale)
     }
+    @State private var artworkRevision = 0
     @State private var fetchedLogo: (identity: CatalogArtworkIdentity, url: String)?
     private var artworkIdentity: CatalogArtworkIdentity? {
         CatalogArtworkIdentity(id: movie.originalId?.stringValue, type: movie.type)
@@ -695,12 +725,16 @@ struct MovieCardTitleOrLogoView: View {
                     .frame(height: layout.titleAreaHeight, alignment: .leading)
             }
         }
-        .task(id: "\(useLogos)|\(artworkIdentity?.requestId ?? movie.identifier)") {
+        .task(id: "\(useLogos)|\(artworkIdentity?.requestId ?? movie.identifier)|\(artworkRevision)") {
             fetchedLogo = nil
             guard useLogos, let identity = artworkIdentity, movie.displayLogoUrl(isCompact: true) == nil else { return }
             let url = await CatalogLogoRepository.shared.logo(for: identity)
             guard !Task.isCancelled, artworkIdentity == identity, let url else { return }
             fetchedLogo = (identity, url)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mediaArtworkOverridesDidChange)) { _ in
+            fetchedLogo = nil
+            artworkRevision += 1
         }
     }
 

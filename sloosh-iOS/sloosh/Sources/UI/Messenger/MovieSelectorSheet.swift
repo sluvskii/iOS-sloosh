@@ -120,7 +120,7 @@ public struct MovieSelectorSheet: View {
 
         return ScrollView {
             LazyVGrid(columns: columns, spacing: 14) {
-                ForEach(items) { movie in
+                ForEach(items, id: \.artworkIdentifier) { movie in
                     Button {
                         selectMovie(movie)
                     } label: {

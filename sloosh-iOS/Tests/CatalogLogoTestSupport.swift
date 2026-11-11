@@ -26,8 +26,9 @@ final class MediaOverridesRepository {
     static let shared = MediaOverridesRepository()
     var items: [MediaArtworkOverride] = []
     func catalogOverride(id: String?, type: String?, kpId: Int?) -> MediaArtworkOverride? {
-        guard let identity = CatalogArtworkIdentity(id: id, type: type) else { return nil }
-        return items.first { identity.matchesOverride($0, kpId: kpId) }
+        ArtworkOverrideStore.resolve(items, id: id, type: type, kpId: kpId)
     }
-    func override(for id: String?, tmdbId: Int?, kpId: Int?) -> MediaArtworkOverride? { nil }
+    func override(for id: String?, tmdbId: Int?, kpId: Int?, type: String? = nil) -> MediaArtworkOverride? {
+        ArtworkOverrideStore.resolve(items, id: id, type: type, tmdbId: tmdbId, kpId: kpId)
+    }
 }

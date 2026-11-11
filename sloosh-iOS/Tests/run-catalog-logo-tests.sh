@@ -13,6 +13,9 @@ if ! swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/Data/Models/MediaArtworkOverride.swift \
   sloosh/Sources/Data/Models/CatalogArtworkIdentity.swift \
   sloosh/Sources/Data/Repositories/CatalogLogoRepository.swift \
+  sloosh/Sources/Data/Repositories/ArtworkOverrideStore.swift \
+  sloosh/Sources/UI/Shared/ImageRequestIdentity.swift \
+  Tests/ArtworkConsistencyTests.swift \
   Tests/CatalogLogoTestSupport.swift \
   Tests/CatalogLogoTests.swift \
   -o "$test_dir/catalog-logo-tests" >"$test_dir/compiler.log" 2>&1; then

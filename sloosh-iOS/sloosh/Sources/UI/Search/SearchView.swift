@@ -52,7 +52,7 @@ struct SearchView: View {
                         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                         let padding: CGFloat = cardDensity == .compact ? 12 : 16
                         LazyVGrid(columns: columns, spacing: spacing) {
-                            ForEach(viewModel.results) { movie in
+                            ForEach(viewModel.results, id: \.artworkIdentifier) { movie in
                                 MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
                                     .contextMenu {
                                         Group {

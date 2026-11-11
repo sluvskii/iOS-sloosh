@@ -47,27 +47,22 @@ public final class ImageCache {
     }
     
     private let failedLock = NSLock()
-    private var failedUrls = Set<String>()
+    private var failures = ImageFailureBackoff()
 
     public func isFailed(url: String) -> Bool {
         failedLock.lock()
         defer { failedLock.unlock() }
-        return failedUrls.contains(url)
+        return failures.contains(url)
     }
-
     public func markFailed(url: String) {
         failedLock.lock()
         defer { failedLock.unlock() }
-        if failedUrls.count > 1000 {
-            failedUrls.removeAll()
-        }
-        failedUrls.insert(url)
+        failures.insert(url)
     }
-
     public func clear() {
         cache.removeAllObjects()
         failedLock.lock()
-        failedUrls.removeAll()
+        failures.clear()
         failedLock.unlock()
     }
 
@@ -106,7 +101,7 @@ public final class ImageCache {
     public static func prefetch(urls: [URL]) {
         for rawUrl in urls {
             guard let url = resolveEffectiveUrl(rawUrl) else { continue }
-            if shared.image(forKey: url.absoluteString) != nil || shared.image(forKey: rawUrl.absoluteString) != nil {
+            if shared.image(forKey: url.absoluteString) != nil {
                 continue
             }
             
@@ -118,7 +113,6 @@ public final class ImageCache {
                    let img = UIImage(data: cached.data) {
                     let decoded = await img.byPreparingForDisplay() ?? img
                     shared.insertImage(decoded, forKey: url.absoluteString)
-                    shared.insertImage(decoded, forKey: rawUrl.absoluteString)
                     return
                 }
                 
@@ -129,7 +123,6 @@ public final class ImageCache {
                     URLCache.shared.storeCachedResponse(cachedResponse, for: request)
                     let decoded = await img.byPreparingForDisplay() ?? img
                     shared.insertImage(decoded, forKey: url.absoluteString)
-                    shared.insertImage(decoded, forKey: rawUrl.absoluteString)
                 }
             }
         }
@@ -145,10 +138,8 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     @ViewBuilder public let fallback: () -> Fallback
     public var isExternalLoading: Binding<Bool>? = nil
     
-    @State private var image: UIImage?
-    @State private var isLoading: Bool = true
-    @State private var hasError: Bool = false
-    
+    @State private var revision = 0
+
     public init(
         url: URL?,
         fallbackUrl: URL? = nil,
@@ -166,242 +157,113 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         self.content = content
         self.fallback = fallback
         
-        // Try synchronously loading from in-memory cache first to avoid flashing
-        let effectiveUrl = ImageCache.resolveEffectiveUrl(url)
-        var initialImage: UIImage? = nil
-        if let url = url {
-            if let cached = ImageCache.shared.image(forKey: url.absoluteString) {
-                initialImage = cached
-            } else if let effective = effectiveUrl, let cached = ImageCache.shared.image(forKey: effective.absoluteString) {
-                initialImage = cached
-            }
-        }
-        
-        if let initialImage = initialImage {
-            _image = State(initialValue: initialImage)
-            _isLoading = State(initialValue: false)
-            _hasError = State(initialValue: false)
-        } else if url == nil {
-            _image = State(initialValue: nil)
-            _isLoading = State(initialValue: false)
-            _hasError = State(initialValue: true)
-        } else {
-            _image = State(initialValue: nil)
-            _isLoading = State(initialValue: true)
-            _hasError = State(initialValue: false)
-        }
-    }
-    
-    private var activeImage: UIImage? {
-        if let image = image { return image }
-        if let url = url {
-            if let cached = ImageCache.shared.image(forKey: url.absoluteString) { return cached }
-            if let effective = ImageCache.resolveEffectiveUrl(url),
-               let cached = ImageCache.shared.image(forKey: effective.absoluteString) {
-                return cached
-            }
-        }
-        return nil
-    }
-    
-    public var body: some View {
-        let current = activeImage
-        ZStack {
-            if let current = current {
-                content(current)
-                    .transition(.opacity)
-            } else if isLoading {
-                placeholder()
-                    .transition(.opacity)
-            } else {
-                fallback()
-                    .transition(.opacity)
-            }
-        }
-        .task(id: url) {
-            await loadImage()
-        }
-        .onChange(of: isLoading, initial: true) { _, newValue in
-            isExternalLoading?.wrappedValue = newValue
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .posterQualityDidChange)) { _ in
-            self.image = nil
-            Task {
-                await loadImage()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .useLogosInCatalogDidChange)) { _ in
-            self.image = nil
-            Task {
-                await loadImage()
-            }
-        }
     }
 
-    private func loadImage() async {
-        guard let rawUrl = url, let url = ImageCache.resolveEffectiveUrl(rawUrl) else {
-            await loadFallbackImage()
-            return
-        }
-        
-        let urlKey = url.absoluteString
-        let rawKey = rawUrl.absoluteString
-        if ImageCache.shared.isFailed(url: urlKey) || ImageCache.shared.isFailed(url: rawKey) {
-            await loadFallbackImage()
-            return
-        }
-        
-        // Check in-memory cache again (e.g. if loaded while task was scheduled)
-        if let cached = ImageCache.shared.image(forKey: urlKey) ?? ImageCache.shared.image(forKey: rawKey) {
-            await MainActor.run {
-                self.image = cached
-                self.isLoading = false
-                self.hasError = false
-            }
-            return
-        }
-        
-        var request = URLRequest(url: url, cachePolicy: cachePolicy)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-        
-        if let cachedResponse = URLCache.shared.cachedResponse(for: request) {
-            let uiImg = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                guard let raw = UIImage(data: cachedResponse.data) else { return nil }
-                return await raw.byPreparingForDisplay() ?? raw
-            }.value
-            
-            if let uiImg = uiImg {
-                ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
-                ImageCache.shared.insertImage(uiImg, forKey: rawUrl.absoluteString)
-                await MainActor.run {
-                    withAnimation(.easeOut(duration: 0.24)) {
-                        self.image = uiImg
-                        self.isLoading = false
-                        self.hasError = false
-                    }
-                }
-                return
-            }
-        }
-        
-        await MainActor.run {
-            self.isLoading = true
-            self.hasError = false
-        }
-        
-        do {
-            let (data, response) = try await ImageCache.session.data(for: request)
-            let isSuccessful: Bool
-            if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 404 {
-                    ImageCache.shared.markFailed(url: urlKey)
-                    ImageCache.shared.markFailed(url: rawKey)
-                    await loadFallbackImage()
-                    return
-                }
-                isSuccessful = httpResponse.statusCode == 200
-            } else {
-                isSuccessful = true // For file:// URLs
-            }
-            
-            let uiImg = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                guard let raw = UIImage(data: data) else { return nil }
-                return await raw.byPreparingForDisplay() ?? raw
-            }.value
-            
-            if isSuccessful, let uiImg {
-                ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
-                ImageCache.shared.insertImage(uiImg, forKey: rawUrl.absoluteString)
-                await MainActor.run {
-                    withAnimation(.easeOut(duration: 0.24)) {
-                        self.image = uiImg
-                        self.isLoading = false
-                        self.hasError = false
-                    }
-                }
-                return
-            }
-        } catch {
-            if Task.isCancelled { return }
-        }
-        
-        await loadFallbackImage()
+    public var body: some View {
+        let identity = ImageRequestIdentity(primary: ImageCache.resolveEffectiveUrl(url),
+                                            fallback: ImageCache.resolveEffectiveUrl(fallbackUrl),
+                                            policy: cachePolicy.rawValue, revision: revision)
+        CachedImageRequestView(identity: identity, cachePolicy: cachePolicy,
+                               isExternalLoading: isExternalLoading,
+                               placeholder: placeholder, content: content, fallback: fallback)
+            .id(identity)
+            .onReceive(NotificationCenter.default.publisher(for: .posterQualityDidChange)) { _ in revision += 1 }
+            .onReceive(NotificationCenter.default.publisher(for: .useLogosInCatalogDidChange)) { _ in revision += 1 }
+            .onReceive(NotificationCenter.default.publisher(for: .mediaArtworkOverridesDidChange)) { _ in revision += 1 }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in revision += 1 }
     }
-    
-    private func loadFallbackImage() async {
-        // Handle fallback URL if provided
-        if let rawFallback = fallbackUrl, let fallbackUrl = ImageCache.resolveEffectiveUrl(rawFallback) {
-            if let cachedFallback = ImageCache.shared.image(forKey: fallbackUrl.absoluteString) ?? ImageCache.shared.image(forKey: rawFallback.absoluteString) {
-                await MainActor.run {
-                    withAnimation(.easeOut(duration: 0.24)) {
-                        self.image = cachedFallback
-                        self.isLoading = false
-                        self.hasError = false
-                    }
-                }
+}
+
+/// Immutable request inputs + SwiftUI identity isolate each load. No detached
+/// notification tasks can race a new cell/URL, and cancellation is checked after
+/// every suspension before any image is cached or published.
+private struct CachedImageRequestView<Placeholder: View, Content: View, Fallback: View>: View {
+    let identity: ImageRequestIdentity
+    let cachePolicy: URLRequest.CachePolicy
+    let isExternalLoading: Binding<Bool>?
+    let placeholder: () -> Placeholder
+    let content: (UIImage) -> Content
+    let fallback: () -> Fallback
+    @State private var image: UIImage?
+    @State private var isLoading = true
+
+    init(identity: ImageRequestIdentity, cachePolicy: URLRequest.CachePolicy, isExternalLoading: Binding<Bool>?,
+         placeholder: @escaping () -> Placeholder, content: @escaping (UIImage) -> Content, fallback: @escaping () -> Fallback) {
+        self.identity = identity
+        self.cachePolicy = cachePolicy
+        self.isExternalLoading = isExternalLoading
+        self.placeholder = placeholder
+        self.content = content
+        self.fallback = fallback
+        let permitsMemory = cachePolicy == .returnCacheDataElseLoad || cachePolicy == .returnCacheDataDontLoad || cachePolicy == .useProtocolCachePolicy
+        let cached = permitsMemory ? identity.primary.flatMap { ImageCache.shared.image(forKey: $0.absoluteString) } : nil
+        _image = State(initialValue: cached)
+        _isLoading = State(initialValue: cached == nil && (identity.primary != nil || identity.fallback != nil))
+    }
+
+    private var usesMemoryCache: Bool {
+        cachePolicy == .returnCacheDataElseLoad || cachePolicy == .returnCacheDataDontLoad || cachePolicy == .useProtocolCachePolicy
+    }
+    private var current: UIImage? {
+        if let image { return image }
+        guard usesMemoryCache, let primary = identity.primary else { return nil }
+        return ImageCache.shared.image(forKey: primary.absoluteString)
+    }
+    var body: some View {
+        Group {
+            if let image = current { content(image) }
+            else if isLoading { placeholder() }
+            else { fallback() }
+        }
+        .task(id: identity) { await load() }
+        .onChange(of: isLoading, initial: true) { _, value in isExternalLoading?.wrappedValue = value }
+    }
+
+    private func decoded(_ data: Data) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) {
+            guard let raw = UIImage(data: data) else { return nil }
+            return await raw.byPreparingForDisplay() ?? raw
+        }.value
+    }
+
+    private func load() async {
+        for candidate in [identity.primary, identity.fallback].compactMap({ $0 }) {
+            guard !Task.isCancelled else { return }
+            let key = candidate.absoluteString
+            if usesMemoryCache, let cached = ImageCache.shared.image(forKey: key) {
+                image = cached; isLoading = false
                 return
             }
-            
-            var fallbackRequest = URLRequest(url: fallbackUrl, cachePolicy: cachePolicy)
-            fallbackRequest.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-            if let cachedResponse = URLCache.shared.cachedResponse(for: fallbackRequest) {
-                let uiImg = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                    guard let raw = UIImage(data: cachedResponse.data) else { return nil }
-                    return await raw.byPreparingForDisplay() ?? raw
-                }.value
-                
-                if let uiImg = uiImg {
-                    ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
-                    ImageCache.shared.insertImage(uiImg, forKey: rawFallback.absoluteString)
-                    await MainActor.run {
-                        withAnimation(.easeOut(duration: 0.24)) {
-                            self.image = uiImg
-                            self.isLoading = false
-                            self.hasError = false
-                        }
-                    }
-                    return
-                }
+            if ImageCache.shared.isFailed(url: key) { continue }
+            var request = URLRequest(url: candidate, cachePolicy: cachePolicy)
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+            if cachePolicy == .returnCacheDataElseLoad || cachePolicy == .returnCacheDataDontLoad,
+               let cached = URLCache.shared.cachedResponse(for: request), let prepared = await decoded(cached.data) {
+                guard !Task.isCancelled else { return }
+                ImageCache.shared.insertImage(prepared, forKey: key)
+                image = prepared; isLoading = false
+                return
             }
-            
             do {
-                let (data, response) = try await ImageCache.session.data(for: fallbackRequest)
-                let isSuccessful: Bool
-                if let httpResponse = response as? HTTPURLResponse {
-                    isSuccessful = httpResponse.statusCode == 200
-                } else {
-                    isSuccessful = true
-                }
-                
-                let uiImg = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                    guard let raw = UIImage(data: data) else { return nil }
-                    return await raw.byPreparingForDisplay() ?? raw
-                }.value
-                
-                if isSuccessful, let uiImg {
-                    ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
-                    ImageCache.shared.insertImage(uiImg, forKey: rawFallback.absoluteString)
-                    await MainActor.run {
-                        withAnimation(.easeOut(duration: 0.24)) {
-                            self.image = uiImg
-                            self.isLoading = false
-                            self.hasError = false
-                        }
+                let (data, response) = try await ImageCache.session.data(for: request)
+                guard !Task.isCancelled else { return }
+                if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                    if http.statusCode == 404 {
+                        URLCache.shared.removeCachedResponse(for: request)
+                        ImageCache.shared.markFailed(url: key)
                     }
-                    return
+                    continue
                 }
+                guard let prepared = await decoded(data), !Task.isCancelled else { continue }
+                ImageCache.shared.insertImage(prepared, forKey: key)
+                image = prepared; isLoading = false
+                return
             } catch {
-                if Task.isCancelled { return }
+                guard !Task.isCancelled else { return }
             }
         }
-        
-        await MainActor.run {
-            withAnimation(.easeOut(duration: 0.24)) {
-                self.image = nil
-                self.isLoading = false
-                self.hasError = true
-            }
-        }
+        guard !Task.isCancelled else { return }
+        image = nil; isLoading = false
     }
 }
 
