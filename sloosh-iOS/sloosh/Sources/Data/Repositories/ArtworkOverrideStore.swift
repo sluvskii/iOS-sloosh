@@ -12,6 +12,13 @@ struct ArtworkOverrideStore {
         }
     }
 
+    init(data: Data) throws {
+        let raw = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        if raw is NSNull { document = [:] }
+        else if let object = raw as? [String: Any] { document = object }
+        else { throw URLError(.cannotParseResponse) }
+    }
+
     private func decode(key: String, value: Any) -> MediaArtworkOverride? {
         guard var object = value as? [String: Any] else { return nil }
         if object["mediaId"] == nil { object["mediaId"] = key }

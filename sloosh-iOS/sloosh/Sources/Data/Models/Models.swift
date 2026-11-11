@@ -206,6 +206,17 @@ struct MediaDto: Codable, Identifiable {
         title ?? name ?? originalTitle ?? "Unknown"
     }
     
+    private func matchesCachedArtwork(_ cached: MediaDetailsDto) -> Bool {
+        guard let expected = CatalogArtworkIdentity(id: originalId?.stringValue, type: type) else { return false }
+        let other = CatalogArtworkIdentity(id: cached.id, type: cached.type)
+        if let expectedType = expected.mediaType, let otherType = other?.mediaType, expectedType != otherType { return false }
+        if expected.isKinopoisk {
+            return other?.requestId == expected.requestId || (cached.externalIds?.kp ?? cached.ids?.kp) == Int(expected.number)
+        }
+        return other?.requestId == expected.requestId
+            || (other?.mediaType == expected.mediaType && (cached.externalIds?.tmdb ?? cached.ids?.tmdb) == Int(expected.number))
+    }
+
     /// Textless candidates must be explicit or fetched with a typed identity.
     /// Never strip movie_/tv_/kp_ into a numeric proxy shared by other titles.
     func displayTextlessPosterUrl() -> String? {
@@ -219,7 +230,7 @@ struct MediaDto: Codable, Identifiable {
         }
         if Thread.isMainThread, let id {
             let cached = MainActor.assumeIsolated { MoviesRepository.shared.getCachedDetails(id: id, type: type) }
-            if let candidate = cached?.textlessPoster ?? cached?.textlessPosterUrl,
+            if let cached, matchesCachedArtwork(cached), let candidate = cached.textlessPoster ?? cached.textlessPosterUrl,
                !candidate.contains("/api/v1/images/posters/") {
                 return normalizeImageUrl(path: candidate, id: id)
             }
@@ -283,7 +294,7 @@ struct MediaDto: Codable, Identifiable {
             let cached = MainActor.assumeIsolated {
                 MoviesRepository.shared.getCachedDetails(id: idToLookup, type: type)
             }
-            if let cachedLogo = cached?.logo, !cachedLogo.isEmpty, accepted(cachedLogo) {
+            if let cached, matchesCachedArtwork(cached), let cachedLogo = cached.logo, !cachedLogo.isEmpty, accepted(cachedLogo) {
                 let normalized = normalizeImageUrl(path: cachedLogo, id: origId) ?? cachedLogo
                 return isCompact ? adjustLogoUrl(urlStr: normalized, targetSize: "w300") : normalized
             }

@@ -50,6 +50,14 @@ enum ArtworkConsistencyTests {
                       ImageRequestIdentity(primary: a, fallback: b, policy: 0, revision: 1)] {
             check(request != other, "Primary/fallback/policy/revision changes replace image state")
         }
+        let decoded = try ArtworkOverrideStore(data: Data(#"{"tv_9":{"posterUrl":"https://example.com/9.jpg"}}"#.utf8))
+        check(decoded.records["tv_9"]?.mediaId == "tv_9", "HTTP snapshot supports legacy records missing mediaId too")
+        let empty = try ArtworkOverrideStore(data: Data("null".utf8))
+        check(empty.records.isEmpty, "HTTP null is authoritative empty, not a read failure")
+        do {
+            _ = try ArtworkOverrideStore(data: Data("[]".utf8))
+            check(false, "Malformed HTTP snapshot must not wipe a good local store")
+        } catch { check(true, "Malformed HTTP snapshot is rejected") }
         let now = Date(timeIntervalSince1970: 1_000)
         var failure = ImageFailureBackoff()
         failure.insert(a.absoluteString, at: now)

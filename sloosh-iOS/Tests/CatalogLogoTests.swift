@@ -71,6 +71,9 @@ struct CatalogLogoTests {
         let sameNumberTV = MediaDto(originalId: .string("42"), type: "tv")
         check(sameNumberMovie.artworkIdentifier != sameNumberTV.artworkIdentifier, "SwiftUI cell IDs cannot collide between film and series")
         check(sameNumberMovie.id == "42" && sameNumberTV.id == "42", "Keep business/API/playback IDs unchanged")
+        MoviesRepository.shared.cached = MediaDetailsDto(id: "movie_100088", type: "movie", logo: "https://example.com/wrong-logo.png", textlessPoster: "https://example.com/wrong-poster.jpg")
+        check(card.displayLogoUrl() == nil && card.displayTextlessPosterUrl() == nil, "Wrong-type details cache cannot supply a TV logo or poster")
+        MoviesRepository.shared.cached = nil
         let savedQuality = UserDefaults.standard.object(forKey: "posterQuality")
         defer {
             if let savedQuality { UserDefaults.standard.set(savedQuality, forKey: "posterQuality") }

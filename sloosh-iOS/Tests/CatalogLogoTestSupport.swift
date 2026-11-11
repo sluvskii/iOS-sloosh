@@ -19,7 +19,8 @@ final class MoviesApi {
 @MainActor
 final class MoviesRepository {
     static let shared = MoviesRepository()
-    func getCachedDetails(id: String, type: String?) -> MediaDetailsDto? { nil }
+    var cached: MediaDetailsDto?
+    func getCachedDetails(id: String, type: String?) -> MediaDetailsDto? { cached }
 }
 
 final class MediaOverridesRepository {

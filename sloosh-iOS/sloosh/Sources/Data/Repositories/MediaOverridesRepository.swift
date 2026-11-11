@@ -82,8 +82,12 @@ public final class MediaOverridesRepository: ObservableObject {
 
     private func checkedData(for request: URLRequest) async throws -> Data {
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = http.statusCode == 401 || http.statusCode == 403
+                ? "Нет доступа к изменению оформления. Войдите в аккаунт администратора и повторите попытку."
+                : "Сервис оформления временно недоступен. Повторите попытку позже."
+            throw NSError(domain: "sloosh.artwork", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
         }
         return data
     }
@@ -93,22 +97,21 @@ public final class MediaOverridesRepository: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         let started = generation
-        var snapshot: [String: MediaArtworkOverride]?
+        var snapshot: ArtworkOverrideStore?
         // Read the durable source first. Empty/null is a successful snapshot, not
         // a reason to resurrect stale cache/backend records or upload local ghosts.
         do {
             let request = try await firebaseRequest()
             let data = try await checkedData(for: request)
-            if String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) == "null" { snapshot = [:] }
-            else { snapshot = try JSONDecoder().decode([String: MediaArtworkOverride].self, from: data) }
+            snapshot = try ArtworkOverrideStore(data: data)
         } catch {
             do {
                 let response = try await MoviesApi.shared.getMediaOverrides()
-                if response.success != false { snapshot = response.data }
+                if response.success != false, let records = response.data { snapshot = ArtworkOverrideStore(records: records) }
             } catch { AppDiagnostics.shared.log("Artwork snapshot unavailable; retaining last confirmed state") }
         }
         guard let snapshot, started == generation, !isWriting else { return }
-        store = ArtworkOverrideStore(records: snapshot)
+        store = snapshot
         publish()
     }
 
