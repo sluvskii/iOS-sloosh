@@ -6,7 +6,7 @@ enum LocalMediaPathPolicy {
     /// directories do not (yet) exist, so prefix checks cannot be fooled.
     private static func normalized(_ url: URL) -> URL {
         var path = url.path
-        var components = path.split(separator: "/", omittingEmptySubsequences: true)
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
         var resolved: [String] = []
         for component in components {
             if component == "." { continue }
@@ -28,8 +28,10 @@ enum LocalMediaPathPolicy {
         let lexical = normalized(documents.appendingPathComponent(relativePath))
         guard lexical.path.hasPrefix(downloads.path + "/") else { return nil }
         // 2. Resolve symlinks, then re-normalize: a link may point back outside.
+        // The boundary is resolved the same way (/var vs /private/var aliases).
+        let resolvedDownloads = normalized(downloads.resolvingSymlinksInPath())
         let resolved = normalized(lexical.resolvingSymlinksInPath())
-        guard resolved.path.hasPrefix(downloads.path + "/") else { return nil }
+        guard resolved.path.hasPrefix(resolvedDownloads.path + "/") else { return nil }
         return resolved
     }
 }

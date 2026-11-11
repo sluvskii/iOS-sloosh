@@ -50,8 +50,7 @@ struct LocalMediaPathPolicyTests {
             try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
             let link = downloads.appendingPathComponent("escape", isDirectory: true)
             try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
-            let linkTarget = FileManager.default.destinationOfSymbolicLink(atPath: link.path)
-            precondition(linkTarget != nil, "Setup failed: symlink was not created")
+            _ = try FileManager.default.destinationOfSymbolicLink(atPath: link.path)
             let linkedSecret = link.appendingPathComponent("secret.txt")
             try? "x".write(to: linkedSecret, atomically: true, encoding: .utf8)
             check(LocalMediaPathPolicy.resolve("downloads/escape/secret.txt", documents: docs) == nil,
