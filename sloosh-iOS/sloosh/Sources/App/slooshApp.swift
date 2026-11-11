@@ -75,6 +75,9 @@ struct slooshApp: App {
                 .datastoreLocation(.applicationDefault)
             ])
         }
+
+        // Прогреваем локальный HLS прокси, чтобы порт 8181 был открыт и готов до первого клика в плеер
+        HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "idle")
         
         // Упреждающе подгружаем актуальный адрес бэкенда и разогреваем WebKit.
         // API-зависимый прогрев (стрим-токены, скрейперы, overrides) требует валидного Firebase ID

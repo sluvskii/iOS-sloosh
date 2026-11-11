@@ -72,11 +72,13 @@ class HlsProxyServer {
             let needsRestart = stateLock.withLock { !self.isListenerAlive || self.listener == nil }
             if needsRestart {
                 print("HlsProxyServer: restarting listener on foreground (was dead)")
-                stateLock.withLock {
-                    self.listener?.cancel()
+                let deadListener: NWListener? = stateLock.withLock {
+                    let existing = self.listener
                     self.listener = nil
                     self.isListenerAlive = false
+                    return existing
                 }
+                deadListener?.cancel()
                 start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId, preferredVoiceName: p.preferredVoiceName)
             }
         }
@@ -121,20 +123,28 @@ class HlsProxyServer {
         do {
             let parameters = NWParameters.tcp
             parameters.allowLocalEndpointReuse = true
-            // AVPlayer and downloaded playlists use loopback; never expose the proxy on Wi-Fi.
-            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: port)
             let newListener = try NWListener(using: parameters, on: port)
             newListener.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
             newListener.stateUpdateHandler = { [weak self] state in
                 guard let self = self else { return }
+                // Игнорируем события от уже заменённого листенера: иначе запоздавший
+                // .cancelled старого объекта обнулит только что поднятый новый.
+                let isCurrent = self.stateLock.withLock { self.listener === newListener }
+                guard isCurrent else { return }
                 switch state {
                 case .ready:
                     print("HlsProxyServer listener ready")
+                    AppDiagnostics.shared.log("HlsProxyServer: listener ready on port \(self.port.rawValue)")
                     self.stateLock.withLock { self.isListenerAlive = true }
+                case .waiting(let error):
+                    print("HlsProxyServer listener waiting: \(error)")
+                    AppDiagnostics.shared.log("HlsProxyServer: listener waiting (\(error))")
+                    self.stateLock.withLock { self.isListenerAlive = false }
                 case .failed(let error):
                     print("HlsProxyServer listener failed: \(error)")
+                    AppDiagnostics.shared.log("HlsProxyServer: listener failed (\(error))")
                     self.stateLock.withLock {
                         self.listener = nil
                         self.isListenerAlive = false
@@ -160,6 +170,7 @@ class HlsProxyServer {
             print("HlsProxyServer started on port \(port)")
         } catch {
             print("Failed to start HlsProxyServer: \(error)")
+            AppDiagnostics.shared.log("HlsProxyServer: failed to create listener (\(error))")
         }
     }
 
@@ -170,11 +181,11 @@ class HlsProxyServer {
         print("HlsProxyServer: scheduling self-healing restart in 300ms")
         queue.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self else { return }
-            let (headers, voices, subtitles, mediaId) = self.stateLock.withLock {
-                (self.headers, self.voices, self.subtitles, self.mediaId)
+            let (headers, voices, subtitles, mediaId, preferred) = self.stateLock.withLock {
+                (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName)
             }
             guard !mediaId.isEmpty else { return }
-            self.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
+            self.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId, preferredVoiceName: preferred)
         }
     }
 
@@ -198,8 +209,8 @@ class HlsProxyServer {
     
     func stop() {
         endBackgroundTaskIfNeeded()
-        stateLock.withLock {
-            listener?.cancel()
+        let listenerToCancel: NWListener? = stateLock.withLock {
+            let existing = listener
             listener = nil
             isListenerAlive = false
             currentMasterUrl = nil
@@ -207,7 +218,9 @@ class HlsProxyServer {
             self.subtitles = []
             self.mediaId = ""
             self.headers = [:]
+            return existing
         }
+        listenerToCancel?.cancel()
         playlistCacheLock.withLock {
             self.playlistCache.removeAll()
         }

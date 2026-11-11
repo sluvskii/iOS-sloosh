@@ -676,7 +676,10 @@ final class AllohaRepository: @unchecked Sendable {
         }
 
         if !shouldRefresh && !cachedTokens.isEmpty {
-            return getHealthyCandidateTokens()
+            let candidates = getHealthyCandidateTokens()
+            if !candidates.isEmpty {
+                return candidates
+            }
         }
 
         let fetchTask: Task<[String], Never> = tokenQueue.sync(flags: .barrier) {
@@ -733,15 +736,17 @@ final class AllohaRepository: @unchecked Sendable {
             return task
         }
 
-        // Если сохранённые токены уже есть — сразу отдаём их плееру (0 мс ожидания),
-        // а обновление пула с бэкенда спокойно добежит в фоне. Ждём сеть только при
-        // самом первом запуске, когда локального пула ещё ни разу не было.
-        if !cachedTokens.isEmpty {
-            return getHealthyCandidateTokens()
+        // Если сохранённые здоровые токены уже есть — сразу отдаём их плееру (0 мс ожидания),
+        // а обновление пула с бэкенда спокойно добежит в фоне.
+        let cachedCandidates = getHealthyCandidateTokens()
+        if !cachedCandidates.isEmpty {
+            return cachedCandidates
         }
 
+        // Если здоровых токенов в кэше нет — обязательно дожидаемся свежего ответа с сервера
         _ = await fetchTask.value
-        return getHealthyCandidateTokens()
+        let freshCandidates = getHealthyCandidateTokens()
+        return freshCandidates.isEmpty ? (try? await fetchTask.value) ?? [] : freshCandidates
     }
 
     private func getHealthyCandidateTokens() -> [String] {
