@@ -199,6 +199,15 @@ public struct WatchPartySession: Identifiable, Codable, Sendable, Equatable, Has
     }
 }
 
+/// Automatic banners are ephemeral; the original invitation stays in chat history.
+enum WatchPartyInviteNotificationPolicy {
+    static let maximumAgeMs: Int64 = 10 * 60 * 1000
+
+    static func isFresh(timestampMs: Int64, nowMs: Int64) -> Bool {
+        timestampMs > 0 && timestampMs <= nowMs + 5_000 && timestampMs >= nowMs - maximumAgeMs
+    }
+}
+
 // MARK: - Watch Party Invite Payload (For Chat Messages)
 
 public struct WatchPartyInvitePayload: Identifiable, Codable, Sendable, Equatable, Hashable {

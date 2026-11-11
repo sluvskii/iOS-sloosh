@@ -212,6 +212,15 @@ struct WatchPartySyncTests {
         let targetAtHost = playingPlayback.targetPosition(at: 1_002_000)
         check(targetAtGuest == targetAtHost, "Calibrated Guest target position exactly equals Host target position")
 
+        let inviteNow: Int64 = 100_000_000
+        check(WatchPartyInviteNotificationPolicy.isFresh(timestampMs: inviteNow, nowMs: inviteNow), "New invite can display a banner")
+        check(WatchPartyInviteNotificationPolicy.isFresh(timestampMs: inviteNow - 600_000, nowMs: inviteNow), "Ten-minute boundary is inclusive")
+        check(!WatchPartyInviteNotificationPolicy.isFresh(timestampMs: inviteNow - 600_001, nowMs: inviteNow), "Expired invite does not display a banner")
+        check(!WatchPartyInviteNotificationPolicy.isFresh(timestampMs: inviteNow - 86_400_000, nowMs: inviteNow), "Yesterday's unread invite stays silent")
+        check(!WatchPartyInviteNotificationPolicy.isFresh(timestampMs: 0, nowMs: inviteNow), "Missing invite timestamp stays silent")
+        check(WatchPartyInviteNotificationPolicy.isFresh(timestampMs: inviteNow + 5_000, nowMs: inviteNow), "Small clock skew is tolerated")
+        check(!WatchPartyInviteNotificationPolicy.isFresh(timestampMs: inviteNow + 5_001, nowMs: inviteNow), "Future-dated invite stays silent")
+
         print("PASS: \(count) watch party sync & model test cases")
     }
 }

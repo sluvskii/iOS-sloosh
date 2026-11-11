@@ -27,7 +27,6 @@ public final class MessengerRepository: ObservableObject {
         return stored?.int64Value ?? 0
     }()
     private var serverClockOffsetMs: Int64 = 0
-    private var notifiedWatchPartyTimestamps: [String: Int64] = [:]
 
     public var totalUnreadCount: Int {
         conversations.reduce(0) { $0 + $1.unreadCount }
@@ -996,9 +995,31 @@ public final class MessengerRepository: ObservableObject {
             // Check for new incoming Watch Party invite
             for item in list {
                 if item.unreadCount > 0 && (item.lastMessageText.contains("Смотреть вместе") || item.lastMessageText.contains("Приглашение")) {
-                    let lastNotified = self.notifiedWatchPartyTimestamps[item.chatId] ?? 0
-                    if item.updatedAtMs > lastNotified {
-                        self.notifiedWatchPartyTimestamps[item.chatId] = item.updatedAtMs
+                    let nowMs = Int64(Date().timeIntervalSince1970 * 1000) + serverClockOffsetMs
+                    let notificationKey = "sloosh_watch_party_notified_\(currentUser.id)"
+                    var notified = UserDefaults.standard.dictionary(forKey: notificationKey) ?? [:]
+                    let lastNotified = (notified[item.chatId] as? NSNumber)?.int64Value ?? 0
+                    guard item.updatedAtMs > lastNotified,
+                          WatchPartyInviteNotificationPolicy.isFresh(timestampMs: item.updatedAtMs, nowMs: nowMs),
+                          let partyURL = await makeURL(path: "chats/\(item.chatId)/watch_party") else { continue }
+                    var partyRequest = URLRequest(url: partyURL)
+                    partyRequest.timeoutInterval = 4
+                    partyRequest.cachePolicy = .reloadIgnoringLocalCacheData
+                    guard let (partyData, partyResponse) = try? await URLSession.shared.data(for: partyRequest),
+                          let http = partyResponse as? HTTPURLResponse, http.statusCode == 200,
+                          let party = try? JSONDecoder().decode(WatchPartySession.self, from: partyData),
+                          party.status == .active, party.hostUid == item.peerUser.id,
+                          party.guestUid == nil,
+                          WatchPartyInviteNotificationPolicy.isFresh(
+                            timestampMs: party.createdAtMs,
+                            nowMs: Int64(Date().timeIntervalSince1970 * 1000) + serverClockOffsetMs
+                          ),
+                          AuthRepository.shared.currentUser?.id == currentUser.id else { continue }
+                    // Another overlapping refresh may already have displayed this invitation.
+                    notified = UserDefaults.standard.dictionary(forKey: notificationKey) ?? [:]
+                    if item.updatedAtMs > ((notified[item.chatId] as? NSNumber)?.int64Value ?? 0) {
+                        notified[item.chatId] = NSNumber(value: item.updatedAtMs)
+                        UserDefaults.standard.set(notified, forKey: notificationKey)
                         let senderName = item.peerUser.displayName
                         let targetChatId = item.chatId
                         ToastManager.shared.show(
@@ -1008,10 +1029,10 @@ public final class MessengerRepository: ObservableObject {
                             iconColor: .green,
                             duration: 8.0,
                             action: { [weak self] in
-                                self?.notifiedWatchPartyTimestamps[targetChatId] = Int64.max
-                                if let idx = self?.conversations.firstIndex(where: { $0.chatId == targetChatId }) {
-                                    let old = self!.conversations[idx]
-                                    self?.conversations[idx] = ChatConversation(
+                                guard AuthRepository.shared.currentUser?.id == currentUser.id else { return }
+                                if let self, let idx = self.conversations.firstIndex(where: { $0.chatId == targetChatId }) {
+                                    let old = self.conversations[idx]
+                                    self.conversations[idx] = ChatConversation(
                                         chatId: old.chatId,
                                         peerUser: old.peerUser,
                                         lastMessageText: old.lastMessageText,
@@ -1019,9 +1040,7 @@ public final class MessengerRepository: ObservableObject {
                                         updatedAtMs: old.updatedAtMs
                                     )
                                 }
-                                Task {
-                                    await WatchPartyRepository.shared.acceptInviteFromChat(chatId: targetChatId)
-                                }
+                                WatchPartyRepository.shared.acceptInviteFromChat(partyId: party.id, chatId: targetChatId)
                             }
                         )
                     }
