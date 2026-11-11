@@ -175,25 +175,22 @@ private struct ContinueWatchingItem: Identifiable {
 
     var posterUrl: String? {
         let key = record.rootMediaKey
-        if let override = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId)?.posterUrl, !override.isEmpty {
-            return override
-        }
+        if let item = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId, type: metadata?.type),
+           let chosen = item.artworkURL(item.posterUrl) { return chosen }
         return metadata?.posterUrl
     }
 
     var backdropUrl: String? {
         let key = record.rootMediaKey
-        if let override = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId)?.backdropUrl, !override.isEmpty {
-            return override
-        }
+        if let item = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId, type: metadata?.type),
+           let chosen = item.artworkURL(item.backdropUrl) { return chosen }
         return metadata?.backdropUrl
     }
 
     var logoUrl: String? {
         let key = record.rootMediaKey
-        if let override = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId)?.logoUrl, !override.isEmpty {
-            return override
-        }
+        if let item = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId, type: metadata?.type),
+           let chosen = item.artworkURL(item.logoUrl) { return chosen }
         return metadata?.logoUrl
     }
 

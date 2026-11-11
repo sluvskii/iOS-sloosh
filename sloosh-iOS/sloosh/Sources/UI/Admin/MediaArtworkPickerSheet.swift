@@ -116,7 +116,8 @@ struct MediaArtworkPickerSheet: View {
 
     init(details: MediaDetailsDto) {
         let cleanId = details.id ?? ""
-        let isTv = details.type?.lowercased() == "tv" || (details.seasons != nil && !(details.seasons?.isEmpty ?? true))
+        let isTv = CatalogArtworkIdentity(id: cleanId, type: details.type)?.mediaType == "tv"
+            || (details.seasons != nil && !(details.seasons?.isEmpty ?? true))
         let inferredType = isTv ? "tv" : "movie"
 
         self.init(
@@ -136,7 +137,7 @@ struct MediaArtworkPickerSheet: View {
     }
 
     private var activeOverride: MediaArtworkOverride? {
-        MediaOverridesRepository.shared.override(for: mediaId, tmdbId: tmdbId, kpId: kpId)
+        MediaOverridesRepository.shared.override(for: mediaId, tmdbId: tmdbId, kpId: kpId, type: mediaType)
     }
 
     private var hasActiveOverride: Bool {
@@ -1482,6 +1483,7 @@ struct MediaArtworkPickerSheet: View {
         do {
             try await MediaOverridesRepository.shared.saveOverride(
                 mediaId: mediaId,
+                mediaType: mediaType,
                 kpId: kpId,
                 tmdbId: tmdbId,
                 title: title,
@@ -1495,7 +1497,7 @@ struct MediaArtworkPickerSheet: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             ToastManager.shared.show(
                 title: "Оформление обновлено",
-                subtitle: "Изменения применены ко всем устройствам",
+                subtitle: "Изменения сохранены",
                 icon: "checkmark.circle.fill"
             )
             dismiss()
@@ -1516,6 +1518,7 @@ struct MediaArtworkPickerSheet: View {
         do {
             try await MediaOverridesRepository.shared.deleteOverride(
                 mediaId: mediaId,
+                mediaType: mediaType,
                 kpId: kpId,
                 tmdbId: tmdbId
             )

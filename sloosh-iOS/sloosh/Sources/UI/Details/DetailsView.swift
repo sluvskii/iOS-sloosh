@@ -48,6 +48,7 @@ struct RemoteBackdropView: View {
 }
 
 struct BackdropCarouselView: View {
+    @AppStorage("posterQuality") private var posterQuality = "high"
     let urls: [String]
     let fallbackUrl: URL?
     let width: CGFloat
@@ -80,7 +81,7 @@ struct BackdropCarouselView: View {
                 )
             }
         }
-        .id(urls.joined(separator: "|"))
+        .id("\(posterQuality)|\(urls.joined(separator: "|"))|\(fallbackUrl?.absoluteString ?? "")")
         .frame(width: width, height: height)
         .mask(BackdropFadeMask())
     }
@@ -420,75 +421,38 @@ private final class BackdropSlideViewController: UIViewController {
     }
 
     private func loadImage() {
-        guard let url = URL(string: urlString) else {
-            loadFallback()
+        loadTask?.cancel()
+        // Immutable slide inputs; primary and poster fallback both use the same
+        // effective-key cache policy as catalog images (never raw URL aliases).
+        let candidates = [URL(string: urlString), fallbackUrl].compactMap { ImageCache.resolveEffectiveUrl($0) }
+        if let first = candidates.first, let cached = ImageCache.shared.image(forKey: first.absoluteString) {
+            imageView.image = cached
             return
         }
-
-        let effectiveUrl = ImageCache.resolveEffectiveUrl(url)
-        let key = effectiveUrl?.absoluteString ?? url.absoluteString
-
-        // 1. Instant check from RAM cache
-        if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: url.absoluteString) {
-            self.imageView.image = cached
-            return
-        }
-
-        // 2. Asynchronous background load
         loadTask = Task { [weak self] in
-            guard let self = self else { return }
-            let targetUrl = effectiveUrl ?? url
-            var request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
-            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
-
-            if let cached = URLCache.shared.cachedResponse(for: request),
-               let img = UIImage(data: cached.data) {
-                let decoded = await img.byPreparingForDisplay() ?? img
-                ImageCache.shared.insertImage(decoded, forKey: key)
-                ImageCache.shared.insertImage(decoded, forKey: url.absoluteString)
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        self.imageView.image = decoded
-                    }
-                }
-                return
-            }
-
-            do {
-                let (data, resp) = try await ImageCache.session.data(for: request)
-                if Task.isCancelled { return }
-                if let http = resp as? HTTPURLResponse, http.statusCode == 200,
-                   let img = UIImage(data: data) {
-                    let cachedResponse = CachedURLResponse(response: http, data: data)
-                    URLCache.shared.storeCachedResponse(cachedResponse, for: request)
-                    let decoded = await img.byPreparingForDisplay() ?? img
-                    ImageCache.shared.insertImage(decoded, forKey: key)
-                    ImageCache.shared.insertImage(decoded, forKey: url.absoluteString)
-                    if !Task.isCancelled {
-                        await MainActor.run {
-                            self.imageView.image = decoded
-                        }
-                    }
+            for url in candidates {
+                guard !Task.isCancelled else { return }
+                let key = url.absoluteString
+                if let cached = ImageCache.shared.image(forKey: key) {
+                    self?.imageView.image = cached
                     return
                 }
-            } catch {
-                if Task.isCancelled { return }
-            }
-
-            if !Task.isCancelled {
-                await MainActor.run {
-                    self.loadFallback()
+                var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+                do {
+                    let (data, response) = try await ImageCache.session.data(for: request)
+                    guard !Task.isCancelled else { return }
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                          let image = UIImage(data: data) else { continue }
+                    let decoded = await image.byPreparingForDisplay() ?? image
+                    guard !Task.isCancelled else { return }
+                    ImageCache.shared.insertImage(decoded, forKey: key)
+                    self?.imageView.image = decoded
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
                 }
             }
-        }
-    }
-
-    private func loadFallback() {
-        guard let fallback = fallbackUrl else { return }
-        let effectiveFallback = ImageCache.resolveEffectiveUrl(fallback)
-        let key = effectiveFallback?.absoluteString ?? fallback.absoluteString
-        if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: fallback.absoluteString) {
-            self.imageView.image = cached
         }
     }
 
@@ -4345,7 +4309,7 @@ private struct RelatedStudioSection: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
-                        ForEach(items) { movie in
+                        ForEach(items, id: \.artworkIdentifier) { movie in
                             NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                 MoviePosterCard(movie: movie)
                                     .frame(width: 120)
@@ -4389,7 +4353,7 @@ private struct SimilarMediaSection: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
-                    ForEach(items) { item in
+                    ForEach(items, id: \.artworkIdentifier) { item in
                         NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                             MoviePosterCard(movie: item)
                                 .frame(width: 120)

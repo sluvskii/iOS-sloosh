@@ -1442,7 +1442,7 @@ private struct PersonFilmographySection: View {
                     .padding(.vertical, 20)
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(items) { movie in
+                    ForEach(items, id: \.artworkIdentifier) { movie in
                         let transitionID = "filmography_\(movie.id)"
                         NavigationLink(
                             destination: DetailsView(

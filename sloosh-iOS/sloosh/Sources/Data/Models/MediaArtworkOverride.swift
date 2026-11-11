@@ -5,6 +5,7 @@ import Foundation
 public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
     public var id: String { mediaId }
     public let mediaId: String
+    public var mediaType: String?
     public var kpId: Int?
     public var tmdbId: Int?
     public var title: String?
@@ -18,6 +19,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
 
     public init(
         mediaId: String,
+        mediaType: String? = nil,
         kpId: Int? = nil,
         tmdbId: Int? = nil,
         title: String? = nil,
@@ -30,6 +32,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
         updatedBy: String? = nil
     ) {
         self.mediaId = mediaId
+        self.mediaType = mediaType
         self.kpId = kpId
         self.tmdbId = tmdbId
         self.title = title
@@ -41,6 +44,19 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
         self.updatedAt = updatedAt
         self.updatedBy = updatedBy
     }
+    /// Version selected assets without changing their identity/path or other query
+    /// parameters. Re-selecting the same URL must not reuse an old CDN/disk image.
+    public func artworkURL(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        guard let updatedAt, updatedAt.isFinite, updatedAt > 0,
+              var components = URLComponents(string: value) else { return value }
+        var query = components.queryItems ?? []
+        query.removeAll { $0.name == "sloosh_artwork_rev" }
+        query.append(URLQueryItem(name: "sloosh_artwork_rev", value: String(updatedAt)))
+        components.queryItems = query
+        return components.string ?? value
+    }
+
 }
 
 public struct MediaImageItemDto: Codable, Identifiable, Equatable, Sendable {
