@@ -471,19 +471,21 @@ private struct HomeEmptyState: View {
 
 struct RemotePosterView<Overlay: View>: View {
     let url: URL?
+    var fallbackUrl: URL? = nil
     var cornerRadius: CGFloat = 12
     @Binding var isLoading: Bool
     let overlay: () -> Overlay
     
-    init(url: URL?, cornerRadius: CGFloat = 12, isLoading: Binding<Bool> = .constant(false), @ViewBuilder overlay: @escaping () -> Overlay) {
+    init(url: URL?, fallbackUrl: URL? = nil, cornerRadius: CGFloat = 12, isLoading: Binding<Bool> = .constant(false), @ViewBuilder overlay: @escaping () -> Overlay) {
         self.url = url
+        self.fallbackUrl = fallbackUrl
         self.cornerRadius = cornerRadius
         self._isLoading = isLoading
         self.overlay = overlay
     }
     
     var body: some View {
-        AsyncCachedImage(url: url, isExternalLoading: $isLoading) {
+        AsyncCachedImage(url: url, fallbackUrl: fallbackUrl, isExternalLoading: $isLoading) {
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .aspectRatio(2/3, contentMode: .fill)
@@ -506,8 +508,9 @@ struct RemotePosterView<Overlay: View>: View {
 }
 
 extension RemotePosterView where Overlay == EmptyView {
-    init(url: URL?, cornerRadius: CGFloat = 12, isLoading: Binding<Bool> = .constant(false)) {
+    init(url: URL?, fallbackUrl: URL? = nil, cornerRadius: CGFloat = 12, isLoading: Binding<Bool> = .constant(false)) {
         self.url = url
+        self.fallbackUrl = fallbackUrl
         self.cornerRadius = cornerRadius
         self._isLoading = isLoading
         self.overlay = { EmptyView() }
@@ -539,6 +542,13 @@ struct MoviePosterCard: View {
         return value.flatMap(URL.init(string:))
     }
 
+    private var fallbackPosterURL: URL? {
+        let remote = fetchedPoster.flatMap { $0.identity == artworkIdentity ? $0.artwork.poster : nil }
+        let ordinary = (refreshArtwork ? remote : nil) ?? movie.displayPosterUrl(forLogoMode: false)
+        let fallback = ordinary.flatMap(URL.init(string:))
+        return fallback == posterURL ? nil : fallback
+    }
+
     var body: some View {
         Group {
             switch cardStyle {
@@ -565,7 +575,7 @@ struct MoviePosterCard: View {
             let url = posterURL
             
             ZStack(alignment: .topLeading) {
-                RemotePosterView(url: url)
+                RemotePosterView(url: url, fallbackUrl: fallbackPosterURL)
                 
                 if movie.isUnreleased {
                     Text("Скоро")
@@ -597,7 +607,7 @@ struct MoviePosterCard: View {
     }
 
     private var overlayBody: some View {
-        RemotePosterView(url: posterURL, cornerRadius: 12) {
+        RemotePosterView(url: posterURL, fallbackUrl: fallbackPosterURL, cornerRadius: 12) {
             ZStack(alignment: .bottomLeading) {
                 // Progressive blur with dark tint at the bottom of the poster
                 VariableBlurView(
