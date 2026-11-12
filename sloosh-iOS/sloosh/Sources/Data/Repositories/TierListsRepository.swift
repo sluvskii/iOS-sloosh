@@ -252,7 +252,7 @@ final class TierListsRepository: ObservableObject {
                let countUrl = url("tier_lists/\(listId)/likesCount") {
                 var countReq = URLRequest(url: countUrl)
                 countReq.httpMethod = "PUT"
-                countReq.httpBody = try? JSONSerialization.data(withJSONObject: count)
+                countReq.httpBody = try? encoder.encode(count)
                 countReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 _ = try? await URLSession.shared.data(for: countReq)
             }
@@ -276,7 +276,7 @@ final class TierListsRepository: ObservableObject {
             if let viewUrl = url("tier_lists_views/\(listId)/\(userId)") {
                 var viewReq = URLRequest(url: viewUrl)
                 viewReq.httpMethod = "PUT"
-                viewReq.httpBody = try? JSONSerialization.data(withJSONObject: nowMs)
+                viewReq.httpBody = try? encoder.encode(nowMs)
                 viewReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 _ = try? await URLSession.shared.data(for: viewReq)
             }
@@ -293,7 +293,7 @@ final class TierListsRepository: ObservableObject {
                 if let countUrl = url("tier_lists/\(listId)/viewsCount") {
                     var countReq = URLRequest(url: countUrl)
                     countReq.httpMethod = "PUT"
-                    countReq.httpBody = try? JSONSerialization.data(withJSONObject: current + 1)
+                    countReq.httpBody = try? encoder.encode(current + 1)
                     countReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     _ = try? await URLSession.shared.data(for: countReq)
                 }
