@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Обложка тир-листа для сеток (Мои / Шаблоны / Популярные / профиль):
-/// коллаж 2×2 из первых постеров + название + автор/счётчик.
+/// коллаж 2×2 из первых постеров + название + метаданные. Нативные цвета.
 struct TierListCardView: View {
     let title: String
     let subtitle: String?
@@ -13,15 +13,15 @@ struct TierListCardView: View {
         VStack(alignment: .leading, spacing: 8) {
             cover
             Text(title)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
             HStack(spacing: 5) {
                 if let badge {
                     Text(badge)
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.black)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(Color.orange, in: Capsule())
@@ -29,12 +29,12 @@ struct TierListCardView: View {
                 if let likes = likesCount, likes > 0 {
                     Label("\(likes)", systemImage: "heart.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(.secondary)
                 }
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
@@ -56,14 +56,8 @@ struct TierListCardView: View {
                     if posters.count < 4 {
                         ForEach(0..<(4 - posters.count), id: \.self) { _ in
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.05))
+                                .fill(Color(UIColor.tertiarySystemFill))
                                 .frame(height: posters.count <= 2 ? 92 : 68)
-                                .overlay(
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(.white.opacity(0.25))
-                                )
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
                     }
                 }
@@ -72,25 +66,33 @@ struct TierListCardView: View {
                     .frame(height: 190)
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(UIColor.tertiarySystemFill))
                     Image(systemName: "list.star")
                         .font(.system(size: 26))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(.secondary)
                 }
                 .frame(height: 120)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color(UIColor.separator).opacity(0.35), lineWidth: 0.5)
+        )
     }
 
     @ViewBuilder
     private func poster(_ urlString: String) -> some View {
         AsyncCachedImage(
             url: URL(string: urlString),
-            placeholder: { Rectangle().fill(Color.white.opacity(0.08)) },
-            content: { image in Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) },
-            fallback: { Rectangle().fill(Color.white.opacity(0.08)) }
+            placeholder: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) },
+            content: { image in
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            },
+            fallback: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) }
         )
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
