@@ -246,5 +246,5 @@ enum TierRowPalette {
 // MARK: - Общая тема экранов тир-листов
 
 enum TierListTheme {
-    static let background = Color(red: 0.04, green: 0.055, blue: 0.048, alpha: 1)
+    static let background = Color(red: 0.04, green: 0.055, blue: 0.048, opacity: 1)
 }
