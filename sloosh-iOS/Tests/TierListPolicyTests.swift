@@ -53,7 +53,7 @@ struct TierListPolicyTests {
 
         // MARK: Ранжинг
 
-        func makeList(id: String, likes: Int, views: Int, ageHours: Double) -> TierList {
+        func makeList(id: String, likes: Int?, views: Int?, ageHours: Double) -> TierList {
             TierList(
                 id: id, title: "T", subtitle: nil,
                 authorId: "u", authorName: "A", authorTag: nil, authorAvatar: nil,
