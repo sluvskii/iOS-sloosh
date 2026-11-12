@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Шит добавления фильмов в тир-лист: поиск по базе и подборки
-/// (студии/сети из getCategories, франшизы и жанры — через то же API).
-/// Мультивыбор: тап по постеру отмечает, кнопка внизу добавляет всё в пул.
+/// (студии/сети из getCategories). Мультивыбор: тап по постеру отмечает,
+/// кнопка внизу добавляет всё в пул. Каноничный шит-хедер SlooshTopBar.
 struct TierItemPickerSheet: View {
     var onAdd: ([TierListItem]) -> Void
     var onDismiss: () -> Void
@@ -20,7 +20,6 @@ struct TierItemPickerSheet: View {
     @State private var studioTotalPages = 1
     @State private var isLoadingStudio = false
     @State private var selected: [String: TierListItem] = [:]
-    @State private var scrollOffset: CGFloat = 0
 
     enum PickerMode: String, CaseIterable {
         case search = "Поиск"
@@ -28,34 +27,40 @@ struct TierItemPickerSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            SlooshTopBar(
-                title: "Добавить фильмы",
-                blendsTitle: false,
-                scrollOffset: $scrollOffset,
-                leadingIcon: "xmark",
-                leadingAction: { onDismiss() }
-            )
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("", selection: $mode) {
+                    ForEach(PickerMode.allCases, id: \.self) { m in
+                        Text(m.rawValue).tag(m)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
 
-            Picker("", selection: $mode) {
-                ForEach(PickerMode.allCases, id: \.self) { m in
-                    Text(m.rawValue).tag(m)
+                switch mode {
+                case .search: searchSection
+                case .collections: collectionsSection
+                }
+
+                bottomBar
+            }
+            .background(Color(UIColor.systemBackground))
+            .navigationTitle("Добавить фильмы")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Отмена") { onDismiss() }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Text("Выбрано: \(selected.count)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
-
-            switch mode {
-            case .search: searchSection
-            case .collections: collectionsSection
-            }
-
-            bottomBar
         }
-        .background(TierListTheme.background.ignoresSafeArea())
         .presentationDetents([.large])
-        .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationDragIndicator(.visible)
         .task { await loadStudios() }
     }
 
@@ -66,19 +71,18 @@ struct TierItemPickerSheet: View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
                 TextField("Название фильма или сериала", text: $searchText)
-                    .foregroundStyle(.white)
                     .submitLabel(.search)
                 if !searchText.isEmpty {
                     Button { searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
             .padding(12)
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
@@ -90,10 +94,10 @@ struct TierItemPickerSheet: View {
                 VStack(spacing: 10) {
                     Image(systemName: "film.stack")
                         .font(.system(size: 40))
-                        .foregroundStyle(.white.opacity(0.3))
+                        .foregroundStyle(.tertiary)
                     Text("Найдите фильмы и сериалы,\nчтобы расставить их по уровням")
                         .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, minHeight: 200)
@@ -129,21 +133,21 @@ struct TierItemPickerSheet: View {
     private var collectionsSection: some View {
         if let studio = selectedStudio {
             VStack(spacing: 0) {
-                HStack {
-                    Button {
-                        withAnimation { selectedStudio = nil }
-                    } label: {
+                Button {
+                    withAnimation { selectedStudio = nil }
+                } label: {
+                    HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(studio.name)
+                            .font(.system(size: 16, weight: .bold))
+                        Spacer()
                     }
-                    .padding(.leading, 16)
-                    Text(studio.name)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(.white)
-                    Spacer()
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
                 }
-                .padding(.vertical, 10)
+                .buttonStyle(.plain)
 
                 if isLoadingStudio && studioItems.isEmpty {
                     ProgressView().tint(Color.slooshAccent).frame(maxWidth: .infinity, minHeight: 200)
@@ -165,18 +169,19 @@ struct TierItemPickerSheet: View {
                                     .foregroundStyle(Color.slooshAccent)
                                 Text(studio.name)
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                                     .lineLimit(2)
                                     .multilineTextAlignment(.center)
                             }
                             .frame(maxWidth: .infinity, minHeight: 84)
-                            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 14))
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(16)
             }
+            .scrollIndicators(.hidden)
         }
     }
 
@@ -196,11 +201,15 @@ struct TierItemPickerSheet: View {
                         VStack(spacing: 0) {
                             AsyncCachedImage(
                                 url: item.posterUrl.flatMap { URL(string: $0) },
-                                placeholder: { Rectangle().fill(Color.white.opacity(0.08)) },
-                                content: { image in Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) },
+                                placeholder: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) },
+                                content: { image in
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                },
                                 fallback: {
-                                    Rectangle().fill(Color.white.opacity(0.08))
-                                        .overlay(Text(String(item.title.prefix(1))).foregroundStyle(.white.opacity(0.5)))
+                                    Rectangle().fill(Color(UIColor.tertiarySystemFill))
+                                        .overlay(Text(String(item.title.prefix(1))).foregroundStyle(.secondary))
                                 }
                             )
                             .frame(height: 132)
@@ -214,7 +223,7 @@ struct TierItemPickerSheet: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 18))
                                         .foregroundStyle(Color.slooshAccent)
-                                        .background(Circle().fill(Color.black.opacity(0.6)))
+                                        .background(Circle().fill(Color(UIColor.systemBackground).opacity(0.7)))
                                         .padding(4)
                                 }
                             }
@@ -230,41 +239,35 @@ struct TierItemPickerSheet: View {
             }
             .padding(16)
         }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: Нижняя панель
 
     @ViewBuilder
     private var bottomBar: some View {
-        HStack(spacing: 12) {
-            Text("Выбрано: \(selected.count)")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            Spacer()
-            Button {
-                onAdd(Array(selected.values))
-                dismiss()
-            } label: {
-                Text("Добавить")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.black)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 10)
-                    .background(Color.slooshAccent, in: Capsule())
-            }
-            .disabled(selected.isEmpty)
-            .opacity(selected.isEmpty ? 0.4 : 1)
+        Button {
+            onAdd(Array(selected.values))
+            dismiss()
+        } label: {
+            Text("Добавить выбранное (\(selected.count))")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 13)
+                .background(Color.slooshAccent, in: Capsule())
         }
+        .disabled(selected.isEmpty)
+        .opacity(selected.isEmpty ? 0.4 : 1)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color.black.opacity(0.25))
     }
 
     // MARK: Данные
 
     private func loadStudios() async {
         if studios.isEmpty {
-            let sections = (try? await MoviesRepository.shared.getCategories()) ?? []
+            let sections = await MoviesRepository.shared.getCategories()
             let all = sections.flatMap(\.items)
             await MainActor.run { studios = all }
         }
@@ -297,7 +300,7 @@ struct TierItemPickerSheet: View {
     }
 }
 
-// MARK: - Адаптер MediaDto → TierListItem
+// MARK: - Адаптеры MediaDto / MediaDetailsDto → TierListItem
 
 extension TierListItem {
     init?(from media: MediaDto) {

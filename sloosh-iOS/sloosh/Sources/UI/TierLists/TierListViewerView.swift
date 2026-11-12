@@ -25,12 +25,28 @@ struct TierListViewerView: View {
     enum ExportTarget { case board, stories, photos }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            content
+        ZStack {
+            if isLoading && list == nil {
+                ProgressView()
+                    .tint(Color.slooshAccent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let list {
+                listContent(list)
+            } else {
+                AppEmptyStateView(
+                    icon: "list.star",
+                    title: "Тир-лист не найден",
+                    description: "Возможно, автор удалил его"
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .background(TierListTheme.background.ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .safeAreaInset(edge: .top, spacing: 0) { viewerHeader }
+        .navigationTitle(list?.title ?? "Тир-лист")
+        .toolbar(.hidden, for: .navigationBar)
+        .background(Color(UIColor.systemBackground))
+        .fullWidthSwipeBack()
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .task { await load() }
         .onChange(of: repo.publicLists) { _, updated in
             if let current = list, let fresh = updated.first(where: { $0.id == current.id }) {
@@ -72,8 +88,6 @@ struct TierListViewerView: View {
         }
     }
 
-    // MARK: Загрузка
-
     private func load() async {
         var loaded: TierList? = initialList
         if loaded == nil {
@@ -87,20 +101,26 @@ struct TierListViewerView: View {
         }
     }
 
-    // MARK: Верхняя панель
+    // MARK: Шапка
 
     @ViewBuilder
-    private var topBar: some View {
-        SlooshTopBar(
-            title: list?.title ?? "Тир-лист",
-            blendsTitle: false,
-            scrollOffset: $scrollOffset,
-            leadingIcon: "chevron.left",
-            leadingAction: { dismiss() },
-            trailing: {
+    private var viewerHeader: some View {
+        ZStack {
+            Text(list?.title ?? "Тир-лист")
+                .font(.system(size: 18, weight: .semibold))
+                .backdropForeground()
+                .lineLimit(1)
+
+            HStack {
+                TelegramGlassIconButton(systemName: "chevron.left") {
+                    dismiss()
+                }
+                Spacer()
                 viewerMenu
             }
-        )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
@@ -133,31 +153,11 @@ struct TierListViewerView: View {
                 Label("Сделать свой", systemImage: "square.and.pencil")
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
+            TelegramGlassIconButton(systemName: "ellipsis.circle") {}
         }
     }
 
     // MARK: Контент
-
-    @ViewBuilder
-    private var content: some View {
-        if isLoading && list == nil {
-            ProgressView()
-                .tint(Color.slooshAccent)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let list {
-            listContent(list)
-        } else {
-            AppEmptyStateView(
-                icon: "list.star",
-                title: "Тир-лист не найден",
-                description: "Возможно, автор удалил его"
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
 
     @ViewBuilder
     private func listContent(_ list: TierList) -> some View {
@@ -174,6 +174,12 @@ struct TierListViewerView: View {
                 Spacer(minLength: 40)
             }
         }
+        .scrollIndicators(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
     }
 
     // MARK: Секции
@@ -182,13 +188,14 @@ struct TierListViewerView: View {
     private func headerSection(_ list: TierList) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(list.title)
-                .font(.system(size: 26, weight: .heavy))
-                .foregroundStyle(.white)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 16)
+                .padding(.top, 6)
             if let subtitle = list.subtitle, !subtitle.isEmpty {
                 Text(subtitle)
                     .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
             }
         }
@@ -204,12 +211,15 @@ struct TierListViewerView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(list.authorName)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Text(list.dateText)
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 16)
         }
@@ -219,10 +229,10 @@ struct TierListViewerView: View {
     private func statBadge(icon: String, value: Int) -> some View {
         Label("\(value)", systemImage: icon)
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.55))
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.white.opacity(0.07), in: Capsule())
+            .background(Color(UIColor.secondarySystemFill), in: Capsule())
     }
 
     @ViewBuilder
@@ -234,7 +244,7 @@ struct TierListViewerView: View {
             if list.templateId != nil {
                 Label("по шаблону", systemImage: "sparkles")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 16)
@@ -277,11 +287,11 @@ struct TierListViewerView: View {
         } label: {
             Label("\(current.likesCount ?? 0)", systemImage: isLiked ? "heart.fill" : "heart")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(isLiked ? Color.red : .white)
+                .foregroundStyle(isLiked ? Color.red : .primary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(
-                    Capsule().fill(isLiked ? Color.red.opacity(0.15) : Color.white.opacity(0.08))
+                    Capsule().fill(isLiked ? Color.red.opacity(0.12) : Color(UIColor.secondarySystemFill))
                 )
         }
     }
@@ -291,11 +301,11 @@ struct TierListViewerView: View {
             Task { await export(as: .board) }
         } label: {
             Label("Картинкой", systemImage: "square.and.arrow.up")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Capsule().fill(Color.white.opacity(0.08)))
+                .background(Capsule().fill(Color(UIColor.secondarySystemFill)))
         }
     }
 
@@ -309,7 +319,7 @@ struct TierListViewerView: View {
         } label: {
             Label("Удалить тир-лист", systemImage: "trash")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.red.opacity(0.8))
+                .foregroundStyle(.red)
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
         }
@@ -362,7 +372,7 @@ struct TierListViewerView: View {
     @ViewBuilder
     private var exportOverlay: some View {
         ZStack {
-            Color.black.opacity(0.75).ignoresSafeArea()
+            Color.black.opacity(0.6).ignoresSafeArea()
             VStack(spacing: 14) {
                 ProgressView(value: exportProgress)
                     .tint(Color.slooshAccent)

@@ -19,6 +19,7 @@ struct TierDragPayload: Codable, Transferable {
 /// Доска тир-листа: строки уровней с цветными чипами + сетки постеров + пул
 /// «Не распределено». Один компонент на оба режима: в `edit` работает
 /// drag&drop и меню айтемов, в `view` постеры просто открывают фильм.
+/// Стиль — нативный: systemBackground, системные плейсхолдеры, adaptive light/dark.
 struct TierListBoardView: View {
     enum Mode { case edit, view }
 
@@ -27,16 +28,15 @@ struct TierListBoardView: View {
     @Binding var unranked: [TierListItem]
     var onTapItem: ((TierListItem) -> Void)?
     var onOpenDetails: ((TierListItem) -> Void)?
-    var onRemoveItem: ((TierListItem, String?) -> Void)?
 
     @State private var highlightedRowId: String?
-    @State private var movingItem: TierListItem?
 
-    private let posterWidth: CGFloat = 86
-    private let posterHeight: CGFloat = 129
+    private let posterWidth: CGFloat = 82
+    private let posterHeight: CGFloat = 123
+    private let rowHeight: CGFloat = 143
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach($rows) { $row in
                 tierRow(row: $row)
             }
@@ -51,29 +51,29 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func tierRow(row: Binding<TierRow>) -> some View {
-        HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .center, spacing: 0) {
             chip(for: row.wrappedValue)
-                .frame(width: 92)
+                .frame(width: 92, height: rowHeight)
 
             itemsArea(rowId: row.wrappedValue.id, items: Binding(
                 get: { row.wrappedValue.items },
                 set: { row.wrappedValue.items = $0 }
             ))
-            .frame(minHeight: 96)
         }
+        .frame(height: rowHeight)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color.white.opacity(0.045))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(UIColor.secondarySystemFill).opacity(0.55))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(
                     highlightedRowId == row.wrappedValue.id ? Color.slooshAccent : Color.clear,
                     lineWidth: 2
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
         .dropDestination(for: TierDragPayload.self) { payload, _ in
             guard let payload = payload.first else { return false }
             moveItem(payload: payload, targetRowId: row.wrappedValue.id)
@@ -85,23 +85,21 @@ struct TierListBoardView: View {
 
     private func chip(for row: TierRow) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(
-                    LinearGradient(
-                        colors: [row.color, row.color.opacity(0.72)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            LinearGradient(
+                colors: [row.color, row.color.opacity(0.7)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
             Text(row.label)
-                .font(.system(size: 26, weight: .heavy, design: .default))
+                .font(.system(size: 24, weight: .heavy, design: .default))
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                 .minimumScaleFactor(0.4)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 5)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Сетки айтемов
@@ -109,20 +107,20 @@ struct TierListBoardView: View {
     @ViewBuilder
     private func itemsArea(rowId: String, items: Binding<[TierListItem]>) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 6) {
-                if items.wrappedValue.isEmpty && rowId != "__pool__" {
-                    Text("Перетащите фильмы сюда")
+            LazyHStack(spacing: 8) {
+                if items.wrappedValue.isEmpty {
+                    Text(rowId == "__pool__" ? "Добавьте фильмы вниз" : "Перетащите фильмы сюда")
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.35))
-                        .padding(.horizontal, 12)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
                 }
                 ForEach(items.wrappedValue) { item in
                     itemCell(item: item, sourceRowId: rowId == "__pool__" ? nil : rowId)
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .dropDestination(for: TierDragPayload.self) { payload, _ in
             guard let payload = payload.first else { return false }
             moveItem(payload: payload, targetRowId: rowId == "__pool__" ? nil : rowId)
@@ -133,25 +131,25 @@ struct TierListBoardView: View {
     }
 
     private var unrankedRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "tray.full")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 Text("Не распределено (\(unranked.count))")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 18)
 
             itemsArea(rowId: "__pool__", items: $unranked)
-                .frame(minHeight: 96)
+                .frame(height: rowHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.white.opacity(0.03))
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(UIColor.secondarySystemFill).opacity(0.4))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: 16)
                         .strokeBorder(
                             highlightedRowId == "__pool__" ? Color.slooshAccent : Color.clear,
                             lineWidth: 2
@@ -164,11 +162,11 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func itemCell(item: TierListItem, sourceRowId: String?) -> some View {
-        let cell = AsyncCachedImage(
+        let poster = AsyncCachedImage(
             url: item.posterUrl.flatMap { URL(string: $0) },
             placeholder: {
                 Rectangle()
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color(UIColor.tertiarySystemFill))
             },
             content: { image in
                 Image(uiImage: image)
@@ -177,33 +175,23 @@ struct TierListBoardView: View {
             },
             fallback: {
                 ZStack {
-                    Rectangle().fill(Color.white.opacity(0.08))
+                    Rectangle().fill(Color(UIColor.tertiarySystemFill))
                     Text(String(item.title.prefix(1)))
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.secondary)
                 }
             }
         )
         .frame(width: posterWidth, height: posterHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
         Group {
             if mode == .edit {
-                cell
-                    .draggable(TierDragPayload(item: item, sourceRowId: sourceRowId)) {
-                        cell.overlay(alignment: .topTrailing) {
-                            Image(systemName: "cursor.rays")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.9))
-                                .padding(4)
-                                .background(Circle().fill(Color.black.opacity(0.45)))
-                                .padding(4)
-                                .opacity(0.9)
-                        }
-                    }
+                poster
+                    .draggable(TierDragPayload(item: item, sourceRowId: sourceRowId))
                     .onTapGesture { onTapItem?(item) }
             } else {
-                cell
+                poster
                     .onTapGesture { onOpenDetails?(item) }
             }
         }
@@ -241,10 +229,4 @@ enum TierRowPalette {
         ("Бирюзовый", "7FFFFF"), ("Голубой", "7FBFFF"), ("Синий", "7F7FFF"),
         ("Фиолетовый", "BF7FFF"), ("Розовый", "FF7FFF"), ("Серый", "BFBFBF")
     ]
-}
-
-// MARK: - Общая тема экранов тир-листов
-
-enum TierListTheme {
-    static let background = Color(red: 0.04, green: 0.055, blue: 0.048, opacity: 1)
 }
