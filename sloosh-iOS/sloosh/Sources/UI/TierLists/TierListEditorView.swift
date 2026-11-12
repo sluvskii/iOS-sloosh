@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// Редактор тир-листа: доска с drag&drop, правка уровней, пул «Не распределено»,
-/// добавление фильмов, автосохранение черновика и публикация. Нативный стиль.
+/// Редактор тир-листа: системный навбар («Отмена»/«Готово»), доска уровней
+/// с drag&drop, нижний тулбар «Добавить/Опубликовать», черновик автосейвится.
 struct TierListEditorView: View {
-    /// Черновик (из шаблона, «Создать», ремикса или «В тир-лист» из карточки фильма).
     let draft: TierList
     var onPublished: (TierList) -> Void
     var onDismiss: () -> Void
@@ -14,7 +13,7 @@ struct TierListEditorView: View {
     @State private var rows: [TierRow]
     @State private var unranked: [TierListItem]
     @State private var showAddSheet = false
-    @State private var showPublishSheet = false
+    @State private var showPublishField = false
     @State private var editingRow: TierRow?
     @State private var tappedItem: TierListItem?
     @State private var isPublishing = false
@@ -41,35 +40,61 @@ struct TierListEditorView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TextField("Название тир-листа", text: $title)
-                .font(.system(size: 22, weight: .bold))
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    TierListBoardView(
-                        mode: .edit,
-                        rows: $rows,
-                        unranked: $unranked,
-                        onTapItem: { item in tappedItem = item }
-                    )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                TextField("Название", text: $title)
+                    .font(.title2.weight(.bold))
+                    .padding(.horizontal, 16)
                     .padding(.top, 8)
 
-                    rowControls
+                TextField("Описание (необязательно)", text: $subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+
+                TierListBoardView(
+                    mode: .edit,
+                    rows: $rows,
+                    unranked: $unranked,
+                    onTapItem: { item in tappedItem = item }
+                )
+                .padding(.top, 4)
+
+                Button {
+                    rows.append(TierRow(
+                        id: UUID().uuidString,
+                        label: "",
+                        colorHex: TierRowPalette.colors[rows.count % TierRowPalette.colors.count].hex,
+                        items: []
+                    ))
+                } label: {
+                    Label("Добавить уровень", systemImage: "plus")
                 }
-                .padding(.bottom, 24)
+                .padding(.horizontal, 16)
+
+                Text("Тап по чипу уровня — название, цвет и порядок. Долгое нажатие по фильму — открыть или убрать.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
             }
-            .scrollIndicators(.hidden)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .padding(.bottom, 16)
         }
-        .safeAreaInset(edge: .top, spacing: 0) { editorHeader }
-        .safeAreaInset(edge: .bottom, spacing: 0) { editorBottomBar }
         .navigationTitle("Редактор")
-        .toolbar(.hidden, for: .navigationBar)
-        .background(Color(UIColor.systemBackground))
-        .fullWidthSwipeBack()
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Готово") { showPublishField = true }
+                    .disabled(isPublishing)
+            }
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button {
+                    showAddSheet = true
+                } label: {
+                    Label("Добавить фильмы", systemImage: "plus")
+                }
+                Spacer()
+            }
+        }
         .onDisappear { autosaveDraft() }
         .onChange(of: rows) { _, _ in scheduleAutosave() }
         .onChange(of: unranked) { _, _ in scheduleAutosave() }
@@ -88,7 +113,7 @@ struct TierListEditorView: View {
                 onDismiss: { showAddSheet = false }
             )
         }
-        .sheet(isPresented: $showPublishSheet) { publishSheet }
+        .sheet(isPresented: $showPublishField) { publishSheet }
         .confirmationDialog(
             tappedItem?.title ?? "",
             isPresented: Binding(get: { tappedItem != nil }, set: { if !$0 { tappedItem = nil } }),
@@ -123,161 +148,44 @@ struct TierListEditorView: View {
         }
     }
 
-    // MARK: Шапка и нижняя панель
-
-    @ViewBuilder
-    private var editorHeader: some View {
-        ZStack {
-            Text(draft.isDraftList ? "Новый тир-лист" : "Редактирование")
-                .font(.system(size: 18, weight: .semibold))
-                .backdropForeground()
-            HStack {
-                TelegramGlassIconButton(systemName: "xmark") {
-                    autosaveDraft()
-                    onDismiss()
-                }
-                Spacer()
-                Button {
-                    showPublishSheet = true
-                } label: {
-                    Text("Готово")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.slooshAccent, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .disabled(isPublishing)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-    }
-
-    @ViewBuilder
-    private var editorBottomBar: some View {
-        HStack(spacing: 10) {
-            Button {
-                showAddSheet = true
-            } label: {
-                Label("Добавить", systemImage: "plus.square.on.square")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color(UIColor.secondarySystemFill), in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                showPublishSheet = true
-            } label: {
-                Label("Опубликовать", systemImage: "paperplane.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.slooshAccent, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(unranked.isEmpty && rows.allSatisfy { $0.items.isEmpty })
-            .opacity(unranked.isEmpty && rows.allSatisfy { $0.items.isEmpty } ? 0.4 : 1)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: Управление строками
-
-    @ViewBuilder
-    private var rowControls: some View {
-        HStack(spacing: 10) {
-            Button {
-                rows.append(TierRow(
-                    id: UUID().uuidString,
-                    label: "",
-                    colorHex: TierRowPalette.colors[rows.count % TierRowPalette.colors.count].hex,
-                    items: []
-                ))
-            } label: {
-                Label("Уровень", systemImage: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(UIColor.secondarySystemFill), in: Capsule())
-            }
-            .buttonStyle(.plain)
-            Text("Тап по цветному чипу — название, цвет и порядок")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-    }
-
     // MARK: Публикация
 
     @ViewBuilder
     private var publishSheet: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Название")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
+            Form {
+                Section("Название") {
                     TextField("Например: Все фильмы MCU — мой вердикт", text: $title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(12)
-                        .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-
-                    Text("Описание (необязательно)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    TextField("Пара слов о том, как вы оценивали", text: $subtitle)
-                        .font(.system(size: 15))
-                        .padding(12)
-                        .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                 }
-                .padding(.horizontal, 16)
-
+                Section("Описание") {
+                    TextField("Пара слов (необязательно)", text: $subtitle)
+                }
                 if let error = publishError {
-                    Text(error)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 16)
-                }
-
-                Spacer()
-
-                Button {
-                    Task { await publish() }
-                } label: {
-                    HStack {
-                        if isPublishing { ProgressView().tint(.white) }
-                        Text("Опубликовать")
-                            .font(.system(size: 16, weight: .bold))
+                    Section {
+                        Text(error).foregroundStyle(.red)
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.slooshAccent, in: Capsule())
                 }
-                .disabled(isPublishing || title.trimmingCharacters(in: .whitespaces).isEmpty)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                Section {
+                    Button {
+                        Task { await publish() }
+                    } label: {
+                        HStack {
+                            if isPublishing { ProgressView() }
+                            Text("Опубликовать")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .disabled(isPublishing || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
             .navigationTitle("Публикация")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Отмена") { showPublishSheet = false }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Отмена") { showPublishField = false }
                 }
             }
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
 
     private func publish() async {
@@ -286,7 +194,7 @@ struct TierListEditorView: View {
         do {
             if let published = try await TierListsRepository.shared.publish(draftSnapshot) {
                 deleteDraftLocally()
-                showPublishSheet = false
+                showPublishField = false
                 onPublished(published)
                 dismiss()
             } else {
@@ -316,8 +224,6 @@ struct TierListEditorView: View {
     private func deleteDraftLocally() {
         TierListsRepository.shared.deleteDraft(id: draft.id)
     }
-
-    // MARK: Операции с айтемами и строками
 
     private func openDetails(_ item: TierListItem) {
         autosaveDraft()
@@ -358,13 +264,12 @@ struct TierListEditorView: View {
     }
 }
 
-/// Обёртка для sheet(item:) по строке уровня.
 private struct EditableRowBox: Identifiable {
     let row: TierRow
     var id: String { row.id }
 }
 
-/// Правка одного уровня: название, цвет, порядок, удаление.
+/// Правка уровня: название, цвет, порядок, удаление — обычная Form.
 struct TierRowEditSheet: View {
     let row: TierRow
     let canDelete: Bool
@@ -384,87 +289,57 @@ struct TierRowEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                TextField("Название (например S, Шедевры, Провал)", text: $label)
-                    .font(.system(size: 17, weight: .semibold))
-                    .padding(12)
-                    .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 16)
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 10)], spacing: 10) {
-                    ForEach(TierRowPalette.colors, id: \.hex) { palette in
-                        Button {
-                            colorHex = palette.hex
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(UIColor(hex: palette.hex) ?? .systemGray))
-                                .frame(height: 44)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .strokeBorder(colorHex == palette.hex ? Color.primary : .clear, lineWidth: 2.5)
-                                )
+            Form {
+                Section("Название уровня") {
+                    TextField("Например S, Шедевры, Провал", text: $label)
+                }
+                Section("Цвет") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 10)], spacing: 10) {
+                        ForEach(TierRowPalette.colors, id: \.hex) { palette in
+                            Button {
+                                colorHex = palette.hex
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(UIColor(hex: palette.hex) ?? .systemGray))
+                                    .frame(height: 44)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .strokeBorder(colorHex == palette.hex ? Color.primary : .clear, lineWidth: 2.5)
+                                    )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 16)
-
-                HStack(spacing: 10) {
-                    Button {
-                        onSave(TierRow(id: row.id, label: label.isEmpty ? row.label : label, colorHex: colorHex, items: row.items), false, -1)
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                Section {
+                    Button("Поднять") {
+                        onSave(TierRow(id: row.id, label: label, colorHex: colorHex, items: row.items), false, -1)
+                        dismiss()
                     }
-                    Button {
-                        onSave(TierRow(id: row.id, label: label.isEmpty ? row.label : label, colorHex: colorHex, items: row.items), false, 1)
-                    } label: {
-                        Image(systemName: "arrow.down")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                    Button("Опустить") {
+                        onSave(TierRow(id: row.id, label: label, colorHex: colorHex, items: row.items), false, 1)
+                        dismiss()
                     }
                     if canDelete {
-                        Button(role: .destructive) {
+                        Button("Удалить уровень", role: .destructive) {
                             onSave(row, true, 0)
-                        } label: {
-                            Image(systemName: "trash")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                            dismiss()
                         }
                     }
                 }
-                .padding(.horizontal, 16)
-
-                Button {
-                    onSave(TierRow(id: row.id, label: label.isEmpty ? row.label : label, colorHex: colorHex, items: row.items), false, 0)
-                } label: {
-                    Text("Сохранить")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Color.slooshAccent, in: Capsule())
-                }
-                .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty)
-                .padding(.horizontal, 16)
-
-                Spacer()
             }
-            .padding(.top, 16)
             .navigationTitle("Уровень")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Отмена") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Сохранить") {
+                        onSave(TierRow(id: row.id, label: label.isEmpty ? row.label : label, colorHex: colorHex, items: row.items), false, 0)
+                        dismiss()
+                    }
+                    .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
         }
-        .presentationDetents([.medium])
-        .presentationDragIndicator(.visible)
     }
 }
