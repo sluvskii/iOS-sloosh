@@ -89,7 +89,7 @@ struct TierListCardView: View {
         AsyncCachedImage(
             url: URL(string: urlString),
             placeholder: { Rectangle().fill(Color.white.opacity(0.08)) },
-            content: { image in image.resizable().aspectRatio(contentMode: .fill) },
+            content: { image in Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) },
             fallback: { Rectangle().fill(Color.white.opacity(0.08)) }
         )
         .clipShape(RoundedRectangle(cornerRadius: 6))

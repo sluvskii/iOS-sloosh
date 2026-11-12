@@ -197,7 +197,7 @@ struct TierItemPickerSheet: View {
                             AsyncCachedImage(
                                 url: item.posterUrl.flatMap { URL(string: $0) },
                                 placeholder: { Rectangle().fill(Color.white.opacity(0.08)) },
-                                content: { image in image.resizable().aspectRatio(contentMode: .fill) },
+                                content: { image in Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) },
                                 fallback: {
                                     Rectangle().fill(Color.white.opacity(0.08))
                                         .overlay(Text(String(item.title.prefix(1))).foregroundStyle(.white.opacity(0.5)))

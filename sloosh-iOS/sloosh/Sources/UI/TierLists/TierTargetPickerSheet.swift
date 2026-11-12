@@ -14,7 +14,8 @@ struct TierTargetPickerSheet: View {
     @State private var newDraft: TierList?
 
     var body: some View {
-        VStack(spacing: 0) {
+        NavigationStack {
+            VStack(spacing: 0) {
             SlooshTopBar(
                 title: "В тир-лист",
                 blendsTitle: false,
@@ -38,7 +39,7 @@ struct TierTargetPickerSheet: View {
                 AsyncCachedImage(
                     url: item.posterUrl.flatMap { URL(string: $0) },
                     placeholder: { Rectangle().fill(Color.white.opacity(0.08)) },
-                    content: { image in image.resizable().aspectRatio(contentMode: .fill) },
+                    content: { image in Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) },
                     fallback: { Rectangle().fill(Color.white.opacity(0.08)) }
                 )
                 .frame(width: 46, height: 68)
@@ -91,13 +92,17 @@ struct TierTargetPickerSheet: View {
             isLoading = false
         }
         .navigationDestination(item: $newDraft) { draft in
-            var seeded = draft
-            seeded.unranked.append(item)
-            return TierListEditorView(
+            let seeded: TierList = {
+                var seeded = draft
+                seeded.unranked.append(item)
+                return seeded
+            }()
+            TierListEditorView(
                 draft: seeded,
                 onPublished: { _ in onDismiss() },
                 onDismiss: { onDismiss() }
             )
+        }
         }
     }
 
@@ -131,7 +136,7 @@ struct TierTargetPickerSheet: View {
                     AsyncCachedImage(
                         url: URL(string: first),
                         placeholder: { Rectangle().fill(Color.white.opacity(0.08)) },
-                        content: { image in image.resizable().aspectRatio(contentMode: .fill) },
+                        content: { image in Image(uiImage: image).resizable().aspectRatio(contentMode: .fill) },
                         fallback: { Rectangle().fill(Color.white.opacity(0.08)) }
                     )
                     .frame(width: 38, height: 54)

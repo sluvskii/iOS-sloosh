@@ -62,7 +62,7 @@ final class TierListsRepository: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200...299).contains(http.statusCode) else {
-            throw URLError(.cannotAddToArchive) // отличимая от сети ошибка прав доступа/валидации
+            throw URLError(.badServerResponse) // отличимая от сети ошибка прав доступа/валидации
         }
         _ = data
     }
@@ -151,9 +151,13 @@ final class TierListsRepository: ObservableObject {
 
     private func authorPayload() -> (id: String, name: String, tag: String?, avatar: String?)? {
         guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else { return nil }
-        let name = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).isNotEmpty == true
-            ? user.displayName!.trimmingCharacters(in: .whitespacesAndNewlines)
-            : (user.email?.split(separator: "@").first.map(String.init) ?? "Пользователь")
+        let trimmedName = (user.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let name: String
+        if trimmedName.isEmpty {
+            name = user.email?.split(separator: "@").first.map(String.init) ?? "Пользователь"
+        } else {
+            name = trimmedName
+        }
         return (user.id, name, user.tag, user.photoURL)
     }
 
