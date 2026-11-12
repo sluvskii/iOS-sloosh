@@ -315,7 +315,7 @@ extension TierListItem {
             mediaId: typedId,
             mediaType: media.type ?? "movie",
             title: media.title ?? media.originalTitle ?? "",
-            year: media.year,
+            year: media.year?.intValue,
             posterUrl: media.poster ?? media.posterUrl
         )
     }

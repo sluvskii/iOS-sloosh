@@ -206,6 +206,13 @@ final class TierListsRepository: ObservableObject {
 
     func isLiked(_ listId: String) -> Bool { likedIds.contains(listId) }
 
+    /// Синхронизация счётчика лайков в кэше фида (publicLists — private(set)).
+    func applyLikeCount(listId: String, count: Int) {
+        if let index = publicLists.firstIndex(where: { $0.id == listId }) {
+            publicLists[index].likesCount = count
+        }
+    }
+
     func toggleLike(_ list: TierList) async -> (isLiked: Bool, likesCount: Int) {
         let userId = AuthRepository.shared.currentUser?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "unknown")"
         let wasLiked = likedIds.contains(list.id)

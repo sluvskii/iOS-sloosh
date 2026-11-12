@@ -171,7 +171,7 @@ struct TierListBoardView: View {
                     .fill(Color.white.opacity(0.08))
             },
             content: { image in
-                image
+                Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             },

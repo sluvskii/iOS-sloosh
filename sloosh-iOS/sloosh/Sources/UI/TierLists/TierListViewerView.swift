@@ -19,7 +19,6 @@ struct TierListViewerView: View {
     @State private var shareImage: UIImage?
     @State private var isExporting = false
     @State private var exportProgress: Double = 0
-    @State private var exportTarget: ExportTarget?
     @State private var exportError: String?
     @State private var scrollOffset: CGFloat = 0
 
@@ -27,136 +26,12 @@ struct TierListViewerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SlooshTopBar(
-                title: list?.title ?? "Тир-лист",
-                blendsTitle: false,
-                scrollOffset: $scrollOffset,
-                leadingIcon: "chevron.left",
-                leadingAction: { dismiss() },
-                trailing: {
-                    Menu {
-                        Button {
-                            exportTarget = .photos
-                            Task { await export(as: .photos) }
-                        } label: {
-                            Label("Сохранить картинку", systemImage: "square.and.arrow.down")
-                        }
-                        Button {
-                            exportTarget = .stories
-                            Task { await export(as: .stories) }
-                        } label: {
-                            Label("Картинка для сторис", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                        }
-                        Button {
-                            exportTarget = .board
-                            Task { await export(as: .board) }
-                        } label: {
-                            Label("Поделиться картинкой", systemImage: "square.and.arrow.up")
-                        }
-                        Button {
-                            showFriendSheet = true
-                        } label: {
-                            Label("Отправить друзьям", systemImage: "paperplane")
-                        }
-                        Divider()
-                        Button {
-                            showRemixEditor = true
-                        } label: {
-                            Label("Сделать свой", systemImage: "square.and.pencil")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                }
-            )
-
-            if isLoading && list == nil {
-                ProgressView()
-                    .tint(Color.slooshAccent)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let list {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(list.title)
-                                .font(.system(size: 26, weight: .heavy))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                            if let subtitle = list.subtitle, !subtitle.isEmpty {
-                                Text(subtitle)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.white.opacity(0.55))
-                                    .padding(.horizontal, 16)
-                            }
-                        }
-
-                        authorRow(list: list)
-
-                        HStack(spacing: 14) {
-                            statBadge(icon: "heart.fill", value: list.likesCount ?? 0)
-                            statBadge(icon: "eye", value: list.viewsCount ?? 0)
-                            statBadge(icon: "film.stack", value: list.itemsCount)
-                            if let template = list.templateId {
-                                Label("по шаблону", systemImage: "sparkles")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.35))
-                                    _ = template
-                            }
-                        }
-                        .padding(.horizontal, 16)
-
-                        TierListBoardView(
-                            mode: .view,
-                            rows: .constant(list.rows),
-                            unranked: .constant(list.unranked),
-                            onTapItem: nil,
-                            onOpenDetails: { item in
-                                detailsItem = item
-                            }
-                        )
-                        .padding(.vertical, 4)
-
-                        actionRow(list: list)
-
-                        if list.authorId == AuthRepository.shared.currentUser?.id {
-                            Button(role: .destructive) {
-                                Task {
-                                    try? await TierListsRepository.shared.deleteList(id: list.id)
-                                    dismiss()
-                                }
-                            } label: {
-                                Label("Удалить тир-лист", systemImage: "trash")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(.red.opacity(0.8))
-                                    .padding(.horizontal, 16)
-                                    .padding(.top, 6)
-                            }
-                        }
-                        Spacer(minLength: 40)
-                    }
-                }
-            } else {
-                AppEmptyStateView(
-                    icon: "list.star",
-                    title: "Тир-лист не найден",
-                    description: "Возможно, автор удалил его"
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            topBar
+            content
         }
         .background(TierListTheme.background.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .task {
-            let loaded = initialList ?? await TierListsRepository.shared.fetchList(id: listId)
-            list = loaded
-            isLoading = false
-            if let loaded {
-                isLiked = TierListsRepository.shared.isLiked(loaded.id)
-                TierListsRepository.shared.recordView(loaded.id)
-            }
-        }
+        .task { await load() }
         .onChange(of: repo.publicLists) { _, updated in
             if let current = list, let fresh = updated.first(where: { $0.id == current.id }) {
                 list = fresh
@@ -166,35 +41,10 @@ struct TierListViewerView: View {
             DetailsView(movieId: item.detailsId, mediaType: item.mediaType)
         }
         .navigationDestination(isPresented: $showAuthorProfile) {
-            if let author = list {
-                UserProfileDetailView(
-                    user: SlooshUser(
-                        id: author.authorId,
-                        displayName: author.authorName,
-                        tag: author.authorTag,
-                        avatarUrl: author.authorAvatar
-                    ),
-                    chatContext: false
-                )
-            }
+            authorDestination
         }
         .navigationDestination(isPresented: $showRemixEditor) {
-            if let source = list {
-                var remix = source
-                remix.id = "draft_\(UUID().uuidString)"
-                remix.isDraft = true
-                remix.authorId = AuthRepository.shared.currentUser?.id ?? ""
-                remix.authorName = AuthRepository.shared.currentUser?.displayName ?? ""
-                remix.createdAtMs = 0
-                remix.updatedAtMs = 0
-                remix.likesCount = nil
-                remix.viewsCount = nil
-                TierListEditorView(
-                    draft: remix,
-                    onPublished: { _ in },
-                    onDismiss: {}
-                )
-            }
+            remixDestination
         }
         .sheet(isPresented: $showFriendSheet) {
             if let list {
@@ -222,7 +72,292 @@ struct TierListViewerView: View {
         }
     }
 
-    // MARK: Действия
+    // MARK: Загрузка
+
+    private func load() async {
+        var loaded: TierList? = initialList
+        if loaded == nil {
+            loaded = await TierListsRepository.shared.fetchList(id: listId)
+        }
+        list = loaded
+        isLoading = false
+        if let loaded {
+            isLiked = TierListsRepository.shared.isLiked(loaded.id)
+            TierListsRepository.shared.recordView(loaded.id)
+        }
+    }
+
+    // MARK: Верхняя панель
+
+    @ViewBuilder
+    private var topBar: some View {
+        SlooshTopBar(
+            title: list?.title ?? "Тир-лист",
+            blendsTitle: false,
+            scrollOffset: $scrollOffset,
+            leadingIcon: "chevron.left",
+            leadingAction: { dismiss() },
+            trailing: {
+                viewerMenu
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var viewerMenu: some View {
+        Menu {
+            Button {
+                Task { await export(as: .photos) }
+            } label: {
+                Label("Сохранить картинку", systemImage: "square.and.arrow.down")
+            }
+            Button {
+                Task { await export(as: .stories) }
+            } label: {
+                Label("Картинка для сторис", systemImage: "rectangle.portrait.on.rectangle.portrait")
+            }
+            Button {
+                Task { await export(as: .board) }
+            } label: {
+                Label("Поделиться картинкой", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                showFriendSheet = true
+            } label: {
+                Label("Отправить друзьям", systemImage: "paperplane")
+            }
+            Divider()
+            Button {
+                showRemixEditor = true
+            } label: {
+                Label("Сделать свой", systemImage: "square.and.pencil")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+    }
+
+    // MARK: Контент
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading && list == nil {
+            ProgressView()
+                .tint(Color.slooshAccent)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let list {
+            listContent(list)
+        } else {
+            AppEmptyStateView(
+                icon: "list.star",
+                title: "Тир-лист не найден",
+                description: "Возможно, автор удалил его"
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func listContent(_ list: TierList) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                headerSection(list)
+                authorRow(list: list)
+                statsRow(list: list)
+                boardSection(list)
+                actionSection(list)
+                if list.authorId == AuthRepository.shared.currentUser?.id {
+                    deleteOwnListButton(list)
+                }
+                Spacer(minLength: 40)
+            }
+        }
+    }
+
+    // MARK: Секции
+
+    @ViewBuilder
+    private func headerSection(_ list: TierList) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(list.title)
+                .font(.system(size: 26, weight: .heavy))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+            if let subtitle = list.subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func authorRow(list: TierList) -> some View {
+        Button {
+            showAuthorProfile = true
+        } label: {
+            HStack(spacing: 10) {
+                SlooshAvatarView(avatarSource: list.authorAvatar, fallbackText: list.authorName, size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(list.authorName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text(list.dateText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func statBadge(icon: String, value: Int) -> some View {
+        Label("\(value)", systemImage: icon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.55))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.07), in: Capsule())
+    }
+
+    @ViewBuilder
+    private func statsRow(list: TierList) -> some View {
+        HStack(spacing: 14) {
+            statBadge(icon: "heart.fill", value: list.likesCount ?? 0)
+            statBadge(icon: "eye", value: list.viewsCount ?? 0)
+            statBadge(icon: "film.stack", value: list.itemsCount)
+            if list.templateId != nil {
+                Label("по шаблону", systemImage: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    private func boardSection(_ list: TierList) -> some View {
+        TierListBoardView(
+            mode: .view,
+            rows: .constant(list.rows),
+            unranked: .constant(list.unranked),
+            onTapItem: nil,
+            onOpenDetails: { item in
+                detailsItem = item
+            }
+        )
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func actionSection(_ list: TierList) -> some View {
+        HStack(spacing: 12) {
+            likeButton(list)
+            shareImageButton(list)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func likeButton(_ current: TierList) -> some View {
+        Button {
+            Task {
+                let (liked, count) = await TierListsRepository.shared.toggleLike(current)
+                isLiked = liked
+                TierListsRepository.shared.applyLikeCount(listId: current.id, count: count)
+                if list?.id == current.id {
+                    list?.likesCount = count
+                }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        } label: {
+            Label("\(current.likesCount ?? 0)", systemImage: isLiked ? "heart.fill" : "heart")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(isLiked ? Color.red : .white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    Capsule().fill(isLiked ? Color.red.opacity(0.15) : Color.white.opacity(0.08))
+                )
+        }
+    }
+
+    private func shareImageButton(_ current: TierList) -> some View {
+        Button {
+            Task { await export(as: .board) }
+        } label: {
+            Label("Картинкой", systemImage: "square.and.arrow.up")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Capsule().fill(Color.white.opacity(0.08)))
+        }
+    }
+
+    @ViewBuilder
+    private func deleteOwnListButton(_ list: TierList) -> some View {
+        Button(role: .destructive) {
+            Task {
+                try? await TierListsRepository.shared.deleteList(id: list.id)
+                dismiss()
+            }
+        } label: {
+            Label("Удалить тир-лист", systemImage: "trash")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.red.opacity(0.8))
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+        }
+    }
+
+    // MARK: Навигационные цели
+
+    @ViewBuilder
+    private var authorDestination: some View {
+        if let author = list {
+            UserProfileDetailView(
+                user: SlooshUser(
+                    id: author.authorId,
+                    displayName: author.authorName,
+                    tag: author.authorTag,
+                    avatarUrl: author.authorAvatar
+                ),
+                chatContext: false
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var remixDestination: some View {
+        if let source = list {
+            let remix: TierList = {
+                var remix = source
+                remix.id = "draft_\(UUID().uuidString)"
+                remix.isDraft = true
+                remix.authorId = AuthRepository.shared.currentUser?.id ?? ""
+                remix.authorName = AuthRepository.shared.currentUser?.displayName ?? ""
+                remix.createdAtMs = 0
+                remix.updatedAtMs = 0
+                remix.likesCount = nil
+                remix.viewsCount = nil
+                return remix
+            }()
+            TierListEditorView(
+                draft: remix,
+                onPublished: { _ in
+                    // Публикация ремикса появится в галерее «Мои»
+                },
+                onDismiss: {}
+            )
+        }
+    }
+
+    // MARK: Экспорт
 
     @ViewBuilder
     private var exportOverlay: some View {
@@ -259,7 +394,6 @@ struct TierListViewerView: View {
             await MainActor.run { shareImage = image }
         }
         isExporting = false
-        exportTarget = nil
     }
 
     private func saveToPhotos(_ image: UIImage) async {
@@ -275,78 +409,5 @@ struct TierListViewerView: View {
         } catch {
             await MainActor.run { exportError = error.localizedDescription }
         }
-    }
-
-    // MARK: Компоненты
-
-    @ViewBuilder
-    private func authorRow(list: TierList) -> some View {
-        Button {
-            showAuthorProfile = true
-        } label: {
-            HStack(spacing: 10) {
-                SlooshAvatarView(avatarSource: list.authorAvatar, fallbackText: list.authorName, size: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(list.authorName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(list.dateText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.45))
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func statBadge(icon: String, value: Int) -> some View {
-        Label("\(value)", systemImage: icon)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.55))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Color.white.opacity(0.07), in: Capsule())
-    }
-
-    @ViewBuilder
-    private func actionRow(list: TierList) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                Task {
-                    let (liked, count) = await TierListsRepository.shared.toggleLike(list)
-                    isLiked = liked
-                    if let index = repo.publicLists.firstIndex(where: { $0.id == list.id }) {
-                        repo.publicLists[index].likesCount = count
-                    }
-                    if list.id == self.list?.id {
-                        self.list?.likesCount = count
-                    }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                }
-            } label: {
-                Label("\(list.likesCount ?? 0)", systemImage: isLiked ? "heart.fill" : "heart")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(isLiked ? Color.red : .white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        Capsule().fill(isLiked ? Color.red.opacity(0.15) : Color.white.opacity(0.08))
-                    )
-            }
-            Button {
-                exportTarget = .board
-                Task { await export(as: .board) }
-            } label: {
-                Label("Картинкой", systemImage: "square.and.arrow.up")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
-            }
-        }
-        .padding(.horizontal, 16)
     }
 }
