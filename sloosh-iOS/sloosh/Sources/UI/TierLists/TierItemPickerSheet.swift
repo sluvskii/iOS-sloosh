@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// Шит добавления фильмов в тир-лист: поиск по базе и подборки
-/// (студии/сети из getCategories). Мультивыбор: тап по постеру отмечает,
-/// кнопка внизу добавляет всё в пул. Каноничный шит-хедер SlooshTopBar.
+/// Добавление фильмов в тир-лист: чисто нативный List с системным поиском
+/// (.searchable) и чекмарками. Данные — существующие searchMovies/getCollection.
 struct TierItemPickerSheet: View {
     var onAdd: ([TierListItem]) -> Void
     var onDismiss: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var mode: PickerMode = .search
     @State private var searchText = ""
     @State private var searchResults: [TierListItem] = []
     @State private var isSearching = false
@@ -21,88 +19,50 @@ struct TierItemPickerSheet: View {
     @State private var isLoadingStudio = false
     @State private var selected: [String: TierListItem] = [:]
 
-    enum PickerMode: String, CaseIterable {
-        case search = "Поиск"
-        case collections = "Подборки"
-    }
-
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("", selection: $mode) {
-                    ForEach(PickerMode.allCases, id: \.self) { m in
-                        Text(m.rawValue).tag(m)
+            List {
+                if let studio = selectedStudio {
+                    Section("\(studio.name) · страница \(studioPage)") {
+                        pickerRows(items: studioItems, paged: true)
+                    }
+                } else {
+                    Section("Подборки") {
+                        ForEach(studios, id: \.id) { studio in
+                            Button {
+                                selectedStudio = studio
+                                Task { await loadStudioItems(studio) }
+                            } label: {
+                                Label(studio.name, systemImage: "buildings.2")
+                            }
+                        }
+                    }
+                    Section("Результаты поиска") {
+                        if isSearching {
+                            ProgressView()
+                        } else if searchResults.isEmpty {
+                            Text("Введите не менее двух символов")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            pickerRows(items: searchResults, paged: false)
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-
-                switch mode {
-                case .search: searchSection
-                case .collections: collectionsSection
-                }
-
-                bottomBar
             }
-            .background(Color(UIColor.systemBackground))
+            .searchable(text: $searchText, prompt: "Название фильма или сериала")
             .navigationTitle("Добавить фильмы")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button("Отмена") { onDismiss() }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Text("Выбрано: \(selected.count)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .task { await loadStudios() }
-    }
-
-    // MARK: Поиск
-
-    @ViewBuilder
-    private var searchSection: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Название фильма или сериала", text: $searchText)
-                    .submitLabel(.search)
-                if !searchText.isEmpty {
-                    Button { searchText = "" } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Добавить (\(selected.count))") {
+                        onAdd(Array(selected.values))
+                        dismiss()
                     }
+                    .disabled(selected.isEmpty)
                 }
-            }
-            .padding(12)
-            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-
-            if isSearching && searchResults.isEmpty {
-                ProgressView()
-                    .tint(Color.slooshAccent)
-                    .frame(maxWidth: .infinity, minHeight: 200)
-            } else if searchResults.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "film.stack")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.tertiary)
-                    Text("Найдите фильмы и сериалы,\nчтобы расставить их по уровням")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, minHeight: 200)
-            } else {
-                itemsGrid(items: searchResults, paged: false)
             }
         }
         .onChange(of: searchText) { _, newValue in
@@ -127,143 +87,53 @@ struct TierItemPickerSheet: View {
         }
     }
 
-    // MARK: Подборки
-
     @ViewBuilder
-    private var collectionsSection: some View {
-        if let studio = selectedStudio {
-            VStack(spacing: 0) {
-                Button {
-                    withAnimation { selectedStudio = nil }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text(studio.name)
-                            .font(.system(size: 16, weight: .bold))
-                        Spacer()
-                    }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
+    private func pickerRows(items: [TierListItem], paged: Bool) -> some View {
+        ForEach(items) { item in
+            let isSelected = selected[item.mediaId] != nil
+            Button {
+                if isSelected { selected.removeValue(forKey: item.mediaId) }
+                else { selected[item.mediaId] = item }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 12) {
+                    AsyncCachedImage(
+                        url: item.posterUrl.flatMap { URL(string: $0) },
+                        placeholder: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) },
+                        content: { image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        },
+                        fallback: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) }
+                    )
+                    .frame(width: 40, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
-                if isLoadingStudio && studioItems.isEmpty {
-                    ProgressView().tint(Color.slooshAccent).frame(maxWidth: .infinity, minHeight: 200)
-                } else {
-                    itemsGrid(items: studioItems, paged: true)
-                }
-            }
-        } else {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 12)], spacing: 14) {
-                    ForEach(studios, id: \.id) { studio in
-                        Button {
-                            selectedStudio = studio
-                            Task { await loadStudioItems(studio) }
-                        } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: "buildings.2")
-                                    .font(.system(size: 26))
-                                    .foregroundStyle(Color.slooshAccent)
-                                Text(studio.name)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 84)
-                            .background(Color(UIColor.secondarySystemFill), in: RoundedRectangle(cornerRadius: 14))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(16)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    // MARK: Сетка айтемов
-
-    @ViewBuilder
-    private func itemsGrid(items: [TierListItem], paged: Bool) -> some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 12) {
-                ForEach(items) { item in
-                    let isSelected = selected[item.mediaId] != nil
-                    Button {
-                        if isSelected { selected.removeValue(forKey: item.mediaId) }
-                        else { selected[item.mediaId] = item }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        VStack(spacing: 0) {
-                            AsyncCachedImage(
-                                url: item.posterUrl.flatMap { URL(string: $0) },
-                                placeholder: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) },
-                                content: { image in
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                },
-                                fallback: {
-                                    Rectangle().fill(Color(UIColor.tertiarySystemFill))
-                                        .overlay(Text(String(item.title.prefix(1))).foregroundStyle(.secondary))
-                                }
-                            )
-                            .frame(height: 132)
-                            .clipShape(RoundedRectangle(cornerRadius: 9))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 9)
-                                    .strokeBorder(isSelected ? Color.slooshAccent : .clear, lineWidth: 2.5)
-                            )
-                            .overlay(alignment: .topTrailing) {
-                                if isSelected {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundStyle(Color.slooshAccent)
-                                        .background(Circle().fill(Color(UIColor.systemBackground).opacity(0.7)))
-                                        .padding(4)
-                                }
-                            }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.title)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                        if let year = item.year {
+                            Text(String(year))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .buttonStyle(.plain)
-                    .onAppear {
-                        if paged, item.mediaId == items.last?.mediaId, studioPage < studioTotalPages, !isLoadingStudio {
-                            Task { await loadStudioItemsNextPage() }
-                        }
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(Color.slooshAccent)
                     }
                 }
             }
-            .padding(16)
+            .onAppear {
+                if paged, item.mediaId == items.last?.mediaId, studioPage < studioTotalPages, !isLoadingStudio {
+                    Task { await loadStudioItemsNextPage() }
+                }
+            }
         }
-        .scrollIndicators(.hidden)
     }
-
-    // MARK: Нижняя панель
-
-    @ViewBuilder
-    private var bottomBar: some View {
-        Button {
-            onAdd(Array(selected.values))
-            dismiss()
-        } label: {
-            Text("Добавить выбранное (\(selected.count))")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .background(Color.slooshAccent, in: Capsule())
-        }
-        .disabled(selected.isEmpty)
-        .opacity(selected.isEmpty ? 0.4 : 1)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: Данные
 
     private func loadStudios() async {
         if studios.isEmpty {
