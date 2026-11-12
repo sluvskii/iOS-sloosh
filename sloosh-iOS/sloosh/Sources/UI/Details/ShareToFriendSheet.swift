@@ -3,6 +3,7 @@ import SwiftUI
 struct ShareToFriendSheet: View {
     let movie: MediaDetailsDto?
     let clip: MovieClip?
+    let tierList: TierList?
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var repo = MessengerRepository.shared
@@ -15,11 +16,19 @@ struct ShareToFriendSheet: View {
     init(movie: MediaDetailsDto) {
         self.movie = movie
         self.clip = nil
+        self.tierList = nil
     }
 
     init(clip: MovieClip) {
         self.movie = nil
         self.clip = clip
+        self.tierList = nil
+    }
+
+    init(tierList: TierList) {
+        self.movie = nil
+        self.clip = nil
+        self.tierList = tierList
     }
 
     var body: some View {
@@ -443,6 +452,27 @@ struct ShareToFriendSheet: View {
             toastTitle = "Отправлено! 🚀"
             toastSubtitle = { count in
                 count == 1 ? "Фильм отправлен \(selectedUsers.first?.displayTitle ?? "")" : "Фильм отправлен друзьям (\(count))"
+            }
+        } else if let tierList {
+            let payload = TierListCardPayload(
+                tierListId: tierList.id,
+                title: tierList.title,
+                authorName: tierList.authorName,
+                posterUrls: Array(tierList.allItems.compactMap(\.posterUrl).prefix(4)),
+                likesCount: tierList.likesCount
+            )
+            mediaPayload = MediaCardPayload(
+                mediaId: "tier_\(tierList.id)",
+                type: "tierList",
+                title: "Тир-лист: \(tierList.title)",
+                posterUrl: tierList.allItems.compactMap(\.posterUrl).first,
+                rating: nil,
+                year: "\(tierList.itemsCount) фильмов",
+                tierList: payload
+            )
+            toastTitle = "Тир-лист отправлен! 🏆"
+            toastSubtitle = { count in
+                count == 1 ? "Тир-лист отправлен \(selectedUsers.first?.displayTitle ?? "")" : "Тир-лист отправлен друзьям (\(count))"
             }
         } else {
             isSending = false

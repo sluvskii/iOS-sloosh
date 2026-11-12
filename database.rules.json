@@ -222,6 +222,42 @@
       }
     },
 
+    "tier_lists": {
+      ".read": true,
+      "$listId": {
+        ".write": "auth != null && ((!data.exists() && newData.child('authorId').val() == auth.uid) || (data.exists() && (data.child('authorId').val() == auth.uid || root.child('admins').child(auth.uid).val() == true)))",
+        ".validate": "newData.hasChildren(['title', 'authorId', 'createdAtMs']) && newData.child('title').isString() && newData.child('title').val().length <= 120 && newData.child('authorId').isString()",
+        "title": { ".validate": "newData.isString() && newData.val().length <= 120" },
+        "subtitle": { ".validate": "newData.isString() && newData.val().length <= 300" },
+        "viewsCount": { ".write": "auth != null && data.parent().exists()" },
+        "likesCount": { ".write": "auth != null && data.parent().exists()" },
+        "rows": { ".validate": "newData.hasChildren()" }
+      }
+    },
+
+    "tier_lists_likes": {
+      "$listId": {
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+
+    "tier_lists_views": {
+      "$listId": {
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+
+    "tier_templates": {
+      ".read": true,
+      "$templateId": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() == true"
+      }
+    },
+
     "admins": {
       "$uid": {
         ".read": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).val() == true)",

@@ -25,6 +25,8 @@ struct ProfileView: View {
     @State private var selectedCategory: FavoriteCategory = .all
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @SceneStorage("profileShowsDownloads") private var showsDownloads = false
+    @SceneStorage("profileShowsTierLists") private var showsTierLists = false
+    @State private var deepLinkTierId: String?
     @State private var showAuthSheet = false
     @State private var showSignOutAlert = false
     @State private var showEditProfileSheet = false
@@ -153,6 +155,22 @@ struct ProfileView: View {
                                     let generator = UIImpactFeedbackGenerator(style: .medium)
                                     generator.prepare()
                                     generator.impactOccurred()
+                                    showsTierLists = true
+                                } label: {
+                                    Image(systemName: "list.star")
+                                        .font(.system(size: 19, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                        .glassForeground()
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Тир-листы")
+
+                                Button {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
                                     showsSettings = true
                                 } label: {
                                     Image(systemName: "gearshape.fill")
@@ -190,6 +208,17 @@ struct ProfileView: View {
             }
             .navigationDestination(isPresented: $showsDownloads) {
                 DownloadsView()
+            }
+            .navigationDestination(isPresented: $showsTierLists) {
+                TierListsHomeView()
+            }
+            .navigationDestination(item: $deepLinkTierId) { tierId in
+                TierListViewerView(listId: tierId, initialList: nil)
+            }
+            .onReceive(DeepLinkManager.shared.$targetTierId) { tierId in
+                guard let tierId, !tierId.isEmpty else { return }
+                deepLinkTierId = tierId
+                DeepLinkManager.shared.clearTierTarget()
             }
             .navigationDestination(isPresented: $showsSettings) {
                 SettingsView()

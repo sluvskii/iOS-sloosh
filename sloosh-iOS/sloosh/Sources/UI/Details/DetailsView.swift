@@ -622,6 +622,7 @@ struct DetailsView: View {
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
     @State private var showShareToFriendSheet = false
+    @State private var showTierTargetSheet = false
     @State private var directPlaybackMovie: MediaDto? = nil
     @State private var pendingDirectPlayerConfig: PlayerConfig? = nil
     @State private var directPlaybackTitle: String? = nil
@@ -631,7 +632,7 @@ struct DetailsView: View {
     @AppStorage("autoAdvanceBackdrops") private var autoAdvanceBackdrops = false
 
     private var isAnyModalPresented: Bool {
-        showSourceSheet || showPlayer || showShareToFriendSheet || showArtworkPickerSheet || selectedTrailer != nil || directPlaybackMovie != nil
+        showSourceSheet || showPlayer || showShareToFriendSheet || showArtworkPickerSheet || selectedTrailer != nil || directPlaybackMovie != nil || showTierTargetSheet
     }
 
     private var isBackdropPaused: Bool {
@@ -906,6 +907,13 @@ struct DetailsView: View {
                             }
                             .accessibilityLabel("Поделиться фильмом")
                             .accessibilityIdentifier("details.share")
+
+                            TelegramGlassIconButton(systemName: "list.star", iconSize: 19) {
+                                guard viewModel.details != nil else { return }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                showTierTargetSheet = true
+                            }
+                            .accessibilityLabel("Добавить в тир-лист")
                         }
                     }
 
@@ -1154,6 +1162,14 @@ struct DetailsView: View {
         .sheet(isPresented: $showShareToFriendSheet) {
             if let details = viewModel.details {
                 ShareToFriendSheet(movie: details)
+            }
+        }
+        .sheet(isPresented: $showTierTargetSheet) {
+            if let details = viewModel.details {
+                TierTargetPickerSheet(
+                    item: TierListItem(from: details),
+                    onDismiss: { showTierTargetSheet = false }
+                )
             }
         }
         .sheet(item: $selectedTrailer) { trailer in

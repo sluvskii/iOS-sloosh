@@ -1,0 +1,1150 @@
+{
+  "mcu-all": {
+    "title": "Все фильмы MCU",
+    "subtitle": "Кинематографическая вселенная Marvel — от Железного человека до наших дней",
+    "priority": 100,
+    "items": [
+      {
+        "mediaId": "movie_559",
+        "mediaType": "movie",
+        "title": "Человек-паук 3: Враг в отражении",
+        "year": 2007,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ngNCHBZgNdbGisLbi1hImGh2SHl.jpg"
+      },
+      {
+        "mediaId": "movie_1250",
+        "mediaType": "movie",
+        "title": "Призрачный гонщик",
+        "year": 2007,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/4ULbCH7RO1bkCCsBEI9gAOm9cWp.jpg"
+      },
+      {
+        "mediaId": "movie_1979",
+        "mediaType": "movie",
+        "title": "Фантастическая четвёрка: Вторжение Серебряного сёрфера",
+        "year": 2007,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/vYvuKMkUWVW4UuPAE5vSmm5orBB.jpg"
+      },
+      {
+        "mediaId": "movie_14830",
+        "mediaType": "movie",
+        "title": "Доктор Стрэндж и Тайна Ордена магов",
+        "year": 2007,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/7ygcpWXsWmEc83j7zE8P0lvC0Q.jpg"
+      },
+      {
+        "mediaId": "movie_1726",
+        "mediaType": "movie",
+        "title": "Железный человек",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/wAKZudQn0HEXqLvaGN6BEripHbv.jpg"
+      },
+      {
+        "mediaId": "movie_1724",
+        "mediaType": "movie",
+        "title": "Невероятный Халк",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/gSpDY5e5VCohH0PaSEWEI0FdEzC.jpg"
+      },
+      {
+        "mediaId": "movie_13056",
+        "mediaType": "movie",
+        "title": "Каратель: Территория Войны",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/xjRvgKzjPQ5dGqQkDVT3qUsNElt.jpg"
+      },
+      {
+        "mediaId": "movie_14613",
+        "mediaType": "movie",
+        "title": "Next Avengers: Heroes of Tomorrow",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/1y4J9HZJoTIMdt77wCq80uXaQJ.jpg"
+      },
+      {
+        "mediaId": "movie_10138",
+        "mediaType": "movie",
+        "title": "Железный человек 2",
+        "year": 2010,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/rT3JszXFT2C3iYJtXSSL4R0DkU7.jpg"
+      },
+      {
+        "mediaId": "movie_10195",
+        "mediaType": "movie",
+        "title": "Тор",
+        "year": 2011,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/9VnGpd2rXHikIwznL9I5r9i8TQJ.jpg"
+      },
+      {
+        "mediaId": "movie_1771",
+        "mediaType": "movie",
+        "title": "Первый мститель",
+        "year": 2011,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/slr5pTsDIJS9oCfBEBTCYNiq6xs.jpg"
+      },
+      {
+        "mediaId": "movie_76122",
+        "mediaType": "movie",
+        "title": "Короткометражка Marvel: Консультант",
+        "year": 2011,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/5Md6f6Qpv7pp1ce3cz2ddURfp2r.jpg"
+      },
+      {
+        "mediaId": "movie_76535",
+        "mediaType": "movie",
+        "title": "Короткометражка Marvel: Забавный случай на пути к молоту Тора",
+        "year": 2011,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/kxgWQpla6cSiBohkIH5MCRHFT5D.jpg"
+      },
+      {
+        "mediaId": "movie_24428",
+        "mediaType": "movie",
+        "title": "Мстители",
+        "year": 2012,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/A4YKFspXozgw8Kk43QitG1o7dg9.jpg"
+      },
+      {
+        "mediaId": "movie_119569",
+        "mediaType": "movie",
+        "title": "Короткометражка Marvel: Объект 47",
+        "year": 2012,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/nS9v9K0sNuiMSZ1897SO1CLtneS.jpg"
+      },
+      {
+        "mediaId": "movie_68721",
+        "mediaType": "movie",
+        "title": "Железный человек 3",
+        "year": 2013,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/4AZco6uSdog5NbvJ6ILqnCveV8I.jpg"
+      },
+      {
+        "mediaId": "movie_76338",
+        "mediaType": "movie",
+        "title": "Тор 2: Царство тьмы",
+        "year": 2013,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/rmII9fsUpfRmuNBhzHtarBOtHnQ.jpg"
+      },
+      {
+        "mediaId": "movie_211387",
+        "mediaType": "movie",
+        "title": "Короткометражка Marvel: Агент Картер",
+        "year": 2013,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/3BTSkwTasB7LaYNUwfiZfUVg0hS.jpg"
+      },
+      {
+        "mediaId": "movie_100402",
+        "mediaType": "movie",
+        "title": "Первый мститель: Другая война",
+        "year": 2014,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/oOmp3YMBnJMa0yDHCbhTcWG4iTm.jpg"
+      },
+      {
+        "mediaId": "movie_118340",
+        "mediaType": "movie",
+        "title": "Стражи Галактики",
+        "year": 2014,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/4uVdNj0FWCjtG1jEYASuNzE33LS.jpg"
+      },
+      {
+        "mediaId": "movie_253980",
+        "mediaType": "movie",
+        "title": "Короткометражка Marvel: Да здравствует король",
+        "year": 2014,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ttACgdFgyN9GgdakTXcg9WNUYOB.jpg"
+      },
+      {
+        "mediaId": "movie_99861",
+        "mediaType": "movie",
+        "title": "Мстители: Эра Альтрона",
+        "year": 2015,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/eBHGsSnSroprBWUBCzQxAevv9iv.jpg"
+      },
+      {
+        "mediaId": "movie_102899",
+        "mediaType": "movie",
+        "title": "Человек-муравей",
+        "year": 2015,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/9cMJSp2LVSzmPzMWPHIHpeBfECr.jpg"
+      },
+      {
+        "mediaId": "movie_271110",
+        "mediaType": "movie",
+        "title": "Первый мститель: Противостояние",
+        "year": 2016,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/s9htg46sXoLWfh6fBjMziWYYrpm.jpg"
+      },
+      {
+        "mediaId": "movie_284052",
+        "mediaType": "movie",
+        "title": "Доктор Стрэндж",
+        "year": 2016,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/bQNLvK28U8I1giPI00eJdZNwePI.jpg"
+      },
+      {
+        "mediaId": "movie_315635",
+        "mediaType": "movie",
+        "title": "Человек-паук: Возвращение домой",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/gBCq5vt7XXUMjfxi2OguArduUKP.jpg"
+      },
+      {
+        "mediaId": "movie_284053",
+        "mediaType": "movie",
+        "title": "Тор: Рагнарёк",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/CkwINcAhzHPYmBBw4q5INcpvXY.jpg"
+      },
+      {
+        "mediaId": "movie_283995",
+        "mediaType": "movie",
+        "title": "Стражи Галактики. Часть 2",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/p9hLW1dQckYuNGomOgqaXFMXcmP.jpg"
+      },
+      {
+        "mediaId": "movie_299536",
+        "mediaType": "movie",
+        "title": "Мстители: Война бесконечности",
+        "year": 2018,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/mibZdlC5SKh5FQwzYVCiiC2DFOW.jpg"
+      },
+      {
+        "mediaId": "movie_363088",
+        "mediaType": "movie",
+        "title": "Человек-муравей и Оса",
+        "year": 2018,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/5r85N1iOnHFoWkyC0EeOw9aEqOW.jpg"
+      },
+      {
+        "mediaId": "movie_299534",
+        "mediaType": "movie",
+        "title": "Мстители: Финал",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/dzAtuccZlvtcussbdZxpF4dkrB5.jpg"
+      },
+      {
+        "mediaId": "movie_429617",
+        "mediaType": "movie",
+        "title": "Человек-паук: Вдали от дома",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/5OSCB19RavySNpaDGtPIuByDgoa.jpg"
+      },
+      {
+        "mediaId": "movie_299537",
+        "mediaType": "movie",
+        "title": "Капитан Марвел",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/khIspz4hW7RyEJag16UKYxI9fuP.jpg"
+      },
+      {
+        "mediaId": "movie_634649",
+        "mediaType": "movie",
+        "title": "Человек-паук: Нет пути домой",
+        "year": 2021,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6XrmIIX5Pu5dSmoMv5Av3gjzmTt.jpg"
+      },
+      {
+        "mediaId": "movie_566525",
+        "mediaType": "movie",
+        "title": "Шан-Чи и Легенда Десяти Колец",
+        "year": 2021,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/rXvU6SZOGyUzy9ZHJNlVMw0OeUR.jpg"
+      },
+      {
+        "mediaId": "movie_497698",
+        "mediaType": "movie",
+        "title": "Чёрная вдова",
+        "year": 2021,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/mbtN6V6y5kdawvAkzqN4ohi576a.jpg"
+      }
+    ]
+  },
+  "dc-universe": {
+    "title": "DC Universe",
+    "subtitle": "Бэтмен, Супермен, Джокер и вся Лига",
+    "priority": 90,
+    "items": [
+      {
+        "mediaId": "movie_414906",
+        "mediaType": "movie",
+        "title": "Бэтмен",
+        "year": 2022,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/xYLr57ofId2eKyZ2vnMgo0juPgu.jpg"
+      },
+      {
+        "mediaId": "movie_475557",
+        "mediaType": "movie",
+        "title": "Джокер",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/5itx9nz3gXWgoD2I1UdaqOrphYm.jpg"
+      },
+      {
+        "mediaId": "movie_572802",
+        "mediaType": "movie",
+        "title": "Аквамен и потерянное царство",
+        "year": 2023,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/vJoMnbQjLo1e7yOtFPW1LyPL6qR.jpg"
+      },
+      {
+        "mediaId": "movie_791373",
+        "mediaType": "movie",
+        "title": "Лига справедливости Зака Снайдера",
+        "year": 2021,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/tpPWUv258JrMSIdkVVV1NDp3aoT.jpg"
+      },
+      {
+        "mediaId": "movie_436969",
+        "mediaType": "movie",
+        "title": "Отряд самоубийц: Миссия навылет",
+        "year": 2021,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/asD8pGLw2uI3HzPtjuX8ls8RNsg.jpg"
+      },
+      {
+        "mediaId": "movie_297761",
+        "mediaType": "movie",
+        "title": "Отряд самоубийц",
+        "year": 2016,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/7tJjv7vPBhG2pzcTIMgGBV1mL4w.jpg"
+      },
+      {
+        "mediaId": "movie_298618",
+        "mediaType": "movie",
+        "title": "Флэш",
+        "year": 2023,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/gr5PiNwf71moV1NvKXB6E6Z53hM.jpg"
+      },
+      {
+        "mediaId": "movie_436270",
+        "mediaType": "movie",
+        "title": "Чёрный Адам",
+        "year": 2022,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ebtyQ43I2QSeEJiXYNFgSp4yuYT.jpg"
+      },
+      {
+        "mediaId": "movie_141052",
+        "mediaType": "movie",
+        "title": "Лига справедливости",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/e2f1GaWLkk5Sj7cZMi38mUPXYdt.jpg"
+      },
+      {
+        "mediaId": "movie_297762",
+        "mediaType": "movie",
+        "title": "Чудо-женщина",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/fMnMonAyK3nzp1P1odIFzYoSvYe.jpg"
+      },
+      {
+        "mediaId": "movie_464052",
+        "mediaType": "movie",
+        "title": "Чудо-женщина: 1984",
+        "year": 2020,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/1B2YJCYyRudISmfSWCRfc95gAtq.jpg"
+      },
+      {
+        "mediaId": "movie_287947",
+        "mediaType": "movie",
+        "title": "Шазам!",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/s4byZ8CP7NLfH54FV3QF6l0JLSh.jpg"
+      },
+      {
+        "mediaId": "movie_297802",
+        "mediaType": "movie",
+        "title": "Аквамен",
+        "year": 2018,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/hA5rapmD3Lwv4I981yh6Ct8zvIC.jpg"
+      },
+      {
+        "mediaId": "movie_495764",
+        "mediaType": "movie",
+        "title": "Хищные птицы: Потрясающая история Харли Квинн",
+        "year": 2020,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/11ZCJWv9OK1ubjiMSqQUtt4reWF.jpg"
+      },
+      {
+        "mediaId": "movie_594767",
+        "mediaType": "movie",
+        "title": "Шазам! Ярость Богов",
+        "year": 2023,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/t2Wy2p0lLg6BjOk10pYhrIiYWrL.jpg"
+      },
+      {
+        "mediaId": "movie_565770",
+        "mediaType": "movie",
+        "title": "Синий Жук",
+        "year": 2023,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/aHT0qcPPJGnF5ZhrRAdpfmEnl5Z.jpg"
+      },
+      {
+        "mediaId": "movie_1255345",
+        "mediaType": "movie",
+        "title": "Etta's Mission",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/piVyyIEtTYrWlQq9SHLXMnhsYFf.jpg"
+      }
+    ]
+  },
+  "pixar": {
+    "title": "Pixar",
+    "subtitle": "От Истории игрушек до наших дней",
+    "priority": 80,
+    "items": [
+      {
+        "mediaId": "movie_862",
+        "mediaType": "movie",
+        "title": "История игрушек",
+        "year": 1995,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/gRLk7XpdRyNa697taDKtFx3l6qV.jpg"
+      },
+      {
+        "mediaId": "movie_9487",
+        "mediaType": "movie",
+        "title": "Приключения Флика",
+        "year": 1998,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/kTrEUO0nYO5XhRdQaSfFCSa658t.jpg"
+      },
+      {
+        "mediaId": "movie_863",
+        "mediaType": "movie",
+        "title": "История игрушек 2",
+        "year": 1999,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/descLErszABnAy79SDTzupmPD7e.jpg"
+      },
+      {
+        "mediaId": "movie_16187",
+        "mediaType": "movie",
+        "title": "Базз Лайтер из звёздной команды: Приключения начинаются",
+        "year": 2000,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/4uFvEU2NMx4p4U2vEvsuC0kLcUF.jpg"
+      },
+      {
+        "mediaId": "movie_13930",
+        "mediaType": "movie",
+        "title": "О птичках",
+        "year": 2000,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/lNtl9BBs7GCnV4evbFGUdpRiJFN.jpg"
+      },
+      {
+        "mediaId": "movie_585",
+        "mediaType": "movie",
+        "title": "Корпорация монстров",
+        "year": 2001,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/pPKeBydksLVIyJSNYnVDLV23kSJ.jpg"
+      },
+      {
+        "mediaId": "movie_12",
+        "mediaType": "movie",
+        "title": "В поисках Немо",
+        "year": 2003,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/wwUYKw29xtFLk5PIZV9iDAs6zlW.jpg"
+      },
+      {
+        "mediaId": "movie_9806",
+        "mediaType": "movie",
+        "title": "Суперсемейка",
+        "year": 2004,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/nVJGGWCs8CQ41G4fzJoTttfCgpQ.jpg"
+      },
+      {
+        "mediaId": "movie_13934",
+        "mediaType": "movie",
+        "title": "Мэтр и Призрачный Свет",
+        "year": 2006,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/3qYBPLCd2BgWkIPgpiYtpEFDHn6.jpg"
+      },
+      {
+        "mediaId": "movie_2062",
+        "mediaType": "movie",
+        "title": "Рататуй",
+        "year": 2007,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ojJnDAWLy656Lx9ksj6nP7ubQjq.jpg"
+      },
+      {
+        "mediaId": "movie_10681",
+        "mediaType": "movie",
+        "title": "ВАЛЛ·И",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/uR79KoBwDMz1qbxwmuY0bpcDYtf.jpg"
+      },
+      {
+        "mediaId": "movie_13413",
+        "mediaType": "movie",
+        "title": "БЁРН·И",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/l0WZHgTyET9F0pszLcmVgteNREN.jpg"
+      },
+      {
+        "mediaId": "movie_14160",
+        "mediaType": "movie",
+        "title": "Вверх",
+        "year": 2009,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/47DEnHvvLCOPLPG7QpM8mXLCJG5.jpg"
+      },
+      {
+        "mediaId": "movie_24589",
+        "mediaType": "movie",
+        "title": "Спецзадание Дага",
+        "year": 2009,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/15kIvg3XwcDXtPV0Zpi6cSBqpFk.jpg"
+      },
+      {
+        "mediaId": "movie_10193",
+        "mediaType": "movie",
+        "title": "История игрушек 3: Большой побег",
+        "year": 2010,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/2IWIk34c9fMv7xJQ5ur4Z3O1Hh9.jpg"
+      },
+      {
+        "mediaId": "movie_49013",
+        "mediaType": "movie",
+        "title": "Тачки 2",
+        "year": 2011,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/80uLnj9HHLBWEvGAc4MKM0HWb5z.jpg"
+      },
+      {
+        "mediaId": "movie_77887",
+        "mediaType": "movie",
+        "title": "История Игрушек: Гавайские Каникулы",
+        "year": 2011,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/kOdbNQVxv5huey4VIhaSYhcOjD7.jpg"
+      },
+      {
+        "mediaId": "movie_62177",
+        "mediaType": "movie",
+        "title": "Храбрая сердцем",
+        "year": 2012,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/lCYl7WVZfZ2oJoQCWjEyxPxpxli.jpg"
+      },
+      {
+        "mediaId": "movie_62211",
+        "mediaType": "movie",
+        "title": "Университет монстров",
+        "year": 2013,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/5G0b7u8m7nDY0bRd9v1RbDNJdL6.jpg"
+      },
+      {
+        "mediaId": "movie_256835",
+        "mediaType": "movie",
+        "title": "История Игрушек, Забытая Временем",
+        "year": 2014,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/8cOnVo3d0fRcbzJ0QUhWZMACdok.jpg"
+      },
+      {
+        "mediaId": "movie_150540",
+        "mediaType": "movie",
+        "title": "Головоломка",
+        "year": 2015,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/8wukxopBFO2Vrf50jlLpbrfj4OB.jpg"
+      },
+      {
+        "mediaId": "movie_105864",
+        "mediaType": "movie",
+        "title": "Хороший динозавр",
+        "year": 2015,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/w6pTjw0s89xhg7jWRUs54rusAk9.jpg"
+      },
+      {
+        "mediaId": "movie_355338",
+        "mediaType": "movie",
+        "title": "Первое свидание Райли?",
+        "year": 2015,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/8xs1JnJZLJzlBy0PbkdjPAYYE99.jpg"
+      },
+      {
+        "mediaId": "movie_127380",
+        "mediaType": "movie",
+        "title": "В поисках Дори",
+        "year": 2016,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/xBUhR52S1RQHYEY40Yo04ner32I.jpg"
+      },
+      {
+        "mediaId": "movie_354912",
+        "mediaType": "movie",
+        "title": "Тайна Коко",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/jvYsGaUqN8ymH696kRfVJjJ3GIl.jpg"
+      },
+      {
+        "mediaId": "movie_260514",
+        "mediaType": "movie",
+        "title": "Тачки 3",
+        "year": 2017,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/st2lgtUpbZThfy1sgtAvFPvkWeO.jpg"
+      }
+    ]
+  },
+  "horror-2020s": {
+    "title": "Хорроры 2020-х",
+    "subtitle": "Страшилки десятилетия по рейтингу",
+    "priority": 70,
+    "items": [
+      {
+        "mediaId": "movie_1423191",
+        "mediaType": "movie",
+        "title": "Обитель зла",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/521PMnWOrgoFOFlTGmr6ekChaQd.jpg"
+      },
+      {
+        "mediaId": "movie_1507696",
+        "mediaType": "movie",
+        "title": "Апокалипсис Z: Новый мир",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/a29RggDhzZ4y6gBGNpSbgnfGOBX.jpg"
+      },
+      {
+        "mediaId": "movie_1813355",
+        "mediaType": "movie",
+        "title": "История Дерри",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/xkn3MF9mjgvPw5I525EqVTMGZsQ.jpg"
+      },
+      {
+        "mediaId": "movie_1400837",
+        "mediaType": "movie",
+        "title": "Чужая мама",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/3LijuwABdxSALffLCO3YybqFKVP.jpg"
+      },
+      {
+        "mediaId": "movie_1381071",
+        "mediaType": "movie",
+        "title": "Годзилла: Минус ноль",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/hSuXLuBpR96TjX9KZcAi6dLbVla.jpg"
+      },
+      {
+        "mediaId": "movie_1244523",
+        "mediaType": "movie",
+        "title": "Монстр Амазонки",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6GhML83NKBtsHiH3uc5t0fjaDQE.jpg"
+      },
+      {
+        "mediaId": "movie_1657630",
+        "mediaType": "movie",
+        "title": "El despertar",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/w3YJx1PPPC6aiVKusxfc9QA0uYS.jpg"
+      },
+      {
+        "mediaId": "movie_1514026",
+        "mediaType": "movie",
+        "title": "Приятель",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/pcKO32lT18769nYgIJQqRPPuQ9T.jpg"
+      },
+      {
+        "mediaId": "movie_1595325",
+        "mediaType": "movie",
+        "title": "Анаконды",
+        "year": 2025,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/yphysF14qWFvrIbFVg3vEnbudwT.jpg"
+      },
+      {
+        "mediaId": "movie_1232569",
+        "mediaType": "movie",
+        "title": "Пиноккио: Раскрепощённый",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/Ai7VesRDerUCvER1tnsPnfR3iHg.jpg"
+      },
+      {
+        "mediaId": "movie_1400940",
+        "mediaType": "movie",
+        "title": "Клэйфейс",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/r2ib7b2QRLRlb8g7K2QI2rfFgeA.jpg"
+      },
+      {
+        "mediaId": "movie_1474226",
+        "mediaType": "movie",
+        "title": "Омен. Обличье зла",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/2SoHOeFWgF4pP9yVlEch76ja7r5.jpg"
+      },
+      {
+        "mediaId": "movie_1291595",
+        "mediaType": "movie",
+        "title": "Астрал 6: Они уже здесь",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/2hfvVae4Jjbfe4yIc2ygGfqI1Mt.jpg"
+      },
+      {
+        "mediaId": "movie_1128204",
+        "mediaType": "movie",
+        "title": "Корни: Сага о вампирах",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6cMncNaBZK53DjEJqdX1Pow0fVY.jpg"
+      },
+      {
+        "mediaId": "movie_940721",
+        "mediaType": "movie",
+        "title": "Годзилла: Минус один",
+        "year": 2023,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/bSICu9qWyUJVThkffuaqs9dgRV7.jpg"
+      },
+      {
+        "mediaId": "movie_1339713",
+        "mediaType": "movie",
+        "title": "Обсессия",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/xHoydyO3SZKWs9svsXvniocCFan.jpg"
+      },
+      {
+        "mediaId": "movie_1376400",
+        "mediaType": "movie",
+        "title": "Арахнид",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6SJGt4yjUiT6QwV84XIzBOp9sma.jpg"
+      },
+      {
+        "mediaId": "movie_1284046",
+        "mediaType": "movie",
+        "title": "Натиск",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/fPNLwXvZvBR0gPailvasgqNRVEh.jpg"
+      },
+      {
+        "mediaId": "movie_1083381",
+        "mediaType": "movie",
+        "title": "Закулисье реальности",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/1QlwpB9CTjn8YtgHx5HKNN7yYof.jpg"
+      },
+      {
+        "mediaId": "movie_1629051",
+        "mediaType": "movie",
+        "title": "Демонолог",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ajei0WHnv2WElW3XczgjOboSSIE.jpg"
+      },
+      {
+        "mediaId": "movie_1393326",
+        "mediaType": "movie",
+        "title": "Призрак в клетке",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/9r7cCpIuf9NIGQqL92nhTtG25Cn.jpg"
+      },
+      {
+        "mediaId": "movie_1375646",
+        "mediaType": "movie",
+        "title": "Колония",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/uQIlX1zpvM7FAKRbeyLDJN3zxrX.jpg"
+      },
+      {
+        "mediaId": "movie_1110034",
+        "mediaType": "movie",
+        "title": "Кракен",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/5urGX2S92NNfC7dJGw8E2k7YTlw.jpg"
+      },
+      {
+        "mediaId": "movie_1712451",
+        "mediaType": "movie",
+        "title": "Обитель мёртвых",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/qKhMVWwFikSUzOpkhOl35GBLkGH.jpg"
+      },
+      {
+        "mediaId": "movie_1290418",
+        "mediaType": "movie",
+        "title": "Цикл зверя",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ik9hlrX7FZbUUoJBtXzxki3nicB.jpg"
+      },
+      {
+        "mediaId": "movie_1393056",
+        "mediaType": "movie",
+        "title": "Mickey's Slayhouse",
+        "year": 2025,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/l8cGo9f7XLACY5dtSDg89hnq6gp.jpg"
+      },
+      {
+        "mediaId": "movie_1432306",
+        "mediaType": "movie",
+        "title": "Оно. Ночной кошмар",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/er7Wz7krz1wMDXLtapAcGKZsz5R.jpg"
+      },
+      {
+        "mediaId": "movie_1477712",
+        "mediaType": "movie",
+        "title": "Мороженщик",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/43DuDvgZO1e34sylK8SRtMJ3tWw.jpg"
+      },
+      {
+        "mediaId": "movie_760104",
+        "mediaType": "movie",
+        "title": "Икс",
+        "year": 2022,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/pTm3SMG5ol9Q0CnGVloNAvkksjZ.jpg"
+      },
+      {
+        "mediaId": "movie_1233413",
+        "mediaType": "movie",
+        "title": "Грешники",
+        "year": 2025,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ZpqkD0DOd6bpLpcV9oBY8YGcRj.jpg"
+      }
+    ]
+  },
+  "top-rated": {
+    "title": "Топ-50 всех времён",
+    "subtitle": "Лучшие фильмы по оценкам — расставь по-своему",
+    "priority": 60,
+    "items": [
+      {
+        "mediaId": "movie_1560520",
+        "mediaType": "movie",
+        "title": "Бэтмен: Падение рыцаря. Часть первая",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/7ESgU028QbgZd8wdKYaE3NXlf4P.jpg"
+      },
+      {
+        "mediaId": "movie_980431",
+        "mediaType": "movie",
+        "title": "Легенда об Аанге: Последний маг воздуха",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/cypsdXImFEVN3NOlckf9ZVrBY6M.jpg"
+      },
+      {
+        "mediaId": "movie_1007757",
+        "mediaType": "movie",
+        "title": "В чужой шкуре",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/gl112Rnih0fHcWBIKpVzeW84xov.jpg"
+      },
+      {
+        "mediaId": "movie_1632181",
+        "mediaType": "movie",
+        "title": "Socias por accidente",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/j0CIVzeR7hRAPBPGR54qDZoOQpp.jpg"
+      },
+      {
+        "mediaId": "movie_1311031",
+        "mediaType": "movie",
+        "title": "Истребитель демонов: Бесконечный замок",
+        "year": 2025,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/rz1jMKpu4rq2wiKMyILF06aiSwP.jpg"
+      },
+      {
+        "mediaId": "movie_1621552",
+        "mediaType": "movie",
+        "title": "Поймать Эль Чапо",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/cd6wq3ctMo3eKnZvKeYwoasBhJL.jpg"
+      },
+      {
+        "mediaId": "movie_278",
+        "mediaType": "movie",
+        "title": "Побег из Шоушенка",
+        "year": 1994,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/yvmKPlTIi0xdcFQIFcQKQJcI63W.jpg"
+      },
+      {
+        "mediaId": "movie_238",
+        "mediaType": "movie",
+        "title": "Крёстный отец",
+        "year": 1972,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/hoowzozsn0XQGtgH8nyivAMZfPN.jpg"
+      },
+      {
+        "mediaId": "movie_687163",
+        "mediaType": "movie",
+        "title": "Проект «Конец света»",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/jucD9FzLjVsFfBiFcSdoLa6rPOl.jpg"
+      },
+      {
+        "mediaId": "movie_1232449",
+        "mediaType": "movie",
+        "title": "Юные сердца",
+        "year": 2024,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/7sbuKNu7vdSUH95HneuPlRu6Tnh.jpg"
+      },
+      {
+        "mediaId": "movie_936075",
+        "mediaType": "movie",
+        "title": "Майкл",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/v6dJZvPGlbXq1hJP3ULDPFfayZ1.jpg"
+      },
+      {
+        "mediaId": "movie_389",
+        "mediaType": "movie",
+        "title": "12 разгневанных мужчин",
+        "year": 1957,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/uDFEvhvKrH61KuGWWozRtbw2Rjv.jpg"
+      },
+      {
+        "mediaId": "movie_240",
+        "mediaType": "movie",
+        "title": "Крёстный отец 2",
+        "year": 1974,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/tOLQ3iRDfbwhVaw3QjDzIOS7zcu.jpg"
+      },
+      {
+        "mediaId": "movie_424",
+        "mediaType": "movie",
+        "title": "Список Шиндлера",
+        "year": 1993,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/dB7edCQIuExWErWXFVqR7ORnZRS.jpg"
+      },
+      {
+        "mediaId": "movie_1630423",
+        "mediaType": "movie",
+        "title": "Моя любимая убийца",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/b1VNnA0ewb6F0hccCpPpXD8c8oT.jpg"
+      },
+      {
+        "mediaId": "movie_155",
+        "mediaType": "movie",
+        "title": "Тёмный рыцарь",
+        "year": 2008,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/j10MzKeRM0LrfVgD6tHiO3OVOqU.jpg"
+      },
+      {
+        "mediaId": "movie_129",
+        "mediaType": "movie",
+        "title": "Унесённые призраками",
+        "year": 2001,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/txaVo4whnSduKuczZiJexhLDVQC.jpg"
+      },
+      {
+        "mediaId": "movie_1218925",
+        "mediaType": "movie",
+        "title": "Человек-бензопила. Фильм: История Резе",
+        "year": 2025,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/f4Bv4JWv85zHSisuq7SD2WeuJGr.jpg"
+      },
+      {
+        "mediaId": "movie_122",
+        "mediaType": "movie",
+        "title": "Властелин колец: Возвращение короля",
+        "year": 2003,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/60q19ii6RRIWHzVREeLtXUEM42B.jpg"
+      },
+      {
+        "mediaId": "movie_497",
+        "mediaType": "movie",
+        "title": "Зелёная миля",
+        "year": 1999,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/lHxe8t4B0CKv4DO0C0B4rsuiG95.jpg"
+      },
+      {
+        "mediaId": "movie_19404",
+        "mediaType": "movie",
+        "title": "Непохищенная невеста",
+        "year": 1995,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/blA7XAUhROE7EZKN0U7Xxq2Skze.jpg"
+      },
+      {
+        "mediaId": "movie_372058",
+        "mediaType": "movie",
+        "title": "Твоё имя",
+        "year": 2016,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/iH2WDCYLIUjc7oPWRT7Kxgxza6k.jpg"
+      },
+      {
+        "mediaId": "movie_157336",
+        "mediaType": "movie",
+        "title": "Интерстеллар",
+        "year": 2014,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/990DWuNkoVgvzu8meLQO1WwTHHQ.jpg"
+      },
+      {
+        "mediaId": "movie_496243",
+        "mediaType": "movie",
+        "title": "Паразиты",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/9xL2PwIOerz8jld06J9cxwuJfoD.jpg"
+      },
+      {
+        "mediaId": "movie_680",
+        "mediaType": "movie",
+        "title": "Криминальное чтиво",
+        "year": 1994,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/qvbfoyW2zaI15c0quUfF6CRGH4H.jpg"
+      },
+      {
+        "mediaId": "movie_969681",
+        "mediaType": "movie",
+        "title": "Человек-паук: Новый день",
+        "year": 2026,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/aMlpOtflL60A5IaydMnjpYKLsjp.jpg"
+      },
+      {
+        "mediaId": "movie_14537",
+        "mediaType": "movie",
+        "title": "Харакири",
+        "year": 1962,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6Cw2LJzt6jRALHystjzWazeB4Pg.jpg"
+      },
+      {
+        "mediaId": "movie_429",
+        "mediaType": "movie",
+        "title": "Хороший, плохой, злой",
+        "year": 1966,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/fGDK72duT0YbdORyNo1QVuzDYzE.jpg"
+      },
+      {
+        "mediaId": "movie_667257",
+        "mediaType": "movie",
+        "title": "Невозможное",
+        "year": 2021,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/yHeEKtVZFinHMMuj9zEOeSYosoS.jpg"
+      },
+      {
+        "mediaId": "movie_13",
+        "mediaType": "movie",
+        "title": "Форрест Гамп",
+        "year": 1994,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6fAVi5Iic2I1mvTW8vfp5kZPJjJ.jpg"
+      },
+      {
+        "mediaId": "movie_346",
+        "mediaType": "movie",
+        "title": "Семь Самураев",
+        "year": 1954,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6UzaYYURo3T6e4jBHHWaUWRNayZ.jpg"
+      },
+      {
+        "mediaId": "movie_769",
+        "mediaType": "movie",
+        "title": "Славные парни",
+        "year": 1990,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/ft6opiB2onxZe8PhSTba53wYpFb.jpg"
+      },
+      {
+        "mediaId": "movie_120",
+        "mediaType": "movie",
+        "title": "Властелин колец: Братство кольца",
+        "year": 2001,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/dfoCSXJIamlzlpDCRxXVY5R9GSX.jpg"
+      },
+      {
+        "mediaId": "movie_12477",
+        "mediaType": "movie",
+        "title": "Могила светлячков",
+        "year": 1988,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/r25pROjJSaORRtyCkbbrEp9kMaL.jpg"
+      },
+      {
+        "mediaId": "movie_1181678",
+        "mediaType": "movie",
+        "title": "Хочешь быть моим сыном?",
+        "year": 2023,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/6PQJsmuvSMZQMmlJfTpjIkrizUh.jpg"
+      },
+      {
+        "mediaId": "movie_550",
+        "mediaType": "movie",
+        "title": "Бойцовский клуб",
+        "year": 1999,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/66RvLrRJTm4J8l3uHXWF09AICol.jpg"
+      },
+      {
+        "mediaId": "movie_637",
+        "mediaType": "movie",
+        "title": "Жизнь прекрасна",
+        "year": 1997,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/seSip2zebLmHzDHfLstRF6yyqqq.jpg"
+      },
+      {
+        "mediaId": "movie_121",
+        "mediaType": "movie",
+        "title": "Властелин колец: Две крепости",
+        "year": 2002,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/fl7QZlAoZ4MLcxvgOaBjeUxlpQt.jpg"
+      },
+      {
+        "mediaId": "movie_11216",
+        "mediaType": "movie",
+        "title": "Новый кинотеатр «Парадизо»",
+        "year": 1988,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/vm0Ily4MkZTQCvoMeVnztFjdldG.jpg"
+      },
+      {
+        "mediaId": "movie_598",
+        "mediaType": "movie",
+        "title": "Город бога",
+        "year": 2002,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/xUM7xcRNuWFAtwK8mYRWcqQNwKe.jpg"
+      },
+      {
+        "mediaId": "movie_620249",
+        "mediaType": "movie",
+        "title": "Легенда о Хэй",
+        "year": 2019,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/l6uefzkbV7tuREmCVJIhlv6VSlX.jpg"
+      },
+      {
+        "mediaId": "movie_770156",
+        "mediaType": "movie",
+        "title": "Люси Шиммерс и принц мира",
+        "year": 2020,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/yfnJ5qIYx7q33fY4jqv9Pu95RSg.jpg"
+      },
+      {
+        "mediaId": "movie_539",
+        "mediaType": "movie",
+        "title": "Психо",
+        "year": 1960,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/9EyfrnAmZg9qru4RaEFqaeEVRWG.jpg"
+      },
+      {
+        "mediaId": "movie_324857",
+        "mediaType": "movie",
+        "title": "Человек-паук: Через вселенные",
+        "year": 2018,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/oCAi3NdfXNYLd8PROu5ycUhVety.jpg"
+      },
+      {
+        "mediaId": "movie_510",
+        "mediaType": "movie",
+        "title": "Пролетая над гнездом кукушки",
+        "year": 1975,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/fn5m0hbHOqEWpSGmDzvhj8G0KCq.jpg"
+      },
+      {
+        "mediaId": "movie_40096",
+        "mediaType": "movie",
+        "title": "Сам о сострадании",
+        "year": 2000,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/y3IhuITELtprMhUd7bccu629rba.jpg"
+      },
+      {
+        "mediaId": "movie_378064",
+        "mediaType": "movie",
+        "title": "Форма голоса",
+        "year": 2016,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/c0Gv8xTSEmIcQPxbhINKvkbJO8s.jpg"
+      },
+      {
+        "mediaId": "movie_255709",
+        "mediaType": "movie",
+        "title": "Желание",
+        "year": 2013,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/PZlNvDwKwHeHUsXnd6SEDXWZNn.jpg"
+      },
+      {
+        "mediaId": "movie_4935",
+        "mediaType": "movie",
+        "title": "Ходячий замок",
+        "year": 2004,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/oQvAlVSjYsJZPg9raiQRYE0aVrv.jpg"
+      },
+      {
+        "mediaId": "movie_1891",
+        "mediaType": "movie",
+        "title": "Звёздные войны: Эпизод 5 - Империя наносит ответный удар",
+        "year": 1980,
+        "posterUrl": "https://api.sloosh.workers.dev/api/v1/images/tmdb/w500/jgcqwDwTVdO5PcbghbYUaKlTI6t.jpg"
+      }
+    ]
+  }
+}

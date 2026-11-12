@@ -11,6 +11,9 @@ public struct UserProfileDetailView: View {
     @State private var user: SlooshUser
     @State private var authorClips: [MovieClip] = []
     @State private var isLoadingClips: Bool = true
+    @State private var authorTierLists: [TierList] = []
+    @State private var isLoadingTierLists: Bool = true
+    @State private var openedTierList: TierList? = nil
     @State private var livePresence: (isOnline: Bool, lastSeenMs: Int64?)
     @State private var pollTask: Task<Void, Never>? = nil
     @State private var showDeleteConfirm: Bool = false
@@ -83,6 +86,9 @@ public struct UserProfileDetailView: View {
 
                     // 3. Published Moments Grid (Standard 3-column poster grid matching app design)
                     publishedClipsSection
+
+                    // 4. Тир-листы автора
+                    authorTierListsSection
                 }
                 .padding(.horizontal, contentPadding)
                 .padding(.bottom, 100)
@@ -137,6 +143,13 @@ public struct UserProfileDetailView: View {
                 self.isLoadingClips = false
             }
 
+            // 3b. Авторские тир-листы
+            let tiers = await TierListsRepository.shared.fetchLists(forAuthorId: user.id)
+            await MainActor.run {
+                self.authorTierLists = tiers
+                self.isLoadingTierLists = false
+            }
+
             // 4. Real-time presence polling (every 2.5s)
             pollTask?.cancel()
             pollTask = Task {
@@ -173,6 +186,9 @@ public struct UserProfileDetailView: View {
         }
         .sheet(item: $sharingClip) { clip in
             ShareToFriendSheet(clip: clip)
+        }
+        .navigationDestination(item: $openedTierList) { list in
+            TierListViewerView(listId: list.id, initialList: list)
         }
         .confirmationDialog(
             "Удалить чат с \(user.displayTitle)?",
@@ -358,6 +374,61 @@ public struct UserProfileDetailView: View {
     }
 
     // MARK: - Published Clips Shelf (Adaptive Poster Grid Matching App Catalog)
+
+    // MARK: Тир-листы автора
+
+    private var authorTierListsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Text("Тир-листы")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+
+                if !isLoadingTierLists && !authorTierLists.isEmpty {
+                    Text("\(authorTierLists.count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .glassEffect(.regular, in: Capsule())
+                }
+
+                Spacer()
+            }
+            .padding(.top, 6)
+
+            if isLoadingTierLists {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 16) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                            .frame(height: 140)
+                            .shimmer()
+                    }
+                }
+            } else if authorTierLists.isEmpty {
+                EmptyView()
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 16) {
+                    ForEach(authorTierLists) { list in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            openedTierList = list
+                        } label: {
+                            TierListCardView(
+                                title: list.title,
+                                subtitle: "\(list.itemsCount) фильмов",
+                                posterUrls: list.allItems.compactMap(\.posterUrl),
+                                badge: nil,
+                                likesCount: list.likesCount
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
 
     private var publishedClipsSection: some View {
         VStack(alignment: .leading, spacing: 14) {

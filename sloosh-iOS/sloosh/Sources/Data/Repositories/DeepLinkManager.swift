@@ -11,6 +11,7 @@ final class DeepLinkManager: ObservableObject {
     
     @Published var targetMovieId: String? = nil
     @Published var targetClipId: String? = nil
+    @Published var targetTierId: String? = nil
     
     private init() {}
     
@@ -34,13 +35,25 @@ final class DeepLinkManager: ObservableObject {
             return
         }
 
+        // 1b. Тир-листы: query `tier` или путь `/tier/{id}`
+        if let queryItems = components.queryItems,
+           let tierId = queryItems.first(where: { $0.name == "tier" || $0.name == "tierId" })?.value,
+           !tierId.isEmpty {
+            let cleanTierId = tierId.trimmingCharacters(in: .whitespacesAndNewlines)
+            AppDiagnostics.shared.log("DeepLinkManager: extracted tierId=\(cleanTierId)")
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                self.targetTierId = cleanTierId
+            }
+            return
+        }
+
         let pathComponents = components.path.components(separatedBy: "/").filter { !$0.isEmpty }
-        if let clipIdx = pathComponents.firstIndex(of: "clip"), clipIdx + 1 < pathComponents.count {
-            let clipId = pathComponents[clipIdx + 1].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !clipId.isEmpty {
-                AppDiagnostics.shared.log("DeepLinkManager: extracted clipId from path=\(clipId)")
+        if let tierIdx = pathComponents.firstIndex(of: "tier"), tierIdx + 1 < pathComponents.count {
+            let tierId = pathComponents[tierIdx + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !tierId.isEmpty {
+                AppDiagnostics.shared.log("DeepLinkManager: extracted tierId from path=\(tierId)")
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    self.targetClipId = clipId
+                    self.targetTierId = tierId
                 }
                 return
             }
@@ -111,9 +124,33 @@ final class DeepLinkManager: ObservableObject {
         return text
     }
     
+    /// Creates a 100% clickable HTTPS share URL for a tier list (`https://sluvskii.github.io/iOS-sloosh/?tier={id}`)
+    func createTierShareURL(for listId: String) -> URL {
+        let cleanId = listId.trimmingCharacters(in: .whitespacesAndNewlines)
+        var components = URLComponents(string: "https://sluvskii.github.io/iOS-sloosh/")
+        components?.queryItems = [URLQueryItem(name: "tier", value: cleanId)]
+        return components?.url ?? URL(string: "https://sluvskii.github.io/iOS-sloosh/")!
+    }
+
+    /// Formats a share text for a tier list
+    func createTierShareMessage(title: String, listId: String) -> String {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let link = "https://sluvskii.github.io/iOS-sloosh/?tier=\(listId)"
+        if cleanTitle.isEmpty {
+            return "Смотри мой тир-лист в sloosh! 🏆\n\(link)"
+        }
+        return "Мой тир-лист «\(cleanTitle)» — смотри в sloosh! 🏆\n\(link)"
+    }
+
     /// Clears the pending targetMovieId and dismisses deep link details presentation
     func clear() {
         targetMovieId = nil
         targetClipId = nil
+        targetTierId = nil
+    }
+
+    /// Очищает только цель тир-листа (после навигации в профиль).
+    func clearTierTarget() {
+        targetTierId = nil
     }
 }

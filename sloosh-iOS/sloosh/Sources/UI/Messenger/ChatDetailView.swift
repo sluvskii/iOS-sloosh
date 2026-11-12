@@ -887,6 +887,8 @@ private struct PeakMessageBubbleView: View {
                 onOpenMovie(movieId)
             }, onPlayDirectly: { payload in
                 onPlayDirectly(payload)
+            }, onOpenTierList: { tierId in
+                DeepLinkManager.shared.handleURL(URL(string: "sloosh://tier?id=\(tierId)")!)
             })
             .contextMenu {
                 Group {
