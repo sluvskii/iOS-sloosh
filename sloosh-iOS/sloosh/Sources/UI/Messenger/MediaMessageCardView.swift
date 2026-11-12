@@ -4,17 +4,20 @@ public struct MediaMessageCardView: View {
     public let media: MediaCardPayload
     public var onOpenDetails: ((String) -> Void)?
     public var onPlayDirectly: ((MediaCardPayload) -> Void)?
+    public var onOpenTierList: ((String) -> Void)?
 
     @State private var cardBgColor: Color = Color(white: 0.14)
 
     public init(
         media: MediaCardPayload,
         onOpenDetails: ((String) -> Void)? = nil,
-        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil
+        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil,
+        onOpenTierList: ((String) -> Void)? = nil
     ) {
         self.media = media
         self.onOpenDetails = onOpenDetails
         self.onPlayDirectly = onPlayDirectly
+        self.onOpenTierList = onOpenTierList
     }
 
     private var effectiveDuration: Double? {
@@ -81,11 +84,13 @@ public struct MediaMessageCardView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Постер и метаданные — клик открывает плеер момента или детали фильма
+            // Постер и метаданные — клик открывает плеер момента, детали фильма или тир-лист
             Button {
                 let generator = UIImpactFeedbackGenerator(style: .light)
                 generator.impactOccurred()
-                if media.isClip {
+                if media.isTierList, let tierId = media.tierList?.tierListId {
+                    onOpenTierList?(tierId)
+                } else if media.isClip {
                     onPlayDirectly?(media)
                 } else {
                     onOpenDetails?(media.mediaId)
@@ -152,6 +157,18 @@ public struct MediaMessageCardView: View {
                                     }
                                 }
                             }
+                        } else if media.isTierList {
+                            HStack(spacing: 4) {
+                                Image(systemName: "list.star")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                Text("Тир-лист")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3.5)
+                            .glassEffect(.regular, in: Capsule())
+                            .padding(7)
                         } else if let rating = media.rating, rating > 0 {
                             Text(String(format: "%.1f", rating))
                                 .font(.system(size: 12, weight: .heavy))

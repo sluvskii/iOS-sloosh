@@ -99,6 +99,9 @@ jobs:
       - name: Test catalog logo sizing and resolution
         run: bash sloosh-iOS/Tests/run-catalog-logo-tests.sh
 
+      - name: Test tier list policy
+        run: bash sloosh-iOS/Tests/run-tier-list-tests.sh
+
       - name: Install XcodeGen
         run: |
           if ! which xcodegen > /dev/null 2>&1; then

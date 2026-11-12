@@ -100,7 +100,10 @@ public struct ChannelPostRowView: View {
             MediaMessageCardView(
                 media: media,
                 onOpenDetails: onOpenDetails,
-                onPlayDirectly: onPlayDirectly
+                onPlayDirectly: onPlayDirectly,
+                onOpenTierList: { tierId in
+                    DeepLinkManager.shared.handleURL(URL(string: "sloosh://tier?id=\(tierId)")!)
+                }
             )
             .contextMenu {
                 contextMenuContent

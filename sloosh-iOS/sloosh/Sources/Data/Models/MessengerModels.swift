@@ -37,6 +37,24 @@ public enum MessageType: String, Codable, Sendable, Hashable {
     case watchParty
 }
 
+/// Вложение «тир-лист» в сообщениях/постах: id + метаданные + до 4 постеров
+/// для коллажа-превью. Открывается через deep link tier.
+public struct TierListCardPayload: Codable, Sendable, Equatable, Hashable {
+    public let tierListId: String
+    public let title: String
+    public let authorName: String?
+    public let posterUrls: [String]?
+    public let likesCount: Int?
+
+    public init(tierListId: String, title: String, authorName: String? = nil, posterUrls: [String]? = nil, likesCount: Int? = nil) {
+        self.tierListId = tierListId
+        self.title = title
+        self.authorName = authorName
+        self.posterUrls = posterUrls
+        self.likesCount = likesCount
+    }
+}
+
 public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hashable {
     public var id: String { clipId ?? mediaId }
     public let mediaId: String
@@ -59,6 +77,11 @@ public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hash
     public let kpId: Int?
     public let tmdbId: Int?
 
+    // Tier list attachment (nil для фильмов/клипов). Поле новое — синтезированный
+    // Codable читает отсутствующий ключ как nil, старые клиенты декодируют
+    // payload как обычную media-карточку (title/posterUrl заполнены).
+    public let tierList: TierListCardPayload?
+
     public init(
         mediaId: String,
         type: String,
@@ -76,7 +99,8 @@ public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hash
         episode: Int? = nil,
         translationName: String? = nil,
         kpId: Int? = nil,
-        tmdbId: Int? = nil
+        tmdbId: Int? = nil,
+        tierList: TierListCardPayload? = nil
     ) {
         self.mediaId = mediaId
         self.type = type
@@ -95,10 +119,15 @@ public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hash
         self.translationName = translationName
         self.kpId = kpId
         self.tmdbId = tmdbId
+        self.tierList = tierList
     }
 
     public var isClip: Bool {
         type == "clip" || clipId != nil
+    }
+
+    public var isTierList: Bool {
+        tierList != nil
     }
 
     public func toMovieClip() -> MovieClip? {

@@ -195,6 +195,11 @@ struct ContentView: View {
                     selectedTab = .clips
                 }
             }
+            .onChange(of: deepLinkManager.targetTierId) { _, newValue in
+                if newValue != nil {
+                    selectedTab = .profile
+                }
+            }
         }
     }
 
