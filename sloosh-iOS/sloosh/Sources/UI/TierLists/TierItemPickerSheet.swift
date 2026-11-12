@@ -207,13 +207,21 @@ struct TierItemPickerSheet: View {
     private func loadInitialData() async {
         // 1. Избранное пользователя
         let favs = FavoritesRepository.shared.favorites.compactMap { fav -> TierListItem? in
-            guard !fav.mediaId.isEmpty else { return nil }
+            guard let id = fav.mediaId ?? fav.id, !id.isEmpty else { return nil }
+            let title = fav.title ?? "Без названия"
+            let type = fav.type ?? "movie"
+            let typedId: String
+            if id.hasPrefix("movie_") || id.hasPrefix("tv_") || id.hasPrefix("kp_") || id.hasPrefix("tmdb_") {
+                typedId = id
+            } else {
+                typedId = "\(type)_\(id)"
+            }
             return TierListItem(
-                mediaId: "\(fav.type)_\(fav.mediaId)",
-                mediaType: fav.type,
-                title: fav.title,
-                year: fav.year,
-                posterUrl: fav.poster
+                mediaId: typedId,
+                mediaType: type,
+                title: title,
+                year: fav.year.flatMap(Int.init),
+                posterUrl: fav.posterUrl
             )
         }
         await MainActor.run { favoriteItems = favs }
