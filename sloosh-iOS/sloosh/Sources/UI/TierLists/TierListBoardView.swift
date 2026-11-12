@@ -1,10 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - Drag payload
-
-/// Перетаскиваемый айтем доски. JSON-представление достаточно для того,
-/// чтобы дроп-зона поняла, какой фильм и откуда переносится.
+/// Перетаскиваемый айтем доски.
 struct TierDragPayload: Codable, Transferable {
     var item: TierListItem
     var sourceRowId: String? // nil = пул «Не распределено»
@@ -14,12 +11,9 @@ struct TierDragPayload: Codable, Transferable {
     }
 }
 
-// MARK: - Board
-
-/// Доска тир-листа: строки уровней с цветными чипами + сетки постеров + пул
-/// «Не распределено». Один компонент на оба режима: в `edit` работает
-/// drag&drop и меню айтемов, в `view` постеры просто открывают фильм.
-/// Стиль — нативный: systemBackground, системные плейсхолдеры, adaptive light/dark.
+/// Доска тир-листа: компактные цветные чипы уровней + обтекаемая сетка постеров,
+/// идеально оптимизированная под экраны телефонов (375–430 pt).
+/// Поддерживает как Drag & Drop, так и мгновенное перемещение тапом.
 struct TierListBoardView: View {
     enum Mode { case edit, view }
 
@@ -27,53 +21,54 @@ struct TierListBoardView: View {
     @Binding var rows: [TierRow]
     @Binding var unranked: [TierListItem]
     var onTapItem: ((TierListItem) -> Void)?
+    var onTapRow: ((TierRow) -> Void)?
+    var onAddMovies: (() -> Void)?
     var onOpenDetails: ((TierListItem) -> Void)?
 
     @State private var highlightedRowId: String?
 
-    private let posterWidth: CGFloat = 82
-    private let posterHeight: CGFloat = 123
-    private let rowHeight: CGFloat = 143
+    // Оптимизированные мобильные габариты (помещается 4 постера в ряд на любом iPhone)
+    private let posterWidth: CGFloat = 66
+    private let posterHeight: CGFloat = 98
+    private let chipWidth: CGFloat = 48
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach($rows) { $row in
-                tierRow(row: $row)
+                tierRow($row)
             }
             if mode == .edit || !unranked.isEmpty {
-                unrankedRow
+                poolRow
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
     }
 
-    // MARK: Строка уровня
+    // MARK: - Строка уровня
 
     @ViewBuilder
-    private func tierRow(row: Binding<TierRow>) -> some View {
-        HStack(alignment: .center, spacing: 0) {
-            chip(for: row.wrappedValue)
-                .frame(width: 92, height: rowHeight)
+    private func tierRow(_ row: Binding<TierRow>) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            chip(row: row.wrappedValue)
 
-            itemsArea(rowId: row.wrappedValue.id, items: Binding(
+            itemsGrid(rowId: row.wrappedValue.id, items: Binding(
                 get: { row.wrappedValue.items },
                 set: { row.wrappedValue.items = $0 }
             ))
         }
-        .frame(height: rowHeight)
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(UIColor.secondarySystemFill).opacity(0.55))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(UIColor.secondarySystemFill).opacity(0.45))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    highlightedRowId == row.wrappedValue.id ? Color.slooshAccent : Color.clear,
-                    lineWidth: 2
+                    highlightedRowId == row.wrappedValue.id ? Color.primary.opacity(0.45) : Color.clear,
+                    lineWidth: 1.5
                 )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .contentShape(RoundedRectangle(cornerRadius: 16))
         .dropDestination(for: TierDragPayload.self) { payload, _ in
             guard let payload = payload.first else { return false }
             moveItem(payload: payload, targetRowId: row.wrappedValue.id)
@@ -83,44 +78,57 @@ struct TierListBoardView: View {
         }
     }
 
-    private func chip(for row: TierRow) -> some View {
-        ZStack {
-            LinearGradient(
-                colors: [row.color, row.color.opacity(0.7)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Text(row.label)
-                .font(.system(size: 24, weight: .heavy, design: .default))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
-                .minimumScaleFactor(0.4)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 5)
+    private func chip(row: TierRow) -> some View {
+        Button {
+            if mode == .edit {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTapRow?(row)
+            }
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(UIColor(hex: row.colorHex) ?? .systemGray),
+                                Color(UIColor(hex: row.colorHex) ?? .systemGray).opacity(0.8)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text(row.label)
+                    .font(.system(size: 19, weight: .heavy, design: .default))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.35), radius: 1, y: 1)
+                    .minimumScaleFactor(0.35)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 3)
+            }
+            .frame(width: chipWidth, height: posterHeight)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .buttonStyle(.plain)
+        .disabled(mode != .edit)
     }
 
-    // MARK: Сетки айтемов
+    // MARK: - Сетки айтемов
 
     @ViewBuilder
-    private func itemsArea(rowId: String, items: Binding<[TierListItem]>) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 8) {
-                if items.wrappedValue.isEmpty {
-                    Text(rowId == "__pool__" ? "Добавьте фильмы вниз" : "Перетащите фильмы сюда")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                }
-                ForEach(items.wrappedValue) { item in
-                    itemCell(item: item, sourceRowId: rowId == "__pool__" ? nil : rowId)
-                }
+    private func itemsGrid(rowId: String, items: Binding<[TierListItem]>) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
+            if items.wrappedValue.isEmpty {
+                Text(rowId == "__pool__" ? "Добавленные фильмы появятся здесь" : "Перетащите фильмы сюда")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, minHeight: posterHeight)
             }
-            .padding(.horizontal, 10)
+            ForEach(items.wrappedValue) { item in
+                itemCell(item: item, sourceRowId: rowId == "__pool__" ? nil : rowId)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: posterHeight, alignment: .topLeading)
+        .contentShape(Rectangle())
         .dropDestination(for: TierDragPayload.self) { payload, _ in
             guard let payload = payload.first else { return false }
             moveItem(payload: payload, targetRowId: rowId == "__pool__" ? nil : rowId)
@@ -130,35 +138,84 @@ struct TierListBoardView: View {
         }
     }
 
-    private var unrankedRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "tray.full")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("Не распределено (\(unranked.count))")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 18)
+    // MARK: - Пул «Не распределено»
 
-            itemsArea(rowId: "__pool__", items: $unranked)
-                .frame(height: rowHeight)
+    private var poolRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("Не распределено (\(unranked.count))", systemImage: "tray.full")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if mode == .edit {
+                    Button {
+                        onAddMovies?()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Добавить")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color(UIColor.secondarySystemFill))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            if unranked.isEmpty && mode == .edit {
+                Button {
+                    onAddMovies?()
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 24))
+                            .foregroundStyle(.secondary)
+                        Text("Добавить фильмы в тир-лист")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Поиск по каталогу, подборкам и избранному")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 84)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color(UIColor.separator), style: StrokeStyle(lineWidth: 1, dash: [5]))
+                    )
+                }
+                .buttonStyle(.plain)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(UIColor.tertiarySystemFill))
+                        Text("?")
+                            .font(.system(size: 19, weight: .heavy))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(width: chipWidth, height: posterHeight)
+
+                    itemsGrid(rowId: "__pool__", items: $unranked)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(UIColor.secondarySystemFill).opacity(0.4))
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemFill).opacity(0.35))
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(
-                            highlightedRowId == "__pool__" ? Color.slooshAccent : Color.clear,
-                            lineWidth: 2
-                        )
-                )
+            }
         }
     }
 
-    // MARK: Ячейка постера
+    // MARK: - Ячейка постера
 
     @ViewBuilder
     private func itemCell(item: TierListItem, sourceRowId: String?) -> some View {
@@ -177,13 +234,14 @@ struct TierListBoardView: View {
                 ZStack {
                     Rectangle().fill(Color(UIColor.tertiarySystemFill))
                     Text(String(item.title.prefix(1)))
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.secondary)
                 }
             }
         )
         .frame(width: posterWidth, height: posterHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
 
         Group {
             if mode == .edit {
@@ -197,18 +255,16 @@ struct TierListBoardView: View {
         }
     }
 
-    // MARK: Перенос
+    // MARK: - Перенос айтема
 
     private func moveItem(payload: TierDragPayload, targetRowId: String?) {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            // Удаляем из источника
             if let sourceId = payload.sourceRowId,
                let index = rows.firstIndex(where: { $0.id == sourceId }) {
                 rows[index].items.removeAll { $0.mediaId == payload.item.mediaId }
             } else {
                 unranked.removeAll { $0.mediaId == payload.item.mediaId }
             }
-            // Вставляем в цель
             if let targetId = targetRowId,
                let index = rows.firstIndex(where: { $0.id == targetId }) {
                 rows[index].items.append(payload.item)

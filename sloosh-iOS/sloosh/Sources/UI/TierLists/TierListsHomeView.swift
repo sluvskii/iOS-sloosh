@@ -19,7 +19,14 @@ struct TierListsHomeView: View {
                 Button {
                     editorDraft = TierListsRepository.shared.makeDraft()
                 } label: {
-                    Label("Новый тир-лист", systemImage: "plus.circle.fill")
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.secondary)
+                        Text("Новый тир-лист")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                    }
                 }
             } footer: {
                 Text("Расставьте фильмы по уровням и поделитесь картинкой")
@@ -106,6 +113,8 @@ struct TierListsHomeView: View {
                     editorDraft = TierListsRepository.shared.makeDraft()
                 } label: {
                     Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
                 }
             }
         }

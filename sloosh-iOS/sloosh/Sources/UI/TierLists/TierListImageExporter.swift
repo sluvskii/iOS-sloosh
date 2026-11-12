@@ -161,8 +161,10 @@ enum TierListImageExporter {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
         return renderer.image { context in
             let cg = context.cgContext
-            let colors = [UIColor(red: 0.02, green: 0.09, blue: 0.06, alpha: 1).cgColor,
-                          UIColor(red: 0.05, green: 0.16, blue: 0.11, alpha: 1).cgColor]
+            let colors = [
+                UIColor(red: 0.05, green: 0.06, blue: 0.08, alpha: 1).cgColor,
+                UIColor(red: 0.10, green: 0.11, blue: 0.14, alpha: 1).cgColor
+            ]
             if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1]) {
                 cg.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: height), options: [])
             }
@@ -204,7 +206,7 @@ enum TierListImageExporter {
             let brand = "sloosh"
             let brandSize = (brand as NSString).size(withAttributes: brandAttributes)
             let brandRect = CGRect(x: 60, y: height - 120, width: brandSize.width + 28, height: brandSize.height + 20)
-            UIColor(red: 0.13, green: 0.68, blue: 0.45, alpha: 1).setFill()
+            UIColor(white: 0.18, alpha: 0.9).setFill()
             UIBezierPath(roundedRect: brandRect, cornerRadius: 14).fill()
             (brand as NSString).draw(at: CGPoint(x: brandRect.minX + 14, y: brandRect.minY + 10), withAttributes: brandAttributes)
         }
@@ -213,7 +215,7 @@ enum TierListImageExporter {
     // MARK: Примитивы
 
     private static func drawBackground(cg: CGContext, width: CGFloat, height: CGFloat) {
-        UIColor(red: 0.05, green: 0.07, blue: 0.06, alpha: 1).setFill()
+        UIColor(red: 0.06, green: 0.07, blue: 0.08, alpha: 1).setFill()
         cg.fill(CGRect(x: 0, y: 0, width: width, height: height))
     }
 
@@ -309,7 +311,7 @@ enum TierListImageExporter {
     }
 
     private static func drawFooter(cg: CGContext, width: CGFloat, height: CGFloat, y: CGFloat, list: TierList) {
-        UIColor(red: 0.13, green: 0.68, blue: 0.45, alpha: 1).setFill()
+        UIColor(white: 0.18, alpha: 0.9).setFill()
         let brandRect = CGRect(x: 50, y: y + height / 2 - 36, width: 220, height: 72)
         UIBezierPath(roundedRect: brandRect, cornerRadius: 18).fill()
         let brandAttributes: [NSAttributedString.Key: Any] = [

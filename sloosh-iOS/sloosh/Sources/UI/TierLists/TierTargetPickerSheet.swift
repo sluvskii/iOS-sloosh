@@ -63,6 +63,7 @@ struct TierTargetPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Отмена") { onDismiss() }
+                        .foregroundStyle(.primary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -71,6 +72,8 @@ struct TierTargetPickerSheet: View {
                         newDraft = seeded
                     } label: {
                         Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
                     }
                 }
             }

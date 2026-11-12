@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Добавление фильмов в тир-лист: чисто нативный List с системным поиском
-/// (.searchable) и чекмарками. Данные — существующие searchMovies/getCollection.
+/// (.searchable), быстрым доступом к избранному, популярным фильмам и подборкам.
 struct TierItemPickerSheet: View {
     var onAdd: ([TierListItem]) -> Void
     var onDismiss: () -> Void
@@ -11,6 +11,8 @@ struct TierItemPickerSheet: View {
     @State private var searchResults: [TierListItem] = []
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var favoriteItems: [TierListItem] = []
+    @State private var popularItems: [TierListItem] = []
     @State private var studios: [CategoryItemDto] = []
     @State private var selectedStudio: CategoryItemDto?
     @State private var studioItems: [TierListItem] = []
@@ -22,29 +24,83 @@ struct TierItemPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if let studio = selectedStudio {
-                    Section("\(studio.name) · страница \(studioPage)") {
-                        pickerRows(items: studioItems, paged: true)
-                    }
-                } else {
-                    Section("Подборки") {
-                        ForEach(studios, id: \.id) { studio in
-                            Button {
-                                selectedStudio = studio
-                                Task { await loadStudioItems(studio) }
-                            } label: {
-                                Label(studio.name, systemImage: "buildings.2")
-                            }
-                        }
-                    }
+                let trimmedSearch = searchText.trimmingCharacters(in: .whitespaces)
+                if !trimmedSearch.isEmpty {
                     Section("Результаты поиска") {
                         if isSearching {
-                            ProgressView()
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
                         } else if searchResults.isEmpty {
-                            Text("Введите не менее двух символов")
+                            Text("Ничего не найдено")
                                 .foregroundStyle(.secondary)
                         } else {
                             pickerRows(items: searchResults, paged: false)
+                        }
+                    }
+                } else if let studio = selectedStudio {
+                    Section {
+                        Button {
+                            selectedStudio = nil
+                            studioItems = []
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                    .font(.caption.weight(.bold))
+                                Text("Все подборки")
+                                    .font(.subheadline.weight(.medium))
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                    }
+                    Section("\(studio.name)") {
+                        if isLoadingStudio && studioItems.isEmpty {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                        } else {
+                            pickerRows(items: studioItems, paged: true)
+                        }
+                    }
+                } else {
+                    if !favoriteItems.isEmpty {
+                        Section("Избранное") {
+                            pickerRows(items: favoriteItems, paged: false)
+                        }
+                    }
+
+                    if !popularItems.isEmpty {
+                        Section("Популярное сейчас") {
+                            pickerRows(items: popularItems, paged: false)
+                        }
+                    }
+
+                    Section("Франшизы и подборки") {
+                        if studios.isEmpty {
+                            ProgressView()
+                                .padding(.vertical, 4)
+                        } else {
+                            ForEach(studios, id: \.id) { studio in
+                                Button {
+                                    selectedStudio = studio
+                                    Task { await loadStudioItems(studio) }
+                                } label: {
+                                    HStack {
+                                        Label(studio.name, systemImage: "folder")
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -55,27 +111,34 @@ struct TierItemPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Отмена") { onDismiss() }
+                        .foregroundStyle(.primary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Добавить (\(selected.count))") {
                         onAdd(Array(selected.values))
                         dismiss()
                     }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .disabled(selected.isEmpty)
                 }
             }
+        }
+        .task {
+            await loadInitialData()
         }
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
             let query = newValue.trimmingCharacters(in: .whitespaces)
             guard query.count >= 2 else {
                 searchResults = []
+                isSearching = false
                 return
             }
             searchTask = Task {
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                try? await Task.sleep(nanoseconds: 280_000_000)
                 guard !Task.isCancelled else { return }
-                isSearching = true
+                await MainActor.run { isSearching = true }
                 let items = ((try? await MoviesRepository.shared.searchMovies(query: query, page: 1)) ?? [])
                     .compactMap(TierListItem.init)
                 guard !Task.isCancelled else { return }
@@ -92,8 +155,11 @@ struct TierItemPickerSheet: View {
         ForEach(items) { item in
             let isSelected = selected[item.mediaId] != nil
             Button {
-                if isSelected { selected.removeValue(forKey: item.mediaId) }
-                else { selected[item.mediaId] = item }
+                if isSelected {
+                    selected.removeValue(forKey: item.mediaId)
+                } else {
+                    selected[item.mediaId] = item
+                }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 HStack(spacing: 12) {
@@ -112,8 +178,10 @@ struct TierItemPickerSheet: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
+                            .font(.body)
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.leading)
+                            .lineLimit(2)
                         if let year = item.year {
                             Text(String(year))
                                 .font(.caption)
@@ -121,12 +189,13 @@ struct TierItemPickerSheet: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(Color.slooshAccent)
-                    }
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSelected ? Color.primary : Color(UIColor.tertiaryLabel))
                 }
             }
+            .buttonStyle(.plain)
             .onAppear {
                 if paged, item.mediaId == items.last?.mediaId, studioPage < studioTotalPages, !isLoadingStudio {
                     Task { await loadStudioItemsNextPage() }
@@ -135,12 +204,30 @@ struct TierItemPickerSheet: View {
         }
     }
 
-    private func loadStudios() async {
-        if studios.isEmpty {
-            let sections = await MoviesRepository.shared.getCategories()
-            let all = sections.flatMap(\.items)
-            await MainActor.run { studios = all }
+    private func loadInitialData() async {
+        // 1. Избранное пользователя
+        let favs = FavoritesRepository.shared.favorites.compactMap { fav -> TierListItem? in
+            guard !fav.mediaId.isEmpty else { return nil }
+            return TierListItem(
+                mediaId: "\(fav.type)_\(fav.mediaId)",
+                mediaType: fav.type,
+                title: fav.title,
+                year: fav.year,
+                posterUrl: fav.poster
+            )
         }
+        await MainActor.run { favoriteItems = favs }
+
+        // 2. Популярные фильмы
+        if let popular = try? await MoviesRepository.shared.getPopularMovies(page: 1) {
+            let items = popular.compactMap(TierListItem.init)
+            await MainActor.run { popularItems = items }
+        }
+
+        // 3. Подборки и студии
+        let sections = await MoviesRepository.shared.getCategories()
+        let allStudios = sections.flatMap(\.items)
+        await MainActor.run { studios = allStudios }
     }
 
     private func loadStudioItems(_ studio: CategoryItemDto) async {

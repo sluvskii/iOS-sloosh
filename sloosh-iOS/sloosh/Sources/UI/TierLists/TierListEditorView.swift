@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Редактор тир-листа: системный навбар («Отмена»/«Готово»), доска уровней
-/// с drag&drop, нижний тулбар «Добавить/Опубликовать», черновик автосейвится.
+/// Редактор тир-листа: системный навбар («Готово»), доска уровней с drag&drop
+/// и быстрым тапом для распределения, плавающая кнопка добавления фильмов.
 struct TierListEditorView: View {
     let draft: TierList
     var onPublished: (TierList) -> Void
@@ -41,7 +41,7 @@ struct TierListEditorView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 TextField("Название", text: $title)
                     .font(.title2.weight(.bold))
                     .padding(.horizontal, 16)
@@ -56,7 +56,9 @@ struct TierListEditorView: View {
                     mode: .edit,
                     rows: $rows,
                     unranked: $unranked,
-                    onTapItem: { item in tappedItem = item }
+                    onTapItem: { item in tappedItem = item },
+                    onTapRow: { row in editingRow = row },
+                    onAddMovies: { showAddSheet = true }
                 )
                 .padding(.top, 4)
 
@@ -68,32 +70,70 @@ struct TierListEditorView: View {
                         items: []
                     ))
                 } label: {
-                    Label("Добавить уровень", systemImage: "plus")
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Добавить уровень")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color(UIColor.secondarySystemFill))
+                    .clipShape(Capsule())
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, 16)
 
-                Text("Тап по чипу уровня — название, цвет и порядок. Долгое нажатие по фильму — открыть или убрать.")
+                Text("Тап по фильму — быстро переместить по уровням. Тап по уровню — изменить название и цвет.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
+                    .padding(.bottom, 60) // Запас под плавающую кнопку снизу
             }
-            .padding(.bottom, 16)
         }
         .navigationTitle("Редактор")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Готово") { showPublishField = true }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .disabled(isPublishing)
             }
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Label("Добавить фильмы", systemImage: "plus")
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                showAddSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Добавить фильмы")
+                        .font(.subheadline.weight(.semibold))
                 }
-                Spacer()
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color(UIColor.secondarySystemGroupedBackground))
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(UIColor.separator).opacity(0.6), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.12), radius: 8, y: 3)
             }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(
+                LinearGradient(
+                    colors: [Color(UIColor.systemBackground).opacity(0), Color(UIColor.systemBackground)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            )
         }
         .onDisappear { autosaveDraft() }
         .onChange(of: rows) { _, _ in scheduleAutosave() }
@@ -119,17 +159,32 @@ struct TierListEditorView: View {
             isPresented: Binding(get: { tappedItem != nil }, set: { if !$0 { tappedItem = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Открыть фильм") {
-                if let item = tappedItem { openDetails(item) }
-                tappedItem = nil
-            }
-            Button("Переместить в «Не распределено»") {
-                if let item = tappedItem { moveItemToPool(item) }
-                tappedItem = nil
-            }
-            Button("Убрать из тир-листа", role: .destructive) {
-                if let item = tappedItem { removeItem(item) }
-                tappedItem = nil
+            if let item = tappedItem {
+                // Быстрый перевод в любой уровень в 1 тап
+                ForEach(rows) { row in
+                    let isCurrentRow = row.items.contains(where: { $0.mediaId == item.mediaId })
+                    if !isCurrentRow {
+                        Button("В уровень «\(row.label)»") {
+                            moveItem(item, toRowId: row.id)
+                            tappedItem = nil
+                        }
+                    }
+                }
+                let isInPool = unranked.contains(where: { $0.mediaId == item.mediaId })
+                if !isInPool {
+                    Button("В «Не распределено»") {
+                        moveItemToPool(item)
+                        tappedItem = nil
+                    }
+                }
+                Button("Открыть фильм") {
+                    openDetails(item)
+                    tappedItem = nil
+                }
+                Button("Убрать из тир-листа", role: .destructive) {
+                    removeItem(item)
+                    tappedItem = nil
+                }
             }
             Button("Отмена", role: .cancel) { tappedItem = nil }
         }
@@ -148,7 +203,7 @@ struct TierListEditorView: View {
         }
     }
 
-    // MARK: Публикация
+    // MARK: - Публикация
 
     @ViewBuilder
     private var publishSheet: some View {
@@ -172,6 +227,7 @@ struct TierListEditorView: View {
                         HStack {
                             if isPublishing { ProgressView() }
                             Text("Опубликовать")
+                                .font(.body.weight(.semibold))
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -183,6 +239,7 @@ struct TierListEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Отмена") { showPublishField = false }
+                        .foregroundStyle(.primary)
                 }
             }
         }
@@ -206,7 +263,38 @@ struct TierListEditorView: View {
         isPublishing = false
     }
 
-    // MARK: Черновик
+    // MARK: - Перемещение и черновик
+
+    private func moveItem(_ item: TierListItem, toRowId: String) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            for index in rows.indices {
+                rows[index].items.removeAll { $0.mediaId == item.mediaId }
+            }
+            unranked.removeAll { $0.mediaId == item.mediaId }
+            if let targetIndex = rows.firstIndex(where: { $0.id == toRowId }) {
+                rows[targetIndex].items.append(item)
+            }
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func moveItemToPool(_ item: TierListItem) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            for index in rows.indices { rows[index].items.removeAll { $0.mediaId == item.mediaId } }
+            if !unranked.contains(where: { $0.mediaId == item.mediaId }) {
+                unranked.append(item)
+            }
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func removeItem(_ item: TierListItem) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            for index in rows.indices { rows[index].items.removeAll { $0.mediaId == item.mediaId } }
+            unranked.removeAll { $0.mediaId == item.mediaId }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
 
     private func scheduleAutosave() {
         autosaveTask?.cancel()
@@ -229,22 +317,6 @@ struct TierListEditorView: View {
         autosaveDraft()
         DeepLinkManager.shared.handleURL(URL(string: "sloosh://details?id=\(item.mediaId)")!)
         dismiss()
-    }
-
-    private func moveItemToPool(_ item: TierListItem) {
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            for index in rows.indices { rows[index].items.removeAll { $0.mediaId == item.mediaId } }
-            if !unranked.contains(where: { $0.mediaId == item.mediaId }) {
-                unranked.append(item)
-            }
-        }
-    }
-
-    private func removeItem(_ item: TierListItem) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            for index in rows.indices { rows[index].items.removeAll { $0.mediaId == item.mediaId } }
-            unranked.removeAll { $0.mediaId == item.mediaId }
-        }
     }
 
     private func applyRowEdit(updated: TierRow, deleted: Bool, move: Int) {
@@ -317,10 +389,14 @@ struct TierRowEditSheet: View {
                         onSave(TierRow(id: row.id, label: label, colorHex: colorHex, items: row.items), false, -1)
                         dismiss()
                     }
+                    .foregroundStyle(.primary)
+
                     Button("Опустить") {
                         onSave(TierRow(id: row.id, label: label, colorHex: colorHex, items: row.items), false, 1)
                         dismiss()
                     }
+                    .foregroundStyle(.primary)
+
                     if canDelete {
                         Button("Удалить уровень", role: .destructive) {
                             onSave(row, true, 0)
@@ -337,6 +413,8 @@ struct TierRowEditSheet: View {
                         onSave(TierRow(id: row.id, label: label.isEmpty ? row.label : label, colorHex: colorHex, items: row.items), false, 0)
                         dismiss()
                     }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
