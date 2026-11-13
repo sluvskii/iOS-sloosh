@@ -40,6 +40,43 @@ struct TierListEditorView: View {
     }
 
     var body: some View {
+        editorContent
+            .navigationTitle("Редактор")
+            .navigationBarTitleDisplayMode(.inline)
+            .tint(.primary)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Готово") { showPublishField = true }
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .disabled(isPublishing)
+                }
+            }
+            .onDisappear { autosaveDraft() }
+            .onChange(of: rows) { _, _ in scheduleAutosave() }
+            .onChange(of: unranked) { _, _ in scheduleAutosave() }
+            .onChange(of: title) { _, _ in scheduleAutosave() }
+            .sheet(isPresented: $showAddSheet) { addSheet }
+            .sheet(isPresented: $showPublishField) { publishSheet }
+            .sheet(item: Binding(
+                get: { editingRow.map { EditableRowBox(row: $0) } },
+                set: { editingRow = $0?.row }
+            )) { box in
+                rowEditSheet(box: box)
+            }
+            .confirmationDialog(
+                tappedItem?.title ?? "",
+                isPresented: Binding(get: { tappedItem != nil }, set: { if !$0 { tappedItem = nil } }),
+                titleVisibility: .visible
+            ) {
+                itemActionsDialog
+            }
+    }
+
+    // MARK: - Контент редактора
+
+    @ViewBuilder
+    private var editorContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Название", text: $title)
@@ -83,83 +120,67 @@ struct TierListEditorView: View {
                     .padding(.bottom, 16)
             }
         }
-        .navigationTitle("Редактор")
-        .navigationBarTitleDisplayMode(.inline)
-        .tint(.primary)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Готово") { showPublishField = true }
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .disabled(isPublishing)
-            }
-        }
-        .onDisappear { autosaveDraft() }
-        .onChange(of: rows) { _, _ in scheduleAutosave() }
-        .onChange(of: unranked) { _, _ in scheduleAutosave() }
-        .onChange(of: title) { _, _ in scheduleAutosave() }
-        .sheet(isPresented: $showAddSheet) {
-            TierItemPickerSheet(
-                onAdd: { items in
-                    var known = Set(unranked.map(\.mediaId))
-                    rows.forEach { row in row.items.forEach { known.insert($0.mediaId) } }
-                    let fresh = items.filter { !known.contains($0.mediaId) }
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                        unranked.append(contentsOf: fresh)
-                    }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                },
-                onDismiss: { showAddSheet = false }
-            )
-        }
-        .sheet(isPresented: $showPublishField) { publishSheet }
-        .confirmationDialog(
-            tappedItem?.title ?? "",
-            isPresented: Binding(get: { tappedItem != nil }, set: { if !$0 { tappedItem = nil } }),
-            titleVisibility: .visible
-        ) {
-            if let item = tappedItem {
-                // Быстрый перевод в любой уровень в 1 тап
-                ForEach(rows) { row in
-                    let isCurrentRow = row.items.contains(where: { $0.mediaId == item.mediaId })
-                    if !isCurrentRow {
-                        Button("В уровень «\(row.label)»") {
-                            moveItem(item, toRowId: row.id)
-                            tappedItem = nil
-                        }
-                    }
+    }
+
+    // MARK: - Диалоги и шторки
+
+    @ViewBuilder
+    private var addSheet: some View {
+        TierItemPickerSheet(
+            onAdd: { items in
+                var known = Set(unranked.map(\.mediaId))
+                rows.forEach { row in row.items.forEach { known.insert($0.mediaId) } }
+                let fresh = items.filter { !known.contains($0.mediaId) }
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    unranked.append(contentsOf: fresh)
                 }
-                let isInPool = unranked.contains(where: { $0.mediaId == item.mediaId })
-                if !isInPool {
-                    Button("В «Не распределено»") {
-                        moveItemToPool(item)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            },
+            onDismiss: { showAddSheet = false }
+        )
+    }
+
+    @ViewBuilder
+    private func rowEditSheet(box: EditableRowBox) -> some View {
+        TierRowEditSheet(
+            row: box.row,
+            canDelete: rows.count > 1,
+            onSave: { updated, deleted, moveDirection in
+                applyRowEdit(updated: updated, deleted: deleted, move: moveDirection)
+                editingRow = nil
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var itemActionsDialog: some View {
+        if let item = tappedItem {
+            ForEach(rows) { row in
+                let isCurrentRow = row.items.contains(where: { $0.mediaId == item.mediaId })
+                if !isCurrentRow {
+                    Button("В уровень «\(row.label)»") {
+                        moveItem(item, toRowId: row.id)
                         tappedItem = nil
                     }
                 }
-                Button("Открыть фильм") {
-                    openDetails(item)
-                    tappedItem = nil
-                }
-                Button("Убрать из тир-листа", role: .destructive) {
-                    removeItem(item)
+            }
+            let isInPool = unranked.contains(where: { $0.mediaId == item.mediaId })
+            if !isInPool {
+                Button("В «Не распределено»") {
+                    moveItemToPool(item)
                     tappedItem = nil
                 }
             }
-            Button("Отмена", role: .cancel) { tappedItem = nil }
+            Button("Открыть фильм") {
+                openDetails(item)
+                tappedItem = nil
+            }
+            Button("Убрать из тир-листа", role: .destructive) {
+                removeItem(item)
+                tappedItem = nil
+            }
         }
-        .sheet(item: Binding(
-            get: { editingRow.map { EditableRowBox(row: $0) } },
-            set: { editingRow = $0?.row }
-        )) { box in
-            TierRowEditSheet(
-                row: box.row,
-                canDelete: rows.count > 1,
-                onSave: { updated, deleted, moveDirection in
-                    applyRowEdit(updated: updated, deleted: deleted, move: moveDirection)
-                    editingRow = nil
-                }
-            )
-        }
+        Button("Отмена", role: .cancel) { tappedItem = nil }
     }
 
     // MARK: - Публикация
