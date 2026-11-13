@@ -94,6 +94,7 @@ struct TierListEditorView: View {
                     editorFooterHint
                 }
             }
+            .scrollClipDisabled()
             .scrollDisabled(isDraggingCard)
         }
     }

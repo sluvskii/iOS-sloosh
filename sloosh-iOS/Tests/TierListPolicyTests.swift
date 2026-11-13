@@ -95,6 +95,24 @@ struct TierListPolicyTests {
         check((draftDoc["isDraft"] as? Bool) == nil, "Draft flag not published to RTDB")
         check((draftDoc["title"] as? String) == "T", "Draft title published")
 
+        // MARK: Перемещение и граничные индексы
+
+        var testRows = TierRow.defaultRows()
+        check(!testRows.isEmpty, "Default rows present")
+        check(testRows.first?.label == "S", "Top row is S")
+
+        let sampleItem = TierListItem(mediaId: "movie_123", mediaType: "movie", title: "Test Movie", year: 2024, posterUrl: nil)
+        var poolItems: [TierListItem] = [sampleItem]
+
+        // Симуляция безопасного переноса из пула в верхний тир
+        let safeTargetIndex = max(0, min(100, testRows[0].items.count))
+        testRows[0].items.insert(sampleItem, at: safeTargetIndex)
+        poolItems.removeAll { $0.mediaId == sampleItem.mediaId }
+
+        check(testRows[0].items.count == 1, "Item inserted into Row S")
+        check(poolItems.isEmpty, "Item removed from pool")
+        check(testRows[0].items[0].mediaId == "movie_123", "Item identity preserved")
+
         print("tier-list-policy: \(count) checks passed")
     }
 }

@@ -201,7 +201,7 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
+        TierFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
             if items.isEmpty {
                 Color.clear
                     .frame(maxWidth: .infinity, minHeight: posterHeight)
@@ -418,14 +418,16 @@ struct TierListBoardView: View {
     // MARK: - Логика перетаскивания
 
     private func startDragging(item: TierListItem, sourceRowId: String, windowPoint: CGPoint) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        dragStartBoardFrame = boardGlobalFrame
-        dragStartRowGeometries = rowGeometries
-        dragStartItemGeometries = itemGeometries
+        dragStartBoardFrame = boardGlobalFrame == .zero ? dragStartBoardFrame : boardGlobalFrame
+        dragStartRowGeometries = !rowGeometries.isEmpty ? rowGeometries : dragStartRowGeometries
+        dragStartItemGeometries = !itemGeometries.isEmpty ? itemGeometries : dragStartItemGeometries
 
+        let referenceBoardMinY = dragStartBoardFrame.minY
         let localPoint = CGPoint(
-            x: windowPoint.x - boardGlobalFrame.minX,
-            y: windowPoint.y - boardGlobalFrame.minY
+            x: windowPoint.x - dragStartBoardFrame.minX,
+            y: windowPoint.y - referenceBoardMinY
         )
         withAnimation(.spring(response: 0.25, dampingFraction: 0.78)) {
             activeDraggedItem = item
@@ -526,8 +528,8 @@ struct TierListBoardView: View {
     // MARK: - Геометрические вычисления в глобальных координатах с учётом скролла
 
     private func findTargetRow(at windowPoint: CGPoint, scrollDelta: CGFloat) -> String? {
-        let baseRows = dragStartRowGeometries.isEmpty ? rowGeometries : dragStartRowGeometries
-        if baseRows.isEmpty { return nil }
+        let baseRows = !dragStartRowGeometries.isEmpty ? dragStartRowGeometries : rowGeometries
+        if baseRows.isEmpty { return targetRowId ?? rows.first?.id ?? "__pool__" }
 
         let liveRows: [(rowId: String, frame: CGRect)] = baseRows.map {
             ($0.rowId, $0.frame.offsetBy(dx: 0, dy: -scrollDelta))
@@ -553,7 +555,7 @@ struct TierListBoardView: View {
         // 4. Ближайшая строка по центру
         return liveRows.min(by: { rowA, rowB in
             abs(rowA.frame.midY - windowPoint.y) < abs(rowB.frame.midY - windowPoint.y)
-        })?.rowId
+        })?.rowId ?? targetRowId ?? rows.first?.id ?? "__pool__"
     }
 
     private func findTargetIndex(in rowId: String, at windowPoint: CGPoint, scrollDelta: CGFloat) -> Int {
@@ -594,21 +596,93 @@ struct TierListBoardView: View {
     }
 }
 
+// MARK: - Компактная неленивая обёрточная раскладка карточек тир-листа
+
+/// Гарантирует сохранение всех карточек в иерархии View при глубоком автоскролле
+/// и предотвращает удаление UIViewRepresentable / жестов UIKit.
+private struct TierFlowLayout: Layout {
+    var horizontalSpacing: CGFloat = 6
+    var verticalSpacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? 320
+        guard !subviews.isEmpty else {
+            return CGSize(width: maxWidth, height: 98)
+        }
+
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            if currentX + size.width > maxWidth && currentX > 0 {
+                currentX = 0
+                currentY += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            currentX += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+
+        return CGSize(width: maxWidth, height: max(98, currentY + rowHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+            if currentX + size.width > bounds.maxX && currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                proposal: ProposedViewSize(size)
+            )
+            currentX += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
 // MARK: - Плавный аппаратный автоскролл экрана на базе CADisplayLink
+
+private final class TierListDisplayLinkProxy: NSObject {
+    private weak var target: TierListAutoScroller?
+
+    init(target: TierListAutoScroller) {
+        self.target = target
+        super.init()
+    }
+
+    @objc func handleTick(_ link: CADisplayLink) {
+        target?.handleDisplayLink(link)
+    }
+}
 
 final class TierListAutoScroller {
     private weak var scrollView: UIScrollView?
     private var displayLink: CADisplayLink?
+    private var proxy: TierListDisplayLinkProxy?
     private var touchPointInWindow: CGPoint = .zero
     private weak var window: UIWindow?
     private var onTick: (() -> Void)?
 
     func start(scrollView: UIScrollView, onTick: @escaping () -> Void) {
+        stop()
         self.scrollView = scrollView
         self.onTick = onTick
-        stop()
 
-        let link = CADisplayLink(target: self, selector: #selector(handleDisplayLink(_:)))
+        let proxy = TierListDisplayLinkProxy(target: self)
+        self.proxy = proxy
+        let link = CADisplayLink(target: proxy, selector: #selector(TierListDisplayLinkProxy.handleTick(_:)))
         link.add(to: .main, forMode: .common)
         self.displayLink = link
     }
@@ -623,13 +697,14 @@ final class TierListAutoScroller {
     func stop() {
         displayLink?.invalidate()
         displayLink = nil
+        proxy = nil
         scrollView = nil
         window = nil
         onTick = nil
         touchPointInWindow = .zero
     }
 
-    @objc private func handleDisplayLink(_ link: CADisplayLink) {
+    func handleDisplayLink(_ link: CADisplayLink) {
         guard let scrollView = scrollView, touchPointInWindow != .zero else { return }
         guard let window = window ?? scrollView.window else { return }
 
@@ -856,6 +931,11 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             if gestureRecognizer.state == .began || gestureRecognizer.state == .changed {
                 return false
             }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            // Наш жест перетаскивания карточки тир-листа всегда имеет наивысший приоритет над жестами навигации и свайпов
             return true
         }
     }
