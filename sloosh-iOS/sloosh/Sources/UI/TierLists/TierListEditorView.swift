@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Редактор тир-листа: системный навбар («Готово»), доска уровней с drag&drop
-/// и быстрым тапом для распределения, плавающая кнопка добавления фильмов.
+/// и быстрым тапом для распределения, карточки в стиле Apple Design.
 struct TierListEditorView: View {
     let draft: TierList
     var onPublished: (TierList) -> Void
@@ -66,11 +66,15 @@ struct TierListEditorView: View {
                 rowEditSheet(box: box)
             }
             .confirmationDialog(
-                tappedItem?.title ?? "",
+                tappedItem?.title ?? "Действия с фильмом",
                 isPresented: Binding(get: { tappedItem != nil }, set: { if !$0 { tappedItem = nil } }),
                 titleVisibility: .visible
             ) {
                 itemActionsDialog
+            } message: {
+                if let item = tappedItem {
+                    Text(currentLocationDescription(for: item))
+                }
             }
     }
 
@@ -81,56 +85,188 @@ struct TierListEditorView: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    TextField("Название", text: $title)
-                        .font(.title2.weight(.bold))
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .id("__top__")
+                    headerInputSection
 
-                    TextField("Описание (необязательно)", text: $subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
+                    boardSection(scrollProxy: scrollProxy)
 
-                    TierListBoardView(
-                        mode: .edit,
-                        rows: $rows,
-                        unranked: $unranked,
-                        isDraggingActive: $isDraggingCard,
-                        onTapItem: { item in tappedItem = item },
-                        onTapRow: { row in editingRow = row },
-                        onAddMovies: { showAddSheet = true },
-                        onScrollRequest: { targetId in
-                            withAnimation(.easeInOut(duration: 0.28)) {
-                                scrollProxy.scrollTo(targetId, anchor: .center)
-                            }
-                        }
-                    )
-                    .padding(.top, 4)
+                    addRowButton
 
-                    Button {
-                        rows.append(TierRow(
-                            id: UUID().uuidString,
-                            label: "",
-                            colorHex: TierRowPalette.colors[rows.count % TierRowPalette.colors.count].hex,
-                            items: []
-                        ))
-                    } label: {
-                        Label("Добавить уровень", systemImage: "plus")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .padding(.horizontal, 16)
-
-                    Text("Зажмите фильм на 0.2 сек для перетаскивания. Тап — меню действий.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 16)
+                    editorFooterHint
                 }
             }
             .scrollDisabled(isDraggingCard)
         }
+    }
+
+    @ViewBuilder
+    private var headerInputSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("Название тир-листа", text: $title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.primary)
+                .textInputAutocapitalization(.sentences)
+                .submitLabel(.next)
+
+            Divider()
+                .opacity(0.35)
+
+            TextField("Описание (необязательно)", text: $subtitle, axis: .vertical)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1...3)
+                .textInputAutocapitalization(.sentences)
+                .submitLabel(.done)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(UIColor.secondarySystemGroupedBackground).opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .id("__top__")
+    }
+
+    @ViewBuilder
+    private func boardSection(scrollProxy: ScrollViewProxy) -> some View {
+        TierListBoardView(
+            mode: .edit,
+            rows: $rows,
+            unranked: $unranked,
+            isDraggingActive: $isDraggingCard,
+            onTapItem: { item in tappedItem = item },
+            onTapRow: { row in editingRow = row },
+            onAddMovies: { showAddSheet = true },
+            onScrollRequest: { targetId in
+                withAnimation(.easeInOut(duration: 0.28)) {
+                    scrollProxy.scrollTo(targetId, anchor: .center)
+                }
+            }
+        )
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private var addRowButton: some View {
+        Button {
+            addNewRow()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                Text("Добавить уровень")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemGroupedBackground).opacity(0.65))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+    }
+
+    @ViewBuilder
+    private var editorFooterHint: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+                .font(.footnote)
+            Text("Зажмите карточку для переноса. Тап — быстрое меню действий.")
+                .font(.footnote)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
+    }
+
+    // MARK: - Диалог действий с фильмом
+
+    @ViewBuilder
+    private var itemActionsDialog: some View {
+        if let item = tappedItem {
+            itemReorderActions(for: item)
+            itemTierMoveActions(for: item)
+            itemGeneralActions(for: item)
+        }
+        Button("Отмена", role: .cancel) {
+            tappedItem = nil
+        }
+    }
+
+    @ViewBuilder
+    private func itemReorderActions(for item: TierListItem) -> some View {
+        if canMoveLeft(item) {
+            Button("Сдвинуть влево") {
+                moveItemLeft(item)
+                tappedItem = nil
+            }
+        }
+        if canMoveRight(item) {
+            Button("Сдвинуть вправо") {
+                moveItemRight(item)
+                tappedItem = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func itemTierMoveActions(for item: TierListItem) -> some View {
+        ForEach(rows) { row in
+            let isCurrentRow = row.items.contains(where: { $0.mediaId == item.mediaId })
+            if !isCurrentRow {
+                let trimmed = row.label.trimmingCharacters(in: .whitespaces)
+                let rowTitle = trimmed.isEmpty ? "Без названия" : trimmed
+                Button("В уровень «\(rowTitle)»") {
+                    moveItem(item, toRowId: row.id)
+                    tappedItem = nil
+                }
+            }
+        }
+        let isInPool = unranked.contains(where: { $0.mediaId == item.mediaId })
+        if !isInPool {
+            Button("В «Не распределено»") {
+                moveItemToPool(item)
+                tappedItem = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func itemGeneralActions(for item: TierListItem) -> some View {
+        Button("Открыть фильм") {
+            openDetails(item)
+            tappedItem = nil
+        }
+        Button("Убрать из тир-листа", role: .destructive) {
+            removeItem(item)
+            tappedItem = nil
+        }
+    }
+
+    private func currentLocationDescription(for item: TierListItem) -> String {
+        for row in rows {
+            if row.items.contains(where: { $0.mediaId == item.mediaId }) {
+                let trimmed = row.label.trimmingCharacters(in: .whitespaces)
+                let name = trimmed.isEmpty ? "Без названия" : trimmed
+                return "Текущий уровень: «\(name)»"
+            }
+        }
+        if unranked.contains(where: { $0.mediaId == item.mediaId }) {
+            return "Текущий уровень: «Не распределено»"
+        }
+        return ""
     }
 
     // MARK: - Диалоги и шторки
@@ -163,37 +299,6 @@ struct TierListEditorView: View {
         )
     }
 
-    @ViewBuilder
-    private var itemActionsDialog: some View {
-        if let item = tappedItem {
-            ForEach(rows) { row in
-                let isCurrentRow = row.items.contains(where: { $0.mediaId == item.mediaId })
-                if !isCurrentRow {
-                    Button("В уровень «\(row.label)»") {
-                        moveItem(item, toRowId: row.id)
-                        tappedItem = nil
-                    }
-                }
-            }
-            let isInPool = unranked.contains(where: { $0.mediaId == item.mediaId })
-            if !isInPool {
-                Button("В «Не распределено»") {
-                    moveItemToPool(item)
-                    tappedItem = nil
-                }
-            }
-            Button("Открыть фильм") {
-                openDetails(item)
-                tappedItem = nil
-            }
-            Button("Убрать из тир-листа", role: .destructive) {
-                removeItem(item)
-                tappedItem = nil
-            }
-        }
-        Button("Отмена", role: .cancel) { tappedItem = nil }
-    }
-
     // MARK: - Публикация
 
     @ViewBuilder
@@ -204,7 +309,8 @@ struct TierListEditorView: View {
                     TextField("Например: Все фильмы MCU — мой вердикт", text: $title)
                 }
                 Section("Описание") {
-                    TextField("Пара слов (необязательно)", text: $subtitle)
+                    TextField("Пара слов (необязательно)", text: $subtitle, axis: .vertical)
+                        .lineLimit(1...4)
                 }
                 if let error = publishError {
                     Section {
@@ -233,6 +339,14 @@ struct TierListEditorView: View {
                     Button("Отмена") { showPublishField = false }
                         .foregroundStyle(.primary)
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Опубликовать") {
+                        Task { await publish() }
+                    }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.slooshAccent)
+                    .disabled(isPublishing || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
         }
     }
@@ -255,7 +369,65 @@ struct TierListEditorView: View {
         isPublishing = false
     }
 
-    // MARK: - Перемещение и черновик
+    // MARK: - Перемещение и действия
+
+    private func canMoveLeft(_ item: TierListItem) -> Bool {
+        for row in rows {
+            if let index = row.items.firstIndex(where: { $0.mediaId == item.mediaId }) {
+                return index > 0
+            }
+        }
+        if let index = unranked.firstIndex(where: { $0.mediaId == item.mediaId }) {
+            return index > 0
+        }
+        return false
+    }
+
+    private func canMoveRight(_ item: TierListItem) -> Bool {
+        for row in rows {
+            if let index = row.items.firstIndex(where: { $0.mediaId == item.mediaId }) {
+                return index < row.items.count - 1
+            }
+        }
+        if let index = unranked.firstIndex(where: { $0.mediaId == item.mediaId }) {
+            return index < unranked.count - 1
+        }
+        return false
+    }
+
+    private func moveItemLeft(_ item: TierListItem) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            for rowIndex in rows.indices {
+                if let itemIndex = rows[rowIndex].items.firstIndex(where: { $0.mediaId == item.mediaId }), itemIndex > 0 {
+                    rows[rowIndex].items.swapAt(itemIndex, itemIndex - 1)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    return
+                }
+            }
+            if let itemIndex = unranked.firstIndex(where: { $0.mediaId == item.mediaId }), itemIndex > 0 {
+                unranked.swapAt(itemIndex, itemIndex - 1)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
+    }
+
+    private func moveItemRight(_ item: TierListItem) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            for rowIndex in rows.indices {
+                if let itemIndex = rows[rowIndex].items.firstIndex(where: { $0.mediaId == item.mediaId }),
+                   itemIndex < rows[rowIndex].items.count - 1 {
+                    rows[rowIndex].items.swapAt(itemIndex, itemIndex + 1)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    return
+                }
+            }
+            if let itemIndex = unranked.firstIndex(where: { $0.mediaId == item.mediaId }),
+               itemIndex < unranked.count - 1 {
+                unranked.swapAt(itemIndex, itemIndex + 1)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
+    }
 
     private func moveItem(_ item: TierListItem, toRowId: String) {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -286,6 +458,31 @@ struct TierListEditorView: View {
             unranked.removeAll { $0.mediaId == item.mediaId }
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func addNewRow() {
+        let label = suggestNextRowLabel()
+        let color = TierRowPalette.colors[rows.count % TierRowPalette.colors.count].hex
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            rows.append(TierRow(
+                id: UUID().uuidString,
+                label: label,
+                colorHex: color,
+                items: []
+            ))
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func suggestNextRowLabel() -> String {
+        let candidates = ["S", "A", "B", "C", "D", "E", "F"]
+        let existing = Set(rows.map { $0.label.trimmingCharacters(in: .whitespaces).uppercased() })
+        for candidate in candidates {
+            if !existing.contains(candidate) {
+                return candidate
+            }
+        }
+        return "Tier \(rows.count + 1)"
     }
 
     private func scheduleAutosave() {
@@ -401,6 +598,10 @@ struct TierRowEditSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .tint(.primary)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Отмена") { dismiss() }
+                        .foregroundStyle(.primary)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Сохранить") {
                         onSave(TierRow(id: row.id, label: label.isEmpty ? row.label : label, colorHex: colorHex, items: row.items), false, 0)

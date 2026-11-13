@@ -32,7 +32,8 @@ struct BoardItemGeometryKey: PreferenceKey {
 /// Полное разделение скролла и переноса:
 /// - Обычный свайп: мгновенный свободный скролл страницы по постерам.
 /// - Удержание 0.22 сек: тактильный щелчок, подъём карточки, полная заморозка скролла.
-/// - Никаких наклонов (0°), никаких пропадающих слотов и пустот.
+/// - Строго 0° наклон (никаких раскачиваний), никаких зависаний в воздухе.
+/// - Защита от застревания в навбаре и у краев экрана с мягкой привязкой к верхнему уровню.
 struct TierListBoardView: View {
     enum Mode { case edit, view }
 
@@ -151,7 +152,7 @@ struct TierListBoardView: View {
         )
     }
 
-    // MARK: - Глянцевый бейдж уровня
+    // MARK: - Бейдж уровня (Apple Design)
 
     private func chip(row: TierRow) -> some View {
         let tierColor = Color(UIColor(hex: row.colorHex) ?? .systemGray)
@@ -164,36 +165,21 @@ struct TierListBoardView: View {
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tierColor, tierColor.opacity(0.82)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(tierColor)
 
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.24), Color.clear],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    )
-
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                    .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
 
                 Text(row.label)
                     .font(.system(size: 20, weight: .heavy, design: .default))
                     .foregroundStyle(.white)
-                    .shadow(color: Color.black.opacity(0.35), radius: 2, y: 1.5)
                     .minimumScaleFactor(0.35)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 4)
             }
             .frame(width: chipWidth, height: posterHeight)
+            .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
         }
         .buttonStyle(.plain)
         .disabled(mode != .edit)
@@ -205,7 +191,9 @@ struct TierListBoardView: View {
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
             if items.isEmpty {
-                emptyRowPlaceholder(isPool: rowId == "__pool__")
+                Color.clear
+                    .frame(maxWidth: .infinity, minHeight: posterHeight)
+                    .contentShape(Rectangle())
             } else {
                 ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
                     itemCell(item: item, sourceRowId: rowId, index: index)
@@ -215,7 +203,7 @@ struct TierListBoardView: View {
         .frame(maxWidth: .infinity, minHeight: posterHeight, alignment: .topLeading)
     }
 
-    // MARK: - Ячейка постера (без удаления из сетки во время перетаскивания — никакой пустоты!)
+    // MARK: - Ячейка постера
 
     @ViewBuilder
     private func itemCell(item: TierListItem, sourceRowId: String, index: Int) -> some View {
@@ -255,6 +243,9 @@ struct TierListBoardView: View {
                         },
                         onDrop: {
                             commitMove()
+                        },
+                        onCancel: {
+                            cancelDrag()
                         }
                     )
                 )
@@ -293,28 +284,9 @@ struct TierListBoardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(isLifted ? Color.white.opacity(0.4) : Color.white.opacity(0.1), lineWidth: isLifted ? 1.0 : 0.5)
+                .strokeBorder(isLifted ? Color.white.opacity(0.35) : Color.white.opacity(0.08), lineWidth: isLifted ? 1.0 : 0.5)
         )
-        .shadow(color: Color.black.opacity(isLifted ? 0.5 : 0.2), radius: isLifted ? 16 : 3, y: isLifted ? 10 : 1.5)
-    }
-
-    // MARK: - Заглушка пустой строки
-
-    @ViewBuilder
-    private func emptyRowPlaceholder(isPool: Bool) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: isPool ? "tray" : "plus.circle")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.tertiary)
-            Text(isPool ? "Здесь будут новые фильмы" : (mode == .edit ? "Перетащите фильм сюда" : "Нет фильмов"))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, minHeight: posterHeight)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-        )
+        .shadow(color: Color.black.opacity(isLifted ? 0.3 : 0.12), radius: isLifted ? 12 : 2, y: isLifted ? 6 : 1)
     }
 
     // MARK: - Пул «Не распределено»
@@ -377,16 +349,17 @@ struct TierListBoardView: View {
                 HStack(alignment: .top, spacing: 10) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(UIColor.tertiarySystemFill))
+                            .fill(Color(UIColor.secondarySystemFill))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
                             )
                         Text("?")
-                            .font(.system(size: 21, weight: .heavy))
+                            .font(.system(size: 20, weight: .heavy, design: .default))
                             .foregroundStyle(.secondary)
                     }
                     .frame(width: chipWidth, height: posterHeight)
+                    .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)
 
                     itemsGrid(rowId: "__pool__", items: unranked)
                 }
@@ -416,14 +389,13 @@ struct TierListBoardView: View {
         }
     }
 
-    // MARK: - Поднятая карточка под пальцем (Overlay) — строго вертикальная (0° наклон!)
+    // MARK: - Поднятая карточка под пальцем (Overlay) — строго 0° наклон (без раскачиваний)
 
     @ViewBuilder
     private var draggedCardOverlay: some View {
         if isDragging, let item = activeDraggedItem {
             itemCard(item: item, isLifted: true)
                 .scaleEffect(1.05)
-                .shadow(color: Color.black.opacity(0.5), radius: 18, x: 0, y: 10)
                 .position(x: dragLocation.x, y: dragLocation.y)
                 .transition(.identity)
                 .zIndex(999)
@@ -452,20 +424,40 @@ struct TierListBoardView: View {
     }
 
     private func handleDragMoved(windowPoint: CGPoint) {
+        guard isDragging, activeDraggedItem != nil else { return }
+
         let localPoint = CGPoint(
             x: windowPoint.x - boardGlobalFrame.minX,
             y: windowPoint.y - boardGlobalFrame.minY
         )
         dragLocation = localPoint
-        guard let dragged = activeDraggedItem else { return }
 
-        // 1. Находим целевую строку
+        // 1. Проверка границ: если палец ушёл в верхний навбар (высота статус-бара + навбара ~ 96-104pt)
+        let topBarThreshold: CGFloat = 100
+        if windowPoint.y <= topBarThreshold {
+            snapToTopRowAndCommit()
+            return
+        }
+
+        // Если палец вылетел за боковые или нижние границы доски
+        if boardGlobalFrame != .zero {
+            let horizontalMargin: CGFloat = 60
+            let bottomMargin: CGFloat = 80
+            if windowPoint.x < (boardGlobalFrame.minX - horizontalMargin) ||
+               windowPoint.x > (boardGlobalFrame.maxX + horizontalMargin) ||
+               windowPoint.y > (boardGlobalFrame.maxY + bottomMargin) {
+                cancelDrag()
+                return
+            }
+        }
+
+        // 2. Находим целевую строку
         guard let newTargetRowId = findTargetRow(at: windowPoint) else { return }
 
-        // 2. Автоскролл экрана при подтягивании к краям
+        // 3. Автоскролл экрана при подтягивании к краям (между навбаром и верхними строками)
         checkAutoScroll(windowPoint: windowPoint)
 
-        // 3. Находим целевой индекс
+        // 4. Находим целевой индекс
         let newTargetIndex = findTargetIndex(in: newTargetRowId, at: windowPoint)
 
         if newTargetRowId != targetRowId || newTargetIndex != targetIndex {
@@ -489,8 +481,8 @@ struct TierListBoardView: View {
 
         let screenHeight = UIScreen.main.bounds.height
 
-        // Тянем вверх к верхнему краю экрана
-        if windowPoint.y < 160 {
+        // Тянем вверх к верхнему краю экрана (но ниже навбара)
+        if windowPoint.y < 160 && windowPoint.y > 100 {
             lastAutoScrollTime = Date()
             if currentIndex > 0 {
                 let previousRowId = allRowIds[currentIndex - 1]
@@ -512,18 +504,23 @@ struct TierListBoardView: View {
         }
     }
 
+    // MARK: - Привязка к верхнему уровню при выходе в навбар
+
+    private func snapToTopRowAndCommit() {
+        guard isDragging, activeDraggedItem != nil else { return }
+        let destinationRowId = rows.first?.id ?? draggedFromRowId ?? "__pool__"
+        targetRowId = destinationRowId
+        targetIndex = 0
+        commitMove()
+    }
+
     // MARK: - Фиксация перемещения на отпускание пальца
 
     private func commitMove() {
         guard let dragged = activeDraggedItem,
               let sourceRow = draggedFromRowId,
               let targetRow = targetRowId else {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
-                activeDraggedItem = nil
-                isDragging = false
-                isDraggingActive = false
-                highlightedRowId = nil
-            }
+            cancelDrag()
             return
         }
 
@@ -550,6 +547,23 @@ struct TierListBoardView: View {
             }
 
             activeDraggedItem = nil
+            draggedFromRowId = nil
+            targetRowId = nil
+            isDragging = false
+            isDraggingActive = false
+            highlightedRowId = nil
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    // MARK: - Безопасная отмена перетаскивания
+
+    private func cancelDrag() {
+        guard isDragging || activeDraggedItem != nil else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            activeDraggedItem = nil
+            draggedFromRowId = nil
+            targetRowId = nil
             isDragging = false
             isDraggingActive = false
             highlightedRowId = nil
@@ -615,18 +629,24 @@ struct TierListBoardView: View {
     }
 }
 
-// MARK: - UIKit Gesture Recognizer для безупречного скролла без блокировки родительского ScrollView
+// MARK: - UIKit Gesture Recognizer для безупречного скролла и безопасного переноса
 
 private struct InteractiveDragCardModifier: ViewModifier {
     let isEnabled: Bool
     let onLift: (CGPoint) -> Void
     let onMove: (CGPoint) -> Void
     let onDrop: () -> Void
+    let onCancel: () -> Void
 
     func body(content: Content) -> some View {
         if isEnabled {
             content.overlay(
-                InteractiveDragGestureRecognizer(onLift: onLift, onMove: onMove, onDrop: onDrop)
+                InteractiveDragGestureRecognizer(
+                    onLift: onLift,
+                    onMove: onMove,
+                    onDrop: onDrop,
+                    onCancel: onCancel
+                )
             )
         } else {
             content
@@ -638,6 +658,7 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
     var onLift: (CGPoint) -> Void
     var onMove: (CGPoint) -> Void
     var onDrop: () -> Void
+    var onCancel: () -> Void
 
     func makeUIView(context: Context) -> UIView {
         let view = TouchForwardingView()
@@ -653,6 +674,11 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         recognizer.delegate = context.coordinator
         view.addGestureRecognizer(recognizer)
 
+        context.coordinator.recognizer = recognizer
+        view.onDetached = { [weak coordinator = context.coordinator] in
+            coordinator?.handleViewDetached()
+        }
+
         return view
     }
 
@@ -660,38 +686,104 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         context.coordinator.onLift = onLift
         context.coordinator.onMove = onMove
         context.coordinator.onDrop = onDrop
+        context.coordinator.onCancel = onCancel
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onLift: onLift, onMove: onMove, onDrop: onDrop)
+        Coordinator(onLift: onLift, onMove: onMove, onDrop: onDrop, onCancel: onCancel)
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var onLift: (CGPoint) -> Void
         var onMove: (CGPoint) -> Void
         var onDrop: () -> Void
+        var onCancel: () -> Void
 
-        init(onLift: @escaping (CGPoint) -> Void, onMove: @escaping (CGPoint) -> Void, onDrop: @escaping () -> Void) {
+        weak var recognizer: UILongPressGestureRecognizer?
+        private weak var parentScrollView: UIScrollView?
+        private weak var cachedWindow: UIWindow?
+        private(set) var isDraggingActive = false
+
+        init(
+            onLift: @escaping (CGPoint) -> Void,
+            onMove: @escaping (CGPoint) -> Void,
+            onDrop: @escaping () -> Void,
+            onCancel: @escaping () -> Void
+        ) {
             self.onLift = onLift
             self.onMove = onMove
             self.onDrop = onDrop
+            self.onCancel = onCancel
+        }
+
+        func handleViewDetached() {
+            guard isDraggingActive else { return }
+            finishDrag(cancelled: true)
+        }
+
+        deinit {
+            if isDraggingActive {
+                let scroll = parentScrollView
+                let cancelBlock = onCancel
+                DispatchQueue.main.async {
+                    scroll?.panGestureRecognizer.isEnabled = true
+                    cancelBlock()
+                }
+            }
+        }
+
+        private func finishDrag(cancelled: Bool) {
+            guard isDraggingActive else { return }
+            isDraggingActive = false
+            parentScrollView?.panGestureRecognizer.isEnabled = true
+            if cancelled {
+                onCancel()
+            } else {
+                onDrop()
+            }
         }
 
         @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-            guard let window = gesture.view?.window else { return }
-            let windowPoint = gesture.location(in: window)
+            let activeWindow = gesture.view?.window ?? cachedWindow ?? UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow })
 
             switch gesture.state {
             case .began:
-                // Блокируем скролл родительского ScrollView на время перетаскивания карточки
-                gesture.view?.findParentScrollView()?.panGestureRecognizer.isEnabled = false
+                isDraggingActive = true
+                cachedWindow = gesture.view?.window
+                let scrollView = gesture.view?.findParentScrollView()
+                parentScrollView = scrollView
+                scrollView?.panGestureRecognizer.isEnabled = false
+
+                let windowPoint = activeWindow.map { gesture.location(in: $0) } ?? gesture.location(in: gesture.view)
                 onLift(windowPoint)
+
             case .changed:
+                guard isDraggingActive else { return }
+                guard let window = activeWindow else { return }
+                let windowPoint = gesture.location(in: window)
+
+                // Если палец вошёл в зону навбара — безопасно завершаем перенос
+                let navBarBottom = (window.safeAreaInsets.top > 0 ? window.safeAreaInsets.top : 44) + 44
+                if windowPoint.y <= navBarBottom {
+                    gesture.isEnabled = false
+                    gesture.isEnabled = true
+                    finishDrag(cancelled: false)
+                    return
+                }
+
                 onMove(windowPoint)
-            case .ended, .cancelled:
-                // Возобновляем скролл родительского ScrollView
-                gesture.view?.findParentScrollView()?.panGestureRecognizer.isEnabled = true
-                onDrop()
+
+            case .ended:
+                guard isDraggingActive else { return }
+                finishDrag(cancelled: false)
+
+            case .cancelled, .failed:
+                guard isDraggingActive else { return }
+                finishDrag(cancelled: true)
+
             default:
                 break
             }
@@ -709,6 +801,15 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
 }
 
 private final class TouchForwardingView: UIView {
+    var onDetached: (() -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            onDetached?()
+        }
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         return super.hitTest(point, with: event)
     }
