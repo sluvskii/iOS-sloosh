@@ -113,7 +113,7 @@ struct TierListEditorView: View {
                 .controlSize(.regular)
                 .padding(.horizontal, 16)
 
-                Text("Тап по фильму — быстро переместить по уровням. Тап по уровню — изменить название и цвет.")
+                Text("Зажмите и перетаскивайте фильмы по уровням. Тап по фильму — быстрое меню действий.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
