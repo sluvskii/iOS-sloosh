@@ -78,6 +78,7 @@ struct TierTargetPickerSheet: View {
                 }
             }
         }
+        .tint(.primary)
         .task {
             drafts = TierListsRepository.shared.loadDrafts()
             mine = await TierListsRepository.shared.fetchLists(forAuthorId: AuthRepository.shared.currentUser?.id ?? "")

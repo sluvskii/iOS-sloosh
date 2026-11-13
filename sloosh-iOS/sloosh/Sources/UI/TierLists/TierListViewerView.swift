@@ -26,6 +26,7 @@ struct TierListViewerView: View {
         scrollSection
             .navigationTitle(list?.title ?? "Тир-лист")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(.primary)
             .toolbar {
                 likeToolbarItem
                 menuToolbarItem
@@ -185,6 +186,7 @@ struct TierListViewerView: View {
                 }
             } label: {
                 Image(systemName: isLiked ? "heart.fill" : "heart")
+                    .foregroundStyle(isLiked ? .red : .primary)
             }
             .disabled(list == nil)
         }
@@ -197,6 +199,7 @@ struct TierListViewerView: View {
                 exportMenuItems
             } label: {
                 Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(.primary)
             }
             .disabled(list == nil)
         }

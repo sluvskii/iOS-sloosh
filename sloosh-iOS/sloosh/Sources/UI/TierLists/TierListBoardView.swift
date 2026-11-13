@@ -42,6 +42,7 @@ struct TierListBoardView: View {
             }
         }
         .padding(.horizontal, 12)
+        .tint(.primary)
     }
 
     // MARK: - Строка уровня
@@ -153,19 +154,12 @@ struct TierListBoardView: View {
                     Button {
                         onAddMovies?()
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Добавить")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color(UIColor.secondarySystemFill))
-                        .clipShape(Capsule())
+                        Label("Добавить", systemImage: "plus")
                     }
-                    .buttonStyle(.plain)
+                    .font(.caption.weight(.medium))
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
                 }
             }
             .padding(.horizontal, 4)

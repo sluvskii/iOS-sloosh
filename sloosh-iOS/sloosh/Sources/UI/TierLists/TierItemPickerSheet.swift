@@ -124,6 +124,7 @@ struct TierItemPickerSheet: View {
                 }
             }
         }
+        .tint(.primary)
         .task {
             await loadInitialData()
         }

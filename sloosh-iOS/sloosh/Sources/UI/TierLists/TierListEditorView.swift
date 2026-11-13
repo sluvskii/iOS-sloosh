@@ -70,30 +70,22 @@ struct TierListEditorView: View {
                         items: []
                     ))
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .bold))
-                        Text("Добавить уровень")
-                            .font(.subheadline.weight(.medium))
-                    }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color(UIColor.secondarySystemFill))
-                    .clipShape(Capsule())
+                    Label("Добавить уровень", systemImage: "plus")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
                 .padding(.horizontal, 16)
 
                 Text("Тап по фильму — быстро переместить по уровням. Тап по уровню — изменить название и цвет.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 60) // Запас под плавающую кнопку снизу
+                    .padding(.bottom, 16)
             }
         }
         .navigationTitle("Редактор")
         .navigationBarTitleDisplayMode(.inline)
+        .tint(.primary)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Готово") { showPublishField = true }
@@ -101,39 +93,6 @@ struct TierListEditorView: View {
                     .foregroundStyle(.primary)
                     .disabled(isPublishing)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                showAddSheet = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Добавить фильмы")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color(UIColor.separator).opacity(0.6), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.12), radius: 8, y: 3)
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(
-                LinearGradient(
-                    colors: [Color(UIColor.systemBackground).opacity(0), Color(UIColor.systemBackground)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-            )
         }
         .onDisappear { autosaveDraft() }
         .onChange(of: rows) { _, _ in scheduleAutosave() }
@@ -236,6 +195,7 @@ struct TierListEditorView: View {
             }
             .navigationTitle("Публикация")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(.primary)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Отмена") { showPublishField = false }
@@ -407,6 +367,7 @@ struct TierRowEditSheet: View {
             }
             .navigationTitle("Уровень")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(.primary)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Сохранить") {
