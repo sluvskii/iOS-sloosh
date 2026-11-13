@@ -201,16 +201,14 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
-        Group {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
             if items.isEmpty {
                 Color.clear
                     .frame(maxWidth: .infinity, minHeight: posterHeight)
                     .contentShape(Rectangle())
             } else {
-                FlowLayout(spacing: 6) {
-                    ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
-                        itemCell(item: item, sourceRowId: rowId, index: index)
-                    }
+                ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
+                    itemCell(item: item, sourceRowId: rowId, index: index)
                 }
             }
         }
@@ -532,12 +530,12 @@ struct TierListBoardView: View {
         if baseRows.isEmpty { return nil }
 
         let liveRows: [(rowId: String, frame: CGRect)] = baseRows.map {
-            (rowId: $0.rowId, frame: $0.frame.offsetBy(dx: 0, dy: -scrollDelta))
+            ($0.rowId, $0.frame.offsetBy(dx: 0, dy: -scrollDelta))
         }
 
         // 1. Точное попадание в строку
-        if let exact = liveRows.first(where: {
-            windowPoint.y >= ($0.frame.minY - 8) && windowPoint.y <= ($0.frame.maxY + 8)
+        if let exact = liveRows.first(where: { row in
+            windowPoint.y >= (row.frame.minY - 8.0) && windowPoint.y <= (row.frame.maxY + 8.0)
         }) {
             return exact.rowId
         }
@@ -553,34 +551,36 @@ struct TierListBoardView: View {
         }
 
         // 4. Ближайшая строка по центру
-        return liveRows.min(by: { abs($0.frame.midY - windowPoint.y) < abs($1.frame.midY - windowPoint.y) })?.rowId
+        return liveRows.min(by: { rowA, rowB in
+            abs(rowA.frame.midY - windowPoint.y) < abs(rowB.frame.midY - windowPoint.y)
+        })?.rowId
     }
 
     private func findTargetIndex(in rowId: String, at windowPoint: CGPoint, scrollDelta: CGFloat) -> Int {
         let baseItems = dragStartItemGeometries.isEmpty ? itemGeometries : dragStartItemGeometries
-        let items = baseItems
-            .filter { $0.rowId == rowId && $0.mediaId != activeDraggedItem?.mediaId }
-            .map { (mediaId: $0.mediaId, frame: $0.frame.offsetBy(dx: 0, dy: -scrollDelta)) }
-            .sorted {
-                if abs($0.frame.midY - $1.frame.midY) > 20 {
-                    return $0.frame.midY < $1.frame.midY
+        let filteredItems = baseItems.filter { $0.rowId == rowId && $0.mediaId != activeDraggedItem?.mediaId }
+        let liveItems: [CGRect] = filteredItems
+            .map { $0.frame.offsetBy(dx: 0, dy: -scrollDelta) }
+            .sorted { frameA, frameB in
+                if abs(frameA.midY - frameB.midY) > 20.0 {
+                    return frameA.midY < frameB.midY
                 }
-                return $0.frame.midX < $1.frame.midX
+                return frameA.midX < frameB.midX
             }
 
-        if items.isEmpty { return 0 }
+        if liveItems.isEmpty { return 0 }
 
-        for (idx, item) in items.enumerated() {
-            if windowPoint.y < (item.frame.minY - 4) {
+        for (idx, itemFrame) in liveItems.enumerated() {
+            if windowPoint.y < (itemFrame.minY - 4.0) {
                 return idx
             }
-            if windowPoint.y <= (item.frame.maxY + 10) {
-                if windowPoint.x < item.frame.midX {
+            if windowPoint.y <= (itemFrame.maxY + 10.0) {
+                if windowPoint.x < itemFrame.midX {
                     return idx
                 }
             }
         }
-        return items.count
+        return liveItems.count
     }
 
     private func currentIndex(for mediaId: String, in rowId: String) -> Int? {
@@ -591,58 +591,6 @@ struct TierListBoardView: View {
             return row.items.firstIndex(where: { $0.mediaId == mediaId })
         }
         return nil
-    }
-}
-
-// MARK: - Компактная неленивая обёрточная раскладка карточек
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxAvailableWidth = proposal.width ?? 0
-        guard maxAvailableWidth > 0, !subviews.isEmpty else {
-            return .zero
-        }
-
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > maxAvailableWidth && currentX > 0 {
-                currentX = 0
-                currentY += rowHeight + spacing
-                rowHeight = 0
-            }
-            currentX += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: maxAvailableWidth, height: currentY + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard bounds.width > 0, !subviews.isEmpty else { return }
-
-        var currentX = bounds.minX
-        var currentY = bounds.minY
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > bounds.maxX && currentX > bounds.minX {
-                currentX = bounds.minX
-                currentY += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(
-                at: CGPoint(x: currentX, y: currentY),
-                proposal: ProposedViewSize(size)
-            )
-            currentX += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
     }
 }
 
@@ -686,42 +634,43 @@ final class TierListAutoScroller {
         guard let window = window ?? scrollView.window else { return }
 
         let windowBounds = window.bounds
-        let safeTop = window.safeAreaInsets.top
-        let safeBottom = window.safeAreaInsets.bottom
+        let safeTop: CGFloat = window.safeAreaInsets.top
+        let safeBottom: CGFloat = window.safeAreaInsets.bottom
 
         // Верхний порог автоскролла: навигационная панель (~ safeTop + 44)
-        let topBarThreshold = max(safeTop + 44, 90)
-        let topAutoScrollZone = topBarThreshold + 110
+        let topBarThreshold: CGFloat = max(safeTop + 44.0, 90.0)
+        let topAutoScrollZone: CGFloat = topBarThreshold + 110.0
 
         // Нижний порог автоскролла: таб-бар / безопасная зона (~ height - safeBottom - 20)
-        let bottomBarThreshold = max(windowBounds.height - safeBottom - 20, 200)
-        let bottomAutoScrollZone = bottomBarThreshold - 110
+        let bottomBarThreshold: CGFloat = max(windowBounds.height - safeBottom - 20.0, 200.0)
+        let bottomAutoScrollZone: CGFloat = bottomBarThreshold - 110.0
 
         let touchY = touchPointInWindow.y
-        var velocity: CGFloat = 0
+        var velocity: CGFloat = 0.0
 
         if touchY < topAutoScrollZone {
             // Тянем вверх к шапке — плавное ускорение по мере приближения к верхнему краю
-            let distance = topAutoScrollZone - touchY
-            let progress = min(1.0, max(0.0, distance / 110))
-            velocity = -(120 + 480 * progress)
+            let distance: CGFloat = topAutoScrollZone - touchY
+            let progress: CGFloat = min(1.0, max(0.0, distance / 110.0))
+            velocity = -(120.0 + 480.0 * progress)
         } else if touchY > bottomAutoScrollZone {
             // Тянем вниз к низу экрана — плавное ускорение по мере приближения к нижнему краю
-            let distance = touchY - bottomAutoScrollZone
-            let progress = min(1.0, max(0.0, distance / 110))
-            velocity = (120 + 480 * progress)
+            let distance: CGFloat = touchY - bottomAutoScrollZone
+            let progress: CGFloat = min(1.0, max(0.0, distance / 110.0))
+            velocity = (120.0 + 480.0 * progress)
         }
 
-        guard velocity != 0 else { return }
+        guard velocity != 0.0 else { return }
 
-        let dt = min(max(link.targetTimestamp - link.timestamp, 1.0 / 120.0), 1.0 / 30.0)
-        let step = velocity * CGFloat(dt)
+        let rawDt: Double = link.targetTimestamp - link.timestamp
+        let clampedDt: Double = min(max(rawDt, 1.0 / 120.0), 1.0 / 30.0)
+        let step: CGFloat = velocity * CGFloat(clampedDt)
 
-        let minOffset = -scrollView.adjustedContentInset.top
-        let maxOffset = max(minOffset, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
+        let minOffset: CGFloat = -scrollView.adjustedContentInset.top
+        let maxOffset: CGFloat = max(minOffset, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
 
-        let currentOffset = scrollView.contentOffset.y
-        let newOffset = min(max(currentOffset + step, minOffset), maxOffset)
+        let currentOffset: CGFloat = scrollView.contentOffset.y
+        let newOffset: CGFloat = min(max(currentOffset + step, minOffset), maxOffset)
 
         if abs(newOffset - currentOffset) > 0.1 {
             scrollView.contentOffset.y = newOffset
