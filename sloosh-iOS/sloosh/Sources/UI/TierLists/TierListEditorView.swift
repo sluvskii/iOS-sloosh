@@ -77,47 +77,55 @@ struct TierListEditorView: View {
 
     @ViewBuilder
     private var editorContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                TextField("Название", text: $title)
-                    .font(.title2.weight(.bold))
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    TextField("Название", text: $title)
+                        .font(.title2.weight(.bold))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .id("__top__")
+
+                    TextField("Описание (необязательно)", text: $subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+
+                    TierListBoardView(
+                        mode: .edit,
+                        rows: $rows,
+                        unranked: $unranked,
+                        onTapItem: { item in tappedItem = item },
+                        onTapRow: { row in editingRow = row },
+                        onAddMovies: { showAddSheet = true },
+                        onScrollRequest: { targetId in
+                            withAnimation(.easeInOut(duration: 0.28)) {
+                                scrollProxy.scrollTo(targetId, anchor: .center)
+                            }
+                        }
+                    )
+                    .padding(.top, 4)
+
+                    Button {
+                        rows.append(TierRow(
+                            id: UUID().uuidString,
+                            label: "",
+                            colorHex: TierRowPalette.colors[rows.count % TierRowPalette.colors.count].hex,
+                            items: []
+                        ))
+                    } label: {
+                        Label("Добавить уровень", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
 
-                TextField("Описание (необязательно)", text: $subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 16)
-
-                TierListBoardView(
-                    mode: .edit,
-                    rows: $rows,
-                    unranked: $unranked,
-                    onTapItem: { item in tappedItem = item },
-                    onTapRow: { row in editingRow = row },
-                    onAddMovies: { showAddSheet = true }
-                )
-                .padding(.top, 4)
-
-                Button {
-                    rows.append(TierRow(
-                        id: UUID().uuidString,
-                        label: "",
-                        colorHex: TierRowPalette.colors[rows.count % TierRowPalette.colors.count].hex,
-                        items: []
-                    ))
-                } label: {
-                    Label("Добавить уровень", systemImage: "plus")
+                    Text("Зажмите фильм на 0.2 сек для перетаскивания. Тап — меню действий.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 16)
-
-                Text("Зажмите и перетаскивайте фильмы по уровням. Тап по фильму — быстрое меню действий.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
             }
         }
     }

@@ -27,9 +27,22 @@ struct BoardItemGeometryKey: PreferenceKey {
     }
 }
 
+/// Виртуальный слот в сетке строки тир-листа
+enum GridSlot: Identifiable, Equatable {
+    case item(TierListItem)
+    case placeholder
+
+    var id: String {
+        switch self {
+        case .item(let item): return item.mediaId
+        case .placeholder: return "__drag_placeholder__"
+        }
+    }
+}
+
 /// Флагманская доска тир-листа в стиле Apple TV+ / Liquid Glass.
-/// Поддерживает плавное физическое перетаскивание карточек с динамической подстройкой
-/// соседних постеров (пружинный сдвиг), тактильной отдачей и быстрым тапом для меню.
+/// Полностью стабильное перемещение без застреваний, автоскролл экрана при подтягивании к краям,
+/// строго вертикальная карточка (без наклонов), свободный скролл страницы пальцем по постерам.
 struct TierListBoardView: View {
     enum Mode { case edit, view }
 
@@ -40,19 +53,24 @@ struct TierListBoardView: View {
     var onTapRow: ((TierRow) -> Void)?
     var onAddMovies: (() -> Void)?
     var onOpenDetails: ((TierListItem) -> Void)?
+    var onScrollRequest: ((String) -> Void)?
 
-    // MARK: - Состояние интерактивного перетаскивания
+    // MARK: - Состояние перетаскивания
 
     @State private var rowGeometries: [BoardRowGeometry] = []
     @State private var itemGeometries: [BoardItemGeometry] = []
-    @State private var draggedItem: TierListItem?
+    @State private var activeDraggedItem: TierListItem?
+    @State private var draggedFromRowId: String?
+    @State private var targetRowId: String?
+    @State private var targetIndex: Int = 0
     @State private var dragLocation: CGPoint = .zero
     @State private var isDragging = false
     @State private var highlightedRowId: String?
+    @State private var lastAutoScrollTime = Date.distantPast
 
     private let coordinateSpaceName = "TierBoardCoordinateSpace"
 
-    // Мобильные пропорции 2:3 (Apple TV постера)
+    // Мобильные пропорции 2:3
     private let posterWidth: CGFloat = 66
     private let posterHeight: CGFloat = 98
     private let chipWidth: CGFloat = 52
@@ -102,6 +120,7 @@ struct TierListBoardView: View {
                     lineWidth: highlightedRowId == row.wrappedValue.id ? 1.5 : 0.5
                 )
         )
+        .id(row.wrappedValue.id)
         .background(
             GeometryReader { geo in
                 Color.clear.preference(
@@ -124,7 +143,6 @@ struct TierListBoardView: View {
             }
         } label: {
             ZStack {
-                // Градиентная основа
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -134,7 +152,6 @@ struct TierListBoardView: View {
                         )
                     )
 
-                // Глянцевый блик сверху
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -144,11 +161,9 @@ struct TierListBoardView: View {
                         )
                     )
 
-                // Внутренняя кайма
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
 
-                // Название уровня
                 Text(row.label)
                     .font(.system(size: 20, weight: .heavy, design: .default))
                     .foregroundStyle(.white)
@@ -168,61 +183,93 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
+        let rowSlots = computeSlots(for: rowId, items: items)
+
         LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
-            if items.isEmpty {
+            if rowSlots.isEmpty {
                 emptyRowPlaceholder(isPool: rowId == "__pool__")
             } else {
-                ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
-                    itemCell(item: item, sourceRowId: rowId, index: index)
+                ForEach(Array(rowSlots.enumerated()), id: \.element.id) { index, slot in
+                    switch slot {
+                    case .item(let item):
+                        itemCell(item: item, sourceRowId: rowId, index: index)
+                    case .placeholder:
+                        placeholderSlot
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, minHeight: posterHeight, alignment: .topLeading)
     }
 
+    // MARK: - Вычисление слотов без разрушения исходной модели во время жеста
+
+    private func computeSlots(for rowId: String, items: [TierListItem]) -> [GridSlot] {
+        var result: [GridSlot] = items
+            .filter { $0.mediaId != activeDraggedItem?.mediaId }
+            .map { .item($0) }
+
+        if isDragging, targetRowId == rowId {
+            let safeIndex = max(0, min(targetIndex, result.count))
+            result.insert(.placeholder, at: safeIndex)
+        }
+
+        return result
+    }
+
     // MARK: - Ячейка постера
 
     @ViewBuilder
     private func itemCell(item: TierListItem, sourceRowId: String, index: Int) -> some View {
-        let isCurrentDragged = isDragging && draggedItem?.mediaId == item.mediaId
+        let card = itemCard(item: item, isLifted: false)
+            .frame(width: posterWidth, height: posterHeight)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(
+                        key: BoardItemGeometryKey.self,
+                        value: [BoardItemGeometry(
+                            mediaId: item.mediaId,
+                            rowId: sourceRowId,
+                            index: index,
+                            frame: geo.frame(in: .named(coordinateSpaceName))
+                        )]
+                    )
+                }
+            )
+            .contentShape(Rectangle())
 
-        let content = ZStack {
-            if isCurrentDragged {
-                placeholderSlot
-            } else {
-                itemCard(item: item, isLifted: false)
-            }
-        }
-        .frame(width: posterWidth, height: posterHeight)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: BoardItemGeometryKey.self,
-                    value: [BoardItemGeometry(
-                        mediaId: item.mediaId,
-                        rowId: sourceRowId,
-                        index: index,
-                        frame: geo.frame(in: .named(coordinateSpaceName))
-                    )]
+        if mode == .edit {
+            card
+                .onTapGesture {
+                    onTapItem?(item)
+                }
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.22, maximumDistance: 14)
+                        .sequenced(before: DragGesture(coordinateSpace: .named(coordinateSpaceName)))
+                        .onChanged { value in
+                            switch value {
+                            case .second(true, let drag):
+                                if let drag = drag {
+                                    if !isDragging {
+                                        startDragging(item: item, sourceRowId: sourceRowId, location: drag.startLocation)
+                                    }
+                                    handleDragMoved(location: drag.location)
+                                }
+                            default:
+                                break
+                            }
+                        }
+                        .onEnded { _ in
+                            if isDragging {
+                                commitMove()
+                            }
+                        }
                 )
-            }
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if mode == .edit {
-                onTapItem?(item)
-            } else {
-                onOpenDetails?(item)
-            }
-        }
-
-        Group {
-            if mode == .edit {
-                content
-                    .gesture(dragGesture(for: item, sourceRowId: sourceRowId))
-            } else {
-                content
-            }
+        } else {
+            card
+                .onTapGesture {
+                    onOpenDetails?(item)
+                }
         }
     }
 
@@ -253,9 +300,9 @@ struct TierListBoardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(isLifted ? Color.white.opacity(0.35) : Color.white.opacity(0.1), lineWidth: isLifted ? 1.0 : 0.5)
+                .strokeBorder(isLifted ? Color.white.opacity(0.4) : Color.white.opacity(0.1), lineWidth: isLifted ? 1.0 : 0.5)
         )
-        .shadow(color: Color.black.opacity(isLifted ? 0.45 : 0.2), radius: isLifted ? 12 : 3, y: isLifted ? 8 : 1.5)
+        .shadow(color: Color.black.opacity(isLifted ? 0.45 : 0.2), radius: isLifted ? 16 : 3, y: isLifted ? 10 : 1.5)
     }
 
     // MARK: - Плейсхолдер слота в сетке при перетаскивании
@@ -268,8 +315,8 @@ struct TierListBoardView: View {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Color.white.opacity(0.04))
                 )
-            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                .font(.system(size: 14, weight: .semibold))
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .frame(width: posterWidth, height: posterHeight)
@@ -380,6 +427,7 @@ struct TierListBoardView: View {
                             lineWidth: highlightedRowId == "__pool__" ? 1.5 : 0.5
                         )
                 )
+                .id("__pool__")
                 .background(
                     GeometryReader { geo in
                         Color.clear.preference(
@@ -392,51 +440,30 @@ struct TierListBoardView: View {
         }
     }
 
-    // MARK: - Поднятая карточка под пальцем (Overlay)
+    // MARK: - Поднятая карточка под пальцем (Overlay) — строго вертикальная (без наклонов!)
 
     @ViewBuilder
     private var draggedCardOverlay: some View {
-        if isDragging, let item = draggedItem {
+        if isDragging, let item = activeDraggedItem {
             itemCard(item: item, isLifted: true)
-                .scaleEffect(1.08)
-                .rotationEffect(.degrees(2.0))
-                .shadow(color: Color.black.opacity(0.55), radius: 20, x: 0, y: 12)
-                .position(x: dragLocation.x, y: dragLocation.y - 10)
+                .scaleEffect(1.05)
+                .shadow(color: Color.black.opacity(0.5), radius: 18, x: 0, y: 10)
+                .position(x: dragLocation.x, y: dragLocation.y)
                 .transition(.identity)
                 .zIndex(999)
                 .allowsHitTesting(false)
         }
     }
 
-    // MARK: - Жест перетаскивания
-
-    private func dragGesture(for item: TierListItem, sourceRowId: String) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.16)
-            .sequenced(before: DragGesture(coordinateSpace: .named(coordinateSpaceName)))
-            .onChanged { value in
-                switch value {
-                case .second(true, let drag):
-                    if let drag = drag {
-                        if !isDragging {
-                            startDragging(item: item, sourceRowId: sourceRowId, location: drag.startLocation)
-                        }
-                        handleDragMoved(location: drag.location)
-                    }
-                default:
-                    break
-                }
-            }
-            .onEnded { _ in
-                if isDragging {
-                    handleDragEnded()
-                }
-            }
-    }
+    // MARK: - Логика перетаскивания
 
     private func startDragging(item: TierListItem, sourceRowId: String, location: CGPoint) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) {
-            draggedItem = item
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.78)) {
+            activeDraggedItem = item
+            draggedFromRowId = sourceRowId
+            targetRowId = sourceRowId
+            targetIndex = currentIndex(for: item.mediaId, in: sourceRowId) ?? 0
             dragLocation = location
             isDragging = true
             highlightedRowId = sourceRowId
@@ -445,53 +472,127 @@ struct TierListBoardView: View {
 
     private func handleDragMoved(location: CGPoint) {
         dragLocation = location
-        guard let dragged = draggedItem else { return }
+        guard let dragged = activeDraggedItem else { return }
 
-        // 1. Находим целевую строку по положению пальца
-        guard let targetRow = findTargetRow(at: location) else { return }
+        // 1. Находим целевую строку
+        guard let newTargetRowId = findTargetRow(at: location) else { return }
 
-        // 2. Находим целевой индекс внутри этой строки
-        let targetIndex = findTargetIndex(in: targetRow.rowId, at: location)
+        // 2. Автоскролл экрана при подтягивании к краям
+        checkAutoScroll(for: newTargetRowId, location: location)
 
-        // 3. Сверяем с текущим положением
-        let currRowId = currentRowId(for: dragged.mediaId)
-        let currIndex = currRowId != nil ? currentIndex(for: dragged.mediaId, in: currRowId!) : nil
+        // 3. Находим целевой индекс внутри целевой строки
+        let existingItems = (newTargetRowId == "__pool__" ? unranked : rows.first(where: { $0.id == newTargetRowId })?.items) ?? []
+        let newTargetIndex = findTargetIndex(in: newTargetRowId, at: location, existingItems: existingItems)
 
-        if targetRow.rowId != currRowId || (currIndex != nil && targetIndex != currIndex!) {
+        // 4. Плавно перемещаем виртуальный слот плейсхолдера
+        if newTargetRowId != targetRowId || newTargetIndex != targetIndex {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                performLiveMove(item: dragged, toRowId: targetRow.rowId, toIndex: targetIndex)
-                highlightedRowId = targetRow.rowId
+                targetRowId = newTargetRowId
+                targetIndex = newTargetIndex
+                highlightedRowId = newTargetRowId
             }
             UISelectionFeedbackGenerator().selectionChanged()
         }
     }
 
-    private func handleDragEnded() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+    // MARK: - Автоскролл
+
+    private func checkAutoScroll(for currentTargetRowId: String, location: CGPoint) {
+        guard Date().timeIntervalSince(lastAutoScrollTime) > 0.4 else { return }
+
+        let allRowIds = rows.map(\.id) + ["__pool__"]
+        guard let currentIndex = allRowIds.firstIndex(of: currentTargetRowId) else { return }
+
+        // Тянем вверх к самому заголовку
+        if let firstGeo = rowGeometries.first(where: { $0.rowId == allRowIds.first }),
+           location.y < (firstGeo.frame.minY + 25) {
+            lastAutoScrollTime = Date()
+            onScrollRequest?("__top__")
+            return
+        }
+
+        // Тянем вверх к предыдущей строке
+        if currentIndex > 0, let currentGeo = rowGeometries.first(where: { $0.rowId == currentTargetRowId }),
+           location.y < (currentGeo.frame.minY + 12) {
+            lastAutoScrollTime = Date()
+            let previousRowId = allRowIds[currentIndex - 1]
+            onScrollRequest?(previousRowId)
+            return
+        }
+
+        // Тянем вниз к следующей строке
+        if currentIndex < allRowIds.count - 1, let currentGeo = rowGeometries.first(where: { $0.rowId == currentTargetRowId }),
+           location.y > (currentGeo.frame.maxY - 12) {
+            lastAutoScrollTime = Date()
+            let nextRowId = allRowIds[currentIndex + 1]
+            onScrollRequest?(nextRowId)
+            return
+        }
+    }
+
+    // MARK: - Фиксация перемещения на отпускание пальца
+
+    private func commitMove() {
+        guard let dragged = activeDraggedItem,
+              let sourceRow = draggedFromRowId,
+              let targetRow = targetRowId else {
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
+                activeDraggedItem = nil
+                isDragging = false
+                highlightedRowId = nil
+            }
+            return
+        }
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+            // Удаляем из исходного места
+            if sourceRow == "__pool__" {
+                unranked.removeAll { $0.mediaId == dragged.mediaId }
+            } else if let rIdx = rows.firstIndex(where: { $0.id == sourceRow }) {
+                rows[rIdx].items.removeAll { $0.mediaId == dragged.mediaId }
+            }
+
+            // Вставляем в целевое место по индексу targetIndex
+            if targetRow == "__pool__" {
+                let safeIndex = max(0, min(targetIndex, unranked.count))
+                unranked.insert(dragged, at: safeIndex)
+            } else if let rIdx = rows.firstIndex(where: { $0.id == targetRow }) {
+                let safeIndex = max(0, min(targetIndex, rows[rIdx].items.count))
+                rows[rIdx].items.insert(dragged, at: safeIndex)
+            }
+
+            activeDraggedItem = nil
             isDragging = false
-            draggedItem = nil
             highlightedRowId = nil
         }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: - Геометрические вычисления
 
-    private func findTargetRow(at location: CGPoint) -> BoardRowGeometry? {
+    private func findTargetRow(at location: CGPoint) -> String? {
         if rowGeometries.isEmpty { return nil }
-        // Точное попадание по вертикали
+
         if let exact = rowGeometries.first(where: {
-            location.y >= ($0.frame.minY - 8) && location.y <= ($0.frame.maxY + 8)
+            location.y >= ($0.frame.minY - 10) && location.y <= ($0.frame.maxY + 10)
         }) {
-            return exact
+            return exact.rowId
         }
-        // Ближайшая строка по расстоянию
-        return rowGeometries.min(by: { abs($0.frame.midY - location.y) < abs($1.frame.midY - location.y) })
+
+        if let first = rowGeometries.min(by: { $0.frame.minY < $1.frame.minY }), location.y < first.frame.minY {
+            return first.rowId
+        }
+
+        if let last = rowGeometries.max(by: { $0.frame.maxY < $1.frame.maxY }), location.y > last.frame.maxY {
+            return last.rowId
+        }
+
+        return rowGeometries.min(by: { abs($0.frame.midY - location.y) < abs($1.frame.midY - location.y) })?.rowId
     }
 
-    private func findTargetIndex(in rowId: String, at location: CGPoint) -> Int {
+    private func findTargetIndex(in rowId: String, at location: CGPoint, existingItems: [TierListItem]) -> Int {
         let items = itemGeometries
-            .filter { $0.rowId == rowId }
+            .filter { $0.rowId == rowId && $0.mediaId != activeDraggedItem?.mediaId }
             .sorted {
                 if abs($0.frame.midY - $1.frame.midY) > 20 {
                     return $0.frame.midY < $1.frame.midY
@@ -514,18 +615,6 @@ struct TierListBoardView: View {
         return items.count
     }
 
-    private func currentRowId(for mediaId: String) -> String? {
-        if unranked.contains(where: { $0.mediaId == mediaId }) {
-            return "__pool__"
-        }
-        for row in rows {
-            if row.items.contains(where: { $0.mediaId == mediaId }) {
-                return row.id
-            }
-        }
-        return nil
-    }
-
     private func currentIndex(for mediaId: String, in rowId: String) -> Int? {
         if rowId == "__pool__" {
             return unranked.firstIndex(where: { $0.mediaId == mediaId })
@@ -534,23 +623,6 @@ struct TierListBoardView: View {
             return row.items.firstIndex(where: { $0.mediaId == mediaId })
         }
         return nil
-    }
-
-    private func performLiveMove(item: TierListItem, toRowId: String, toIndex: Int) {
-        // Удаляем из текущей позиции
-        for rIndex in rows.indices {
-            rows[rIndex].items.removeAll { $0.mediaId == item.mediaId }
-        }
-        unranked.removeAll { $0.mediaId == item.mediaId }
-
-        // Вставляем в целевую позицию
-        if toRowId == "__pool__" {
-            let safeIndex = max(0, min(toIndex, unranked.count))
-            unranked.insert(item, at: safeIndex)
-        } else if let rIndex = rows.firstIndex(where: { $0.id == toRowId }) {
-            let safeIndex = max(0, min(toIndex, rows[rIndex].items.count))
-            rows[rIndex].items.insert(item, at: safeIndex)
-        }
     }
 }
 
