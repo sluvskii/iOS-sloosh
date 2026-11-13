@@ -28,34 +28,45 @@ struct BoardItemGeometryKey: PreferenceKey {
     }
 }
 
-/// Виртуальный слот в сетке строки тир-листа
-enum GridSlot: Identifiable, Equatable {
-    case item(TierListItem)
-    case placeholder
-
-    var id: String {
-        switch self {
-        case .item(let item): return item.mediaId
-        case .placeholder: return "__drag_placeholder__"
-        }
-    }
-}
-
 /// Флагманская доска тир-листа в стиле Apple TV+ / Liquid Glass.
-/// Полностью свободный скролл экрана при касании в любой области постеров,
-/// перетаскивание без застреваний, автоскролл экрана при подтягивании к краям,
-/// строго вертикальная карточка (0° наклон).
+/// Полное разделение скролла и переноса:
+/// - Обычный свайп: мгновенный свободный скролл страницы по постерам.
+/// - Удержание 0.22 сек: тактильный щелчок, подъём карточки, полная заморозка скролла.
+/// - Никаких наклонов (0°), никаких пропадающих слотов и пустот.
 struct TierListBoardView: View {
     enum Mode { case edit, view }
 
     let mode: Mode
     @Binding var rows: [TierRow]
     @Binding var unranked: [TierListItem]
+    @Binding var isDraggingActive: Bool
     var onTapItem: ((TierListItem) -> Void)?
     var onTapRow: ((TierRow) -> Void)?
     var onAddMovies: (() -> Void)?
     var onOpenDetails: ((TierListItem) -> Void)?
     var onScrollRequest: ((String) -> Void)?
+
+    init(
+        mode: Mode,
+        rows: Binding<[TierRow]>,
+        unranked: Binding<[TierListItem]>,
+        isDraggingActive: Binding<Bool> = .constant(false),
+        onTapItem: ((TierListItem) -> Void)? = nil,
+        onTapRow: ((TierRow) -> Void)? = nil,
+        onAddMovies: (() -> Void)? = nil,
+        onOpenDetails: ((TierListItem) -> Void)? = nil,
+        onScrollRequest: ((String) -> Void)? = nil
+    ) {
+        self.mode = mode
+        self._rows = rows
+        self._unranked = unranked
+        self._isDraggingActive = isDraggingActive
+        self.onTapItem = onTapItem
+        self.onTapRow = onTapRow
+        self.onAddMovies = onAddMovies
+        self.onOpenDetails = onOpenDetails
+        self.onScrollRequest = onScrollRequest
+    }
 
     // MARK: - Состояние перетаскивания
 
@@ -125,7 +136,7 @@ struct TierListBoardView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(
-                    highlightedRowId == row.wrappedValue.id ? Color.primary.opacity(0.4) : Color.white.opacity(0.06),
+                    highlightedRowId == row.wrappedValue.id ? Color.white.opacity(0.4) : Color.white.opacity(0.06),
                     lineWidth: highlightedRowId == row.wrappedValue.id ? 1.5 : 0.5
                 )
         )
@@ -192,45 +203,26 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
-        let rowSlots = computeSlots(for: rowId, items: items)
-
         LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
-            if rowSlots.isEmpty {
+            if items.isEmpty {
                 emptyRowPlaceholder(isPool: rowId == "__pool__")
             } else {
-                ForEach(Array(rowSlots.enumerated()), id: \.element.id) { index, slot in
-                    switch slot {
-                    case .item(let item):
-                        itemCell(item: item, sourceRowId: rowId, index: index)
-                    case .placeholder:
-                        placeholderSlot
-                    }
+                ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
+                    itemCell(item: item, sourceRowId: rowId, index: index)
                 }
             }
         }
         .frame(maxWidth: .infinity, minHeight: posterHeight, alignment: .topLeading)
     }
 
-    // MARK: - Вычисление слотов без разрушения исходной модели
-
-    private func computeSlots(for rowId: String, items: [TierListItem]) -> [GridSlot] {
-        var result: [GridSlot] = items
-            .filter { $0.mediaId != activeDraggedItem?.mediaId }
-            .map { .item($0) }
-
-        if isDragging, targetRowId == rowId {
-            let safeIndex = max(0, min(targetIndex, result.count))
-            result.insert(.placeholder, at: safeIndex)
-        }
-
-        return result
-    }
-
-    // MARK: - Ячейка постера
+    // MARK: - Ячейка постера (без удаления из сетки во время перетаскивания — никакой пустоты!)
 
     @ViewBuilder
     private func itemCell(item: TierListItem, sourceRowId: String, index: Int) -> some View {
+        let isBeingDragged = isDragging && activeDraggedItem?.mediaId == item.mediaId
+
         let card = itemCard(item: item, isLifted: false)
+            .opacity(isBeingDragged ? 0.25 : 1.0)
             .frame(width: posterWidth, height: posterHeight)
             .background(
                 GeometryReader { geo in
@@ -303,24 +295,7 @@ struct TierListBoardView: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .strokeBorder(isLifted ? Color.white.opacity(0.4) : Color.white.opacity(0.1), lineWidth: isLifted ? 1.0 : 0.5)
         )
-        .shadow(color: Color.black.opacity(isLifted ? 0.45 : 0.2), radius: isLifted ? 16 : 3, y: isLifted ? 10 : 1.5)
-    }
-
-    // MARK: - Плейсхолдер слота в сетке при перетаскивании
-
-    private var placeholderSlot: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.4), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.white.opacity(0.04))
-                )
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: posterWidth, height: posterHeight)
+        .shadow(color: Color.black.opacity(isLifted ? 0.5 : 0.2), radius: isLifted ? 16 : 3, y: isLifted ? 10 : 1.5)
     }
 
     // MARK: - Заглушка пустой строки
@@ -424,7 +399,7 @@ struct TierListBoardView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(
-                            highlightedRowId == "__pool__" ? Color.primary.opacity(0.4) : Color.white.opacity(0.06),
+                            highlightedRowId == "__pool__" ? Color.white.opacity(0.4) : Color.white.opacity(0.06),
                             lineWidth: highlightedRowId == "__pool__" ? 1.5 : 0.5
                         )
                 )
@@ -441,7 +416,7 @@ struct TierListBoardView: View {
         }
     }
 
-    // MARK: - Поднятая карточка под пальцем (Overlay) — строго вертикальная (без наклонов!)
+    // MARK: - Поднятая карточка под пальцем (Overlay) — строго вертикальная (0° наклон!)
 
     @ViewBuilder
     private var draggedCardOverlay: some View {
@@ -471,6 +446,7 @@ struct TierListBoardView: View {
             targetIndex = currentIndex(for: item.mediaId, in: sourceRowId) ?? 0
             dragLocation = localPoint
             isDragging = true
+            isDraggingActive = true
             highlightedRowId = sourceRowId
         }
     }
@@ -489,10 +465,9 @@ struct TierListBoardView: View {
         // 2. Автоскролл экрана при подтягивании к краям
         checkAutoScroll(windowPoint: windowPoint)
 
-        // 3. Находим целевой индекс внутри целевой строки
+        // 3. Находим целевой индекс
         let newTargetIndex = findTargetIndex(in: newTargetRowId, at: windowPoint)
 
-        // 4. Плавно перемещаем виртуальный слот плейсхолдера
         if newTargetRowId != targetRowId || newTargetIndex != targetIndex {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                 targetRowId = newTargetRowId
@@ -546,30 +521,37 @@ struct TierListBoardView: View {
             withAnimation(.spring(response: 0.26, dampingFraction: 0.8)) {
                 activeDraggedItem = nil
                 isDragging = false
+                isDraggingActive = false
                 highlightedRowId = nil
             }
             return
         }
 
         withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-            // Удаляем из исходного места
-            if sourceRow == "__pool__" {
-                unranked.removeAll { $0.mediaId == dragged.mediaId }
-            } else if let rIdx = rows.firstIndex(where: { $0.id == sourceRow }) {
-                rows[rIdx].items.removeAll { $0.mediaId == dragged.mediaId }
-            }
+            let currentSourceIndex = currentIndex(for: dragged.mediaId, in: sourceRow)
 
-            // Вставляем в целевое место по индексу targetIndex
-            if targetRow == "__pool__" {
-                let safeIndex = max(0, min(targetIndex, unranked.count))
-                unranked.insert(dragged, at: safeIndex)
-            } else if let rIdx = rows.firstIndex(where: { $0.id == targetRow }) {
-                let safeIndex = max(0, min(targetIndex, rows[rIdx].items.count))
-                rows[rIdx].items.insert(dragged, at: safeIndex)
+            // Если переместили в другую строку или сменили индекс в текущей
+            if sourceRow != targetRow || targetIndex != currentSourceIndex {
+                // 1. Удаляем из исходного места
+                if sourceRow == "__pool__" {
+                    unranked.removeAll { $0.mediaId == dragged.mediaId }
+                } else if let rIdx = rows.firstIndex(where: { $0.id == sourceRow }) {
+                    rows[rIdx].items.removeAll { $0.mediaId == dragged.mediaId }
+                }
+
+                // 2. Вставляем в целевое место по индексу targetIndex
+                if targetRow == "__pool__" {
+                    let safeIndex = max(0, min(targetIndex, unranked.count))
+                    unranked.insert(dragged, at: safeIndex)
+                } else if let rIdx = rows.firstIndex(where: { $0.id == targetRow }) {
+                    let safeIndex = max(0, min(targetIndex, rows[rIdx].items.count))
+                    rows[rIdx].items.insert(dragged, at: safeIndex)
+                }
             }
 
             activeDraggedItem = nil
             isDragging = false
+            isDraggingActive = false
             highlightedRowId = nil
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -701,10 +683,14 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
 
             switch gesture.state {
             case .began:
+                // Блокируем скролл родительского ScrollView на время перетаскивания карточки
+                gesture.view?.findParentScrollView()?.panGestureRecognizer.isEnabled = false
                 onLift(windowPoint)
             case .changed:
                 onMove(windowPoint)
             case .ended, .cancelled:
+                // Возобновляем скролл родительского ScrollView
+                gesture.view?.findParentScrollView()?.panGestureRecognizer.isEnabled = true
                 onDrop()
             default:
                 break
@@ -712,8 +698,11 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            // Разрешаем UIScrollView параллельно получать касания: при движении пальца >12pt
-            // лонгпресс мгновенно отменяется, и экран листается свободно.
+            // Разрешаем параллельный скролл только пока палец не зажат неподвижно (состояние .possible)
+            // Как только лонгпресс активировался (.began / .changed) — скролл страницы намертво запрещён!
+            if gestureRecognizer.state == .began || gestureRecognizer.state == .changed {
+                return false
+            }
             return true
         }
     }
@@ -722,6 +711,19 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
 private final class TouchForwardingView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         return super.hitTest(point, with: event)
+    }
+}
+
+private extension UIView {
+    func findParentScrollView() -> UIScrollView? {
+        var current = self.superview
+        while let view = current {
+            if let scrollView = view as? UIScrollView {
+                return scrollView
+            }
+            current = view.superview
+        }
+        return nil
     }
 }
 

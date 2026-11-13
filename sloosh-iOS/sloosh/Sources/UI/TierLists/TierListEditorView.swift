@@ -17,6 +17,7 @@ struct TierListEditorView: View {
     @State private var editingRow: TierRow?
     @State private var tappedItem: TierListItem?
     @State private var isPublishing = false
+    @State private var isDraggingCard = false
     @State private var publishError: String?
     @State private var autosaveTask: Task<Void, Never>?
 
@@ -95,6 +96,7 @@ struct TierListEditorView: View {
                         mode: .edit,
                         rows: $rows,
                         unranked: $unranked,
+                        isDraggingActive: $isDraggingCard,
                         onTapItem: { item in tappedItem = item },
                         onTapRow: { row in editingRow = row },
                         onAddMovies: { showAddSheet = true },
@@ -127,6 +129,7 @@ struct TierListEditorView: View {
                         .padding(.bottom, 16)
                 }
             }
+            .scrollDisabled(isDraggingCard)
         }
     }
 
