@@ -31,9 +31,9 @@ struct BoardItemGeometryKey: PreferenceKey {
 /// Флагманская доска тир-листа в стиле Apple TV+ / Liquid Glass.
 /// Полное разделение скролла и переноса:
 /// - Обычный свайп: мгновенный свободный скролл страницы по постерам.
-/// - Удержание 0.22 сек: тактильный щелчок, подъём карточки, полная заморозка скролла.
-/// - Строго 0° наклон (никаких раскачиваний), никаких зависаний в воздухе.
-/// - Защита от застревания в навбаре и у краев экрана с мягкой привязкой к верхнему уровню.
+/// - Удержание 0.22 сек: тактильный щелчок, подъём карточки, полная заморозка ручного скролла.
+/// - Строго 0° наклон (никаких раскачиваний), непрерывный перенос без преждевременных сбросов.
+/// - Плавный аппаратный автоскролл экрана при подтягивании карточки к верхнему или нижнему краю (CADisplayLink).
 struct TierListBoardView: View {
     enum Mode { case edit, view }
 
@@ -81,7 +81,9 @@ struct TierListBoardView: View {
     @State private var dragLocation: CGPoint = .zero
     @State private var isDragging = false
     @State private var highlightedRowId: String?
-    @State private var lastAutoScrollTime = Date.distantPast
+    @State private var dragStartBoardFrame: CGRect = .zero
+    @State private var dragStartRowGeometries: [BoardRowGeometry] = []
+    @State private var dragStartItemGeometries: [BoardItemGeometry] = []
 
     // Мобильные пропорции 2:3
     private let posterWidth: CGFloat = 66
@@ -90,15 +92,25 @@ struct TierListBoardView: View {
 
     var body: some View {
         boardStack
-            .onPreferenceChange(BoardRowGeometryKey.self) { rowGeometries = $0 }
-            .onPreferenceChange(BoardItemGeometryKey.self) { itemGeometries = $0 }
+            .onPreferenceChange(BoardRowGeometryKey.self) { newGeos in
+                rowGeometries = newGeos
+                if !isDragging { dragStartRowGeometries = newGeos }
+            }
+            .onPreferenceChange(BoardItemGeometryKey.self) { newGeos in
+                itemGeometries = newGeos
+                if !isDragging { dragStartItemGeometries = newGeos }
+            }
             .overlay { draggedCardOverlay }
             .background(
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { boardGlobalFrame = geo.frame(in: .global) }
+                        .onAppear {
+                            boardGlobalFrame = geo.frame(in: .global)
+                            if !isDragging { dragStartBoardFrame = boardGlobalFrame }
+                        }
                         .onChange(of: geo.frame(in: .global)) { _, newFrame in
                             boardGlobalFrame = newFrame
+                            if !isDragging { dragStartBoardFrame = newFrame }
                         }
                 }
             )
@@ -189,14 +201,16 @@ struct TierListBoardView: View {
 
     @ViewBuilder
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: posterWidth), spacing: 6)], spacing: 6) {
+        Group {
             if items.isEmpty {
                 Color.clear
                     .frame(maxWidth: .infinity, minHeight: posterHeight)
                     .contentShape(Rectangle())
             } else {
-                ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
-                    itemCell(item: item, sourceRowId: rowId, index: index)
+                FlowLayout(spacing: 6) {
+                    ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
+                        itemCell(item: item, sourceRowId: rowId, index: index)
+                    }
                 }
             }
         }
@@ -238,8 +252,8 @@ struct TierListBoardView: View {
                         onLift: { windowPoint in
                             startDragging(item: item, sourceRowId: sourceRowId, windowPoint: windowPoint)
                         },
-                        onMove: { windowPoint in
-                            handleDragMoved(windowPoint: windowPoint)
+                        onMove: { windowPoint, scrollDelta in
+                            handleDragMoved(windowPoint: windowPoint, scrollDelta: scrollDelta)
                         },
                         onDrop: {
                             commitMove()
@@ -407,6 +421,10 @@ struct TierListBoardView: View {
 
     private func startDragging(item: TierListItem, sourceRowId: String, windowPoint: CGPoint) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        dragStartBoardFrame = boardGlobalFrame
+        dragStartRowGeometries = rowGeometries
+        dragStartItemGeometries = itemGeometries
+
         let localPoint = CGPoint(
             x: windowPoint.x - boardGlobalFrame.minX,
             y: windowPoint.y - boardGlobalFrame.minY
@@ -423,42 +441,22 @@ struct TierListBoardView: View {
         }
     }
 
-    private func handleDragMoved(windowPoint: CGPoint) {
+    private func handleDragMoved(windowPoint: CGPoint, scrollDelta: CGFloat) {
         guard isDragging, activeDraggedItem != nil else { return }
 
+        // Позиция под пальцем с поправкой на физический сдвиг доски в скролле
+        let effectiveBoardY = dragStartBoardFrame.minY - scrollDelta
         let localPoint = CGPoint(
-            x: windowPoint.x - boardGlobalFrame.minX,
-            y: windowPoint.y - boardGlobalFrame.minY
+            x: windowPoint.x - dragStartBoardFrame.minX,
+            y: windowPoint.y - effectiveBoardY
         )
         dragLocation = localPoint
 
-        // 1. Проверка границ: если палец ушёл в верхний навбар (высота статус-бара + навбара ~ 96-104pt)
-        let topBarThreshold: CGFloat = 100
-        if windowPoint.y <= topBarThreshold {
-            snapToTopRowAndCommit()
-            return
-        }
+        // Находим целевую строку с учётом текущего сдвига скролла
+        guard let newTargetRowId = findTargetRow(at: windowPoint, scrollDelta: scrollDelta) else { return }
 
-        // Если палец вылетел за боковые или нижние границы доски
-        if boardGlobalFrame != .zero {
-            let horizontalMargin: CGFloat = 60
-            let bottomMargin: CGFloat = 80
-            if windowPoint.x < (boardGlobalFrame.minX - horizontalMargin) ||
-               windowPoint.x > (boardGlobalFrame.maxX + horizontalMargin) ||
-               windowPoint.y > (boardGlobalFrame.maxY + bottomMargin) {
-                cancelDrag()
-                return
-            }
-        }
-
-        // 2. Находим целевую строку
-        guard let newTargetRowId = findTargetRow(at: windowPoint) else { return }
-
-        // 3. Автоскролл экрана при подтягивании к краям (между навбаром и верхними строками)
-        checkAutoScroll(windowPoint: windowPoint)
-
-        // 4. Находим целевой индекс
-        let newTargetIndex = findTargetIndex(in: newTargetRowId, at: windowPoint)
+        // Находим целевой индекс с учётом текущего сдвига скролла
+        let newTargetIndex = findTargetIndex(in: newTargetRowId, at: windowPoint, scrollDelta: scrollDelta)
 
         if newTargetRowId != targetRowId || newTargetIndex != targetIndex {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -468,50 +466,6 @@ struct TierListBoardView: View {
             }
             UISelectionFeedbackGenerator().selectionChanged()
         }
-    }
-
-    // MARK: - Автоскролл экрана
-
-    private func checkAutoScroll(windowPoint: CGPoint) {
-        guard Date().timeIntervalSince(lastAutoScrollTime) > 0.35 else { return }
-
-        let allRowIds = rows.map(\.id) + ["__pool__"]
-        guard let currentTargetRowId = targetRowId,
-              let currentIndex = allRowIds.firstIndex(of: currentTargetRowId) else { return }
-
-        let screenHeight = UIScreen.main.bounds.height
-
-        // Тянем вверх к верхнему краю экрана (но ниже навбара)
-        if windowPoint.y < 160 && windowPoint.y > 100 {
-            lastAutoScrollTime = Date()
-            if currentIndex > 0 {
-                let previousRowId = allRowIds[currentIndex - 1]
-                onScrollRequest?(previousRowId)
-            } else {
-                onScrollRequest?("__top__")
-            }
-            return
-        }
-
-        // Тянем вниз к нижнему краю экрана
-        if windowPoint.y > (screenHeight - 180) {
-            lastAutoScrollTime = Date()
-            if currentIndex < allRowIds.count - 1 {
-                let nextRowId = allRowIds[currentIndex + 1]
-                onScrollRequest?(nextRowId)
-            }
-            return
-        }
-    }
-
-    // MARK: - Привязка к верхнему уровню при выходе в навбар
-
-    private func snapToTopRowAndCommit() {
-        guard isDragging, activeDraggedItem != nil else { return }
-        let destinationRowId = rows.first?.id ?? draggedFromRowId ?? "__pool__"
-        targetRowId = destinationRowId
-        targetIndex = 0
-        commitMove()
     }
 
     // MARK: - Фиксация перемещения на отпускание пальца
@@ -571,31 +525,42 @@ struct TierListBoardView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    // MARK: - Геометрические вычисления в глобальных координатах
+    // MARK: - Геометрические вычисления в глобальных координатах с учётом скролла
 
-    private func findTargetRow(at windowPoint: CGPoint) -> String? {
-        if rowGeometries.isEmpty { return nil }
+    private func findTargetRow(at windowPoint: CGPoint, scrollDelta: CGFloat) -> String? {
+        let baseRows = dragStartRowGeometries.isEmpty ? rowGeometries : dragStartRowGeometries
+        if baseRows.isEmpty { return nil }
 
-        if let exact = rowGeometries.first(where: {
+        let liveRows: [(rowId: String, frame: CGRect)] = baseRows.map {
+            (rowId: $0.rowId, frame: $0.frame.offsetBy(dx: 0, dy: -scrollDelta))
+        }
+
+        // 1. Точное попадание в строку
+        if let exact = liveRows.first(where: {
             windowPoint.y >= ($0.frame.minY - 8) && windowPoint.y <= ($0.frame.maxY + 8)
         }) {
             return exact.rowId
         }
 
-        if let first = rowGeometries.min(by: { $0.frame.minY < $1.frame.minY }), windowPoint.y < first.frame.minY {
+        // 2. Выше самой верхней строки (в навбаре) — привязка к верхней строке (например, S)
+        if let first = liveRows.min(by: { $0.frame.minY < $1.frame.minY }), windowPoint.y < first.frame.minY {
             return first.rowId
         }
 
-        if let last = rowGeometries.max(by: { $0.frame.maxY < $1.frame.maxY }), windowPoint.y > last.frame.maxY {
+        // 3. Ниже самой нижней строки — привязка к нижней строке (пул)
+        if let last = liveRows.max(by: { $0.frame.maxY < $1.frame.maxY }), windowPoint.y > last.frame.maxY {
             return last.rowId
         }
 
-        return rowGeometries.min(by: { abs($0.frame.midY - windowPoint.y) < abs($1.frame.midY - windowPoint.y) })?.rowId
+        // 4. Ближайшая строка по центру
+        return liveRows.min(by: { abs($0.frame.midY - windowPoint.y) < abs($1.frame.midY - windowPoint.y) })?.rowId
     }
 
-    private func findTargetIndex(in rowId: String, at windowPoint: CGPoint) -> Int {
-        let items = itemGeometries
+    private func findTargetIndex(in rowId: String, at windowPoint: CGPoint, scrollDelta: CGFloat) -> Int {
+        let baseItems = dragStartItemGeometries.isEmpty ? itemGeometries : dragStartItemGeometries
+        let items = baseItems
             .filter { $0.rowId == rowId && $0.mediaId != activeDraggedItem?.mediaId }
+            .map { (mediaId: $0.mediaId, frame: $0.frame.offsetBy(dx: 0, dy: -scrollDelta)) }
             .sorted {
                 if abs($0.frame.midY - $1.frame.midY) > 20 {
                     return $0.frame.midY < $1.frame.midY
@@ -605,12 +570,12 @@ struct TierListBoardView: View {
 
         if items.isEmpty { return 0 }
 
-        for (idx, itemGeo) in items.enumerated() {
-            if windowPoint.y < (itemGeo.frame.minY - 4) {
+        for (idx, item) in items.enumerated() {
+            if windowPoint.y < (item.frame.minY - 4) {
                 return idx
             }
-            if windowPoint.y <= (itemGeo.frame.maxY + 10) {
-                if windowPoint.x < itemGeo.frame.midX {
+            if windowPoint.y <= (item.frame.maxY + 10) {
+                if windowPoint.x < item.frame.midX {
                     return idx
                 }
             }
@@ -629,12 +594,148 @@ struct TierListBoardView: View {
     }
 }
 
+// MARK: - Компактная неленивая обёрточная раскладка карточек
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxAvailableWidth = proposal.width ?? 0
+        guard maxAvailableWidth > 0, !subviews.isEmpty else {
+            return .zero
+        }
+
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > maxAvailableWidth && currentX > 0 {
+                currentX = 0
+                currentY += rowHeight + spacing
+                rowHeight = 0
+            }
+            currentX += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxAvailableWidth, height: currentY + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard bounds.width > 0, !subviews.isEmpty else { return }
+
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > bounds.maxX && currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                proposal: ProposedViewSize(size)
+            )
+            currentX += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Плавный аппаратный автоскролл экрана на базе CADisplayLink
+
+final class TierListAutoScroller {
+    private weak var scrollView: UIScrollView?
+    private var displayLink: CADisplayLink?
+    private var touchPointInWindow: CGPoint = .zero
+    private weak var window: UIWindow?
+    private var onTick: (() -> Void)?
+
+    func start(scrollView: UIScrollView, onTick: @escaping () -> Void) {
+        self.scrollView = scrollView
+        self.onTick = onTick
+        stop()
+
+        let link = CADisplayLink(target: self, selector: #selector(handleDisplayLink(_:)))
+        link.add(to: .main, forMode: .common)
+        self.displayLink = link
+    }
+
+    func updateTouch(pointInWindow: CGPoint, window: UIWindow?) {
+        self.touchPointInWindow = pointInWindow
+        if self.window == nil {
+            self.window = window
+        }
+    }
+
+    func stop() {
+        displayLink?.invalidate()
+        displayLink = nil
+        scrollView = nil
+        window = nil
+        onTick = nil
+        touchPointInWindow = .zero
+    }
+
+    @objc private func handleDisplayLink(_ link: CADisplayLink) {
+        guard let scrollView = scrollView, touchPointInWindow != .zero else { return }
+        guard let window = window ?? scrollView.window else { return }
+
+        let windowBounds = window.bounds
+        let safeTop = window.safeAreaInsets.top
+        let safeBottom = window.safeAreaInsets.bottom
+
+        // Верхний порог автоскролла: навигационная панель (~ safeTop + 44)
+        let topBarThreshold = max(safeTop + 44, 90)
+        let topAutoScrollZone = topBarThreshold + 110
+
+        // Нижний порог автоскролла: таб-бар / безопасная зона (~ height - safeBottom - 20)
+        let bottomBarThreshold = max(windowBounds.height - safeBottom - 20, 200)
+        let bottomAutoScrollZone = bottomBarThreshold - 110
+
+        let touchY = touchPointInWindow.y
+        var velocity: CGFloat = 0
+
+        if touchY < topAutoScrollZone {
+            // Тянем вверх к шапке — плавное ускорение по мере приближения к верхнему краю
+            let distance = topAutoScrollZone - touchY
+            let progress = min(1.0, max(0.0, distance / 110))
+            velocity = -(120 + 480 * progress)
+        } else if touchY > bottomAutoScrollZone {
+            // Тянем вниз к низу экрана — плавное ускорение по мере приближения к нижнему краю
+            let distance = touchY - bottomAutoScrollZone
+            let progress = min(1.0, max(0.0, distance / 110))
+            velocity = (120 + 480 * progress)
+        }
+
+        guard velocity != 0 else { return }
+
+        let dt = min(max(link.targetTimestamp - link.timestamp, 1.0 / 120.0), 1.0 / 30.0)
+        let step = velocity * CGFloat(dt)
+
+        let minOffset = -scrollView.adjustedContentInset.top
+        let maxOffset = max(minOffset, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
+
+        let currentOffset = scrollView.contentOffset.y
+        let newOffset = min(max(currentOffset + step, minOffset), maxOffset)
+
+        if abs(newOffset - currentOffset) > 0.1 {
+            scrollView.contentOffset.y = newOffset
+            onTick?()
+        }
+    }
+}
+
 // MARK: - UIKit Gesture Recognizer для безупречного скролла и безопасного переноса
 
 private struct InteractiveDragCardModifier: ViewModifier {
     let isEnabled: Bool
     let onLift: (CGPoint) -> Void
-    let onMove: (CGPoint) -> Void
+    let onMove: (CGPoint, CGFloat) -> Void
     let onDrop: () -> Void
     let onCancel: () -> Void
 
@@ -656,7 +757,7 @@ private struct InteractiveDragCardModifier: ViewModifier {
 
 private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
     var onLift: (CGPoint) -> Void
-    var onMove: (CGPoint) -> Void
+    var onMove: (CGPoint, CGFloat) -> Void
     var onDrop: () -> Void
     var onCancel: () -> Void
 
@@ -675,10 +776,6 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         view.addGestureRecognizer(recognizer)
 
         context.coordinator.recognizer = recognizer
-        view.onDetached = { [weak coordinator = context.coordinator] in
-            coordinator?.handleViewDetached()
-        }
-
         return view
     }
 
@@ -695,7 +792,7 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var onLift: (CGPoint) -> Void
-        var onMove: (CGPoint) -> Void
+        var onMove: (CGPoint, CGFloat) -> Void
         var onDrop: () -> Void
         var onCancel: () -> Void
 
@@ -703,10 +800,13 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         private weak var parentScrollView: UIScrollView?
         private weak var cachedWindow: UIWindow?
         private(set) var isDraggingActive = false
+        private var initialScrollOffset: CGFloat = 0
+        private let autoScroller = TierListAutoScroller()
+        private var lastWindowPoint: CGPoint = .zero
 
         init(
             onLift: @escaping (CGPoint) -> Void,
-            onMove: @escaping (CGPoint) -> Void,
+            onMove: @escaping (CGPoint, CGFloat) -> Void,
             onDrop: @escaping () -> Void,
             onCancel: @escaping () -> Void
         ) {
@@ -716,12 +816,8 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             self.onCancel = onCancel
         }
 
-        func handleViewDetached() {
-            guard isDraggingActive else { return }
-            finishDrag(cancelled: true)
-        }
-
         deinit {
+            autoScroller.stop()
             if isDraggingActive {
                 let scroll = parentScrollView
                 let cancelBlock = onCancel
@@ -735,6 +831,7 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         private func finishDrag(cancelled: Bool) {
             guard isDraggingActive else { return }
             isDraggingActive = false
+            autoScroller.stop()
             parentScrollView?.panGestureRecognizer.isEnabled = true
             if cancelled {
                 onCancel()
@@ -752,29 +849,37 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             switch gesture.state {
             case .began:
                 isDraggingActive = true
-                cachedWindow = gesture.view?.window
+                cachedWindow = gesture.view?.window ?? activeWindow
                 let scrollView = gesture.view?.findParentScrollView()
                 parentScrollView = scrollView
                 scrollView?.panGestureRecognizer.isEnabled = false
 
+                let currentOffset = scrollView?.contentOffset.y ?? 0
+                initialScrollOffset = currentOffset
+
                 let windowPoint = activeWindow.map { gesture.location(in: $0) } ?? gesture.location(in: gesture.view)
+                lastWindowPoint = windowPoint
+
+                if let scrollView = scrollView {
+                    autoScroller.start(scrollView: scrollView) { [weak self] in
+                        self?.handleAutoScrollTick()
+                    }
+                    autoScroller.updateTouch(pointInWindow: windowPoint, window: activeWindow)
+                }
+
                 onLift(windowPoint)
 
             case .changed:
                 guard isDraggingActive else { return }
                 guard let window = activeWindow else { return }
                 let windowPoint = gesture.location(in: window)
+                lastWindowPoint = windowPoint
 
-                // Если палец вошёл в зону навбара — безопасно завершаем перенос
-                let navBarBottom = (window.safeAreaInsets.top > 0 ? window.safeAreaInsets.top : 44) + 44
-                if windowPoint.y <= navBarBottom {
-                    gesture.isEnabled = false
-                    gesture.isEnabled = true
-                    finishDrag(cancelled: false)
-                    return
-                }
+                autoScroller.updateTouch(pointInWindow: windowPoint, window: window)
 
-                onMove(windowPoint)
+                let currentOffset = parentScrollView?.contentOffset.y ?? initialScrollOffset
+                let scrollDelta = currentOffset - initialScrollOffset
+                onMove(windowPoint, scrollDelta)
 
             case .ended:
                 guard isDraggingActive else { return }
@@ -789,6 +894,13 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             }
         }
 
+        private func handleAutoScrollTick() {
+            guard isDraggingActive else { return }
+            let currentOffset = parentScrollView?.contentOffset.y ?? initialScrollOffset
+            let scrollDelta = currentOffset - initialScrollOffset
+            onMove(lastWindowPoint, scrollDelta)
+        }
+
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             // Разрешаем параллельный скролл только пока палец не зажат неподвижно (состояние .possible)
             // Как только лонгпресс активировался (.began / .changed) — скролл страницы намертво запрещён!
@@ -801,15 +913,6 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
 }
 
 private final class TouchForwardingView: UIView {
-    var onDetached: (() -> Void)?
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window == nil {
-            onDetached?()
-        }
-    }
-
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         return super.hitTest(point, with: event)
     }
