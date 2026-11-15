@@ -163,6 +163,9 @@ struct TierListPolicyTests {
         let galleryUI = try String(contentsOfFile: "sloosh/Sources/UI/TierLists/TierListsHomeView.swift", encoding: .utf8)
         let adminUI = try String(contentsOfFile: "sloosh/Sources/UI/Admin/AdminTierTemplatesView.swift", encoding: .utf8)
             .components(separatedBy: "private struct TemplateEditSession")[0]
+        check(galleryUI.components(separatedBy: ".buttonStyle(.plain)").count - 1 == 4,
+              "Draft, published, template and popular row buttons must not tint their text with the brand accent")
+        check(adminUI.contains(".buttonStyle(.plain)"), "Admin template row buttons must keep neutral text")
         for source in [galleryUI, adminUI] {
             check(source.contains(".swipeActions(edge: .trailing)"), "Restore the historical system swipeActions API")
             check(source.contains("Button(role: .destructive)") && source.contains(".tint(.red)"), "Keep native destructive actions red")

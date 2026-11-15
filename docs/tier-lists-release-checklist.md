@@ -84,6 +84,11 @@ device and live Firebase scenarios are checked.
   hand-built gesture/background or second confirmation popover after a swipe,
   including admin templates. Remote rows update only after checked server success;
   failed requests still show an error. Non-swipe editor discard protection remains.
+- Gallery row buttons (drafts, publications, templates and popular lists) and
+  admin template row buttons use a locally scoped plain button style so titles
+  retain primary text and descriptions secondary text instead of the green accent.
+  The style is not applied to the List or destructive swipe buttons. Verify neutral
+  row text in light/dark themes without changing native swipe appearance/behavior.
 - Admin → Тир-листы uses the existing `tier_templates` Firebase rule (admin UID).
   Create/edit title, description and priority; add from the shared film picker,
   remove/reorder films with native handles. At least four unique films are required;

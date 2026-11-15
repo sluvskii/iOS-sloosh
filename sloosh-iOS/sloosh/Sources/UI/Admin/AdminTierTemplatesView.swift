@@ -37,6 +37,7 @@ struct AdminTierTemplatesView: View {
                                 }
                                 .padding(.vertical, 4)
                             }
+                            .buttonStyle(.plain)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     guard !isDeleting else { return }
