@@ -357,3 +357,65 @@ struct TierDraftStore {
         if let data = try? JSONEncoder().encode(lists) { defaults.set(data, forKey: key) }
     }
 }
+
+/// Unconfirmed selection is separate from the template's committed film array.
+struct TierPickerCollection: Codable, Equatable {
+    var id: String
+    var name: String
+}
+
+struct TierItemPickerDraft: Codable, Equatable {
+    var selected: [TierListItem] = []
+    var searchText = ""
+    var collection: TierPickerCollection?
+}
+
+struct AdminTierTemplateSession: Codable, Identifiable, Equatable {
+    var id = UUID()
+    let original: TierTemplate?
+    var value: TierTemplate
+    var picker = TierItemPickerDraft()
+    var showPicker = false
+
+    init(original: TierTemplate?) {
+        self.original = original
+        self.value = original ?? TierTemplate(id: UUID().uuidString, title: "", subtitle: nil, priority: 0, items: [])
+    }
+
+    var hasUnsavedWork: Bool {
+        hasTemplateChanges || !picker.selected.isEmpty
+    }
+
+    var hasTemplateChanges: Bool { value != originalValue }
+
+    private var originalValue: TierTemplate {
+        original ?? TierTemplate(id: value.id, title: "", subtitle: nil, priority: 0, items: [])
+    }
+
+    mutating func addSelectedItems() {
+        var known = Set(value.items.map(\.mediaId))
+        value.items.append(contentsOf: picker.selected.filter { known.insert($0.mediaId).inserted })
+        picker = TierItemPickerDraft()
+        showPicker = false
+    }
+}
+
+/// Local recovery only: never publishes incomplete templates. Account-keyed and
+/// scoped to admin editing, independently of user tier-list drafts.
+struct AdminTierTemplateSessionStore {
+    let defaults: UserDefaults
+    let userId: String
+    private var key: String { "sloosh_admin_tier_session_v1_\(userId)" }
+
+    func load() -> AdminTierTemplateSession? {
+        guard !userId.isEmpty, let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(AdminTierTemplateSession.self, from: data)
+    }
+
+    func save(_ session: AdminTierTemplateSession) {
+        guard !userId.isEmpty else { return }
+        if let data = try? JSONEncoder().encode(session) { defaults.set(data, forKey: key) }
+    }
+
+    func clear() { defaults.removeObject(forKey: key) }
+}

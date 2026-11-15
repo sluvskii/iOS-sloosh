@@ -4,24 +4,51 @@ import SwiftUI
 /// (.searchable), быстрым доступом к избранному, популярным фильмам и подборкам.
 struct TierItemPickerSheet: View {
     var existingIds: Set<String> = []
+    // Admin editing owns this outside the sheet and checkpoints it locally.
+    // Other callers retain their existing sheet-local selection behavior.
+    var draft: Binding<TierItemPickerDraft>? = nil
     var onAdd: ([TierListItem]) -> Void
     var onDismiss: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var searchText = ""
+    @State private var localDraft = TierItemPickerDraft()
+    private var searchText: String {
+        get { draft?.wrappedValue.searchText ?? localDraft.searchText }
+        nonmutating set {
+            if let draft { draft.wrappedValue.searchText = newValue }
+            else { localDraft.searchText = newValue }
+        }
+    }
+    private var selected: [TierListItem] {
+        get { draft?.wrappedValue.selected ?? localDraft.selected }
+        nonmutating set {
+            if let draft { draft.wrappedValue.selected = newValue }
+            else { localDraft.selected = newValue }
+        }
+    }
     @State private var searchResults: [TierListItem] = []
     @State private var isSearching = false
-    @State private var searchTask: Task<Void, Never>?
     @State private var favoriteItems: [TierListItem] = []
     @State private var popularItems: [TierListItem] = []
     @State private var studios: [CategoryItemDto] = []
-    @State private var selectedStudio: CategoryItemDto?
+    private var selectedStudio: CategoryItemDto? {
+        get {
+            let collection: TierPickerCollection?
+            if let draft { collection = draft.wrappedValue.collection }
+            else { collection = localDraft.collection }
+            return collection.map { CategoryItemDto(id: $0.id, name: $0.name) }
+        }
+        nonmutating set {
+            let collection = newValue.map { TierPickerCollection(id: $0.id, name: $0.name) }
+            if let draft { draft.wrappedValue.collection = collection }
+            else { localDraft.collection = collection }
+        }
+    }
     @State private var studioItems: [TierListItem] = []
     @State private var studioPage = 1
     @State private var studioTotalPages = 1
     @State private var isLoadingStudio = false
     @State private var studioError: String?
-    @State private var selected: [TierListItem] = []
     @State private var loadError: String?
     @State private var didLoadInitial = false
 
@@ -106,7 +133,6 @@ struct TierItemPickerSheet: View {
                             ForEach(studios, id: \.id) { studio in
                                 Button {
                                     selectedStudio = studio
-                                    Task { await loadStudioItems(studio) }
                                 } label: {
                                     HStack {
                                         Label(studio.name, systemImage: "folder")
@@ -122,7 +148,7 @@ struct TierItemPickerSheet: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Название фильма или сериала")
+            .searchable(text: Binding(get: { searchText }, set: { searchText = $0 }), prompt: "Название фильма или сериала")
             .navigationTitle("Добавить фильмы")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -145,36 +171,34 @@ struct TierItemPickerSheet: View {
         .task {
             await loadInitialData()
         }
-        .onDisappear { searchTask?.cancel() }
-        .onChange(of: searchText) { _, newValue in
-            searchTask?.cancel()
-            let query = newValue.trimmingCharacters(in: .whitespaces)
-            guard query.count >= 2 else {
-                searchResults = []
-                isSearching = false
-                return
-            }
-            isSearching = true
+        .task(id: searchText) {
+            await search()
+        }
+        .task(id: selectedStudio?.id) {
+            if let studio = selectedStudio { await loadStudioItems(studio) }
+        }
+    }
+
+    private func search() async {
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        guard query.count >= 2 else {
             searchResults = []
-            loadError = nil
-            searchTask = Task {
-                try? await Task.sleep(nanoseconds: 280_000_000)
-                guard !Task.isCancelled else { return }
-                await MainActor.run { isSearching = true }
-                let items: [TierListItem]
-                do { items = try await MoviesRepository.shared.searchMovies(query: query, page: 1).compactMap(TierListItem.init) }
-                catch {
-                    guard !Task.isCancelled else { return }
-                    loadError = "Не удалось выполнить поиск. Попробуйте ещё раз."
-                    isSearching = false
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    searchResults = items
-                    isSearching = false
-                }
-            }
+            isSearching = false
+            return
+        }
+        isSearching = true
+        searchResults = []
+        loadError = nil
+        do {
+            try await Task.sleep(nanoseconds: 280_000_000)
+            let items = try await MoviesRepository.shared.searchMovies(query: query, page: 1).compactMap(TierListItem.init)
+            guard !Task.isCancelled else { return }
+            searchResults = items
+            isSearching = false
+        } catch {
+            guard !Task.isCancelled else { return }
+            loadError = "Не удалось выполнить поиск. Попробуйте ещё раз."
+            isSearching = false
         }
     }
 

@@ -89,9 +89,12 @@ struct ContentView: View {
                         ProfileView()
                     } label: {
                         profileTabLabel()
+                            .id(avatarVersion)
                     }
                 }
-                .id("\(tabBarShowsLabels)_\(tabBarMinimizeOnScroll)_\(authRepo.isAuthenticated)_\(avatarVersion)")
+                // Cosmetic refreshes must not destroy navigation, sheets or
+                // unconfirmed selections. Only an account switch resets tabs.
+                .id(authRepo.currentUser?.id)
                 .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)
                 .tint(Color.slooshAccent)

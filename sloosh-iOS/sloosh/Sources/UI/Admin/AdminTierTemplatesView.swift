@@ -5,7 +5,9 @@ import SwiftUI
 struct AdminTierTemplatesView: View {
     @ObservedObject private var repo = TierListsRepository.shared
     @ObservedObject private var auth = AuthRepository.shared
-    @State private var editing: TemplateEditSession?
+    @State private var editing: AdminTierTemplateSession?
+    @State private var ownerId = AuthRepository.shared.currentUser?.id ?? ""
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isLoading = true
     @State private var isDeleting = false
     @State private var error: String?
@@ -15,7 +17,7 @@ struct AdminTierTemplatesView: View {
             if auth.isAdmin {
                 Section {
                     Button {
-                        editing = TemplateEditSession(original: nil)
+                        editing = AdminTierTemplateSession(original: nil)
                     } label: { Label("Новый шаблон", systemImage: "plus") }
                     .foregroundStyle(.primary)
                 } footer: {
@@ -28,7 +30,7 @@ struct AdminTierTemplatesView: View {
                         if repo.templates.isEmpty { Text("Шаблонов пока нет").foregroundStyle(.secondary) }
                         ForEach(repo.templates) { template in
                             Button {
-                                editing = TemplateEditSession(original: template)
+                                editing = AdminTierTemplateSession(original: template)
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(template.title).foregroundStyle(.primary)
@@ -68,14 +70,46 @@ struct AdminTierTemplatesView: View {
         .scrollContentBackground(.hidden)
         .disabled(isDeleting)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .task { await reload() }
+        .task(id: auth.isAdmin) {
+            if auth.isAdmin, ownerId == auth.currentUser?.id, editing == nil {
+                editing = sessionStore.load()
+            }
+            await reload()
+        }
+        .onChange(of: editing) { _, _ in checkpoint() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { checkpoint() }
+        }
         .refreshable { await reload() }
-        .sheet(item: $editing, onDismiss: { Task { await reload() } }) { session in
-            AdminTierTemplateEditor(original: session.original)
+        .sheet(item: $editing, onDismiss: {
+            // Interactive dismissal is allowed only for an unchanged editor.
+            if sessionStore.load()?.hasUnsavedWork == false { sessionStore.clear() }
+            Task { await reload() }
+        }) { session in
+            AdminTierTemplateEditor(session: Binding(
+                get: { editing ?? session },
+                set: { updated in
+                    guard editing != nil, auth.isAdmin, ownerId == auth.currentUser?.id else { return }
+                    editing = updated
+                    sessionStore.save(updated)
+                }
+            ), onFinish: {
+                sessionStore.clear()
+                editing = nil
+            })
         }
         .alert("Не удалось выполнить действие", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("Понятно", role: .cancel) {}
         } message: { Text(error ?? "") }
+    }
+
+    private var sessionStore: AdminTierTemplateSessionStore {
+        AdminTierTemplateSessionStore(defaults: .standard, userId: ownerId)
+    }
+
+    private func checkpoint() {
+        guard auth.isAdmin, ownerId == auth.currentUser?.id, let editing else { return }
+        sessionStore.save(editing)
     }
 
     private func reload() async {
@@ -85,44 +119,30 @@ struct AdminTierTemplatesView: View {
     }
 }
 
-private struct TemplateEditSession: Identifiable {
-    let id = UUID()
-    let original: TierTemplate?
-}
-
 private struct AdminTierTemplateEditor: View {
-    let original: TierTemplate?
-    @Environment(\.dismiss) private var dismiss
+    @Binding var session: AdminTierTemplateSession
+    var onFinish: () -> Void
+    private var original: TierTemplate? { session.original }
     @ObservedObject private var auth = AuthRepository.shared
-    @State private var value: TierTemplate
-    @State private var initial: TierTemplate
-    @State private var showPicker = false
     @State private var discardChanges = false
     @State private var isSaving = false
     @State private var error: String?
-
-    init(original: TierTemplate?) {
-        self.original = original
-        let template = original ?? TierTemplate(id: UUID().uuidString, title: "", subtitle: nil, priority: 0, items: [])
-        _value = State(initialValue: template)
-        _initial = State(initialValue: template)
-    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Название и описание") {
-                    TextField("Название", text: $value.title)
-                    TextField("Описание (необязательно)", text: Binding(get: { value.subtitle ?? "" }, set: { value.subtitle = $0.isEmpty ? nil : $0 }), axis: .vertical)
+                    TextField("Название", text: $session.value.title)
+                    TextField("Описание (необязательно)", text: Binding(get: { session.value.subtitle ?? "" }, set: { session.value.subtitle = $0.isEmpty ? nil : $0 }), axis: .vertical)
                         .lineLimit(2...4)
                 }
                 Section {
-                    Stepper("Приоритет: \(value.priority ?? 0)", value: Binding(get: { value.priority ?? 0 }, set: { value.priority = $0 }), in: -1000...1000)
+                    Stepper("Приоритет: \(session.value.priority ?? 0)", value: Binding(get: { session.value.priority ?? 0 }, set: { session.value.priority = $0 }), in: -1000...1000)
                 } footer: { Text("Чем выше приоритет, тем раньше шаблон в списке.") }
                 Section {
-                    Button { showPicker = true } label: { Label("Добавить фильмы", systemImage: "plus") }
+                    Button { session.showPicker = true } label: { Label("Добавить фильмы", systemImage: "plus") }
                         .foregroundStyle(.primary)
-                    ForEach(value.items) { item in
+                    ForEach(session.value.items) { item in
                         HStack(spacing: 12) {
                             AsyncCachedImage(url: item.resolvedPosterURL.flatMap(URL.init(string:))) {
                                 Rectangle().fill(Color.secondary.opacity(0.15))
@@ -137,10 +157,10 @@ private struct AdminTierTemplateEditor: View {
                             }
                         }
                     }
-                    .onDelete { value.items.remove(atOffsets: $0) }
-                    .onMove { value.items.move(fromOffsets: $0, toOffset: $1) }
+                    .onDelete { session.value.items.remove(atOffsets: $0) }
+                    .onMove { session.value.items.move(fromOffsets: $0, toOffset: $1) }
                     .tint(.red)
-                } header: { Text("Фильмы: \(value.items.count)") }
+                } header: { Text("Фильмы: \(session.value.items.count)") }
                 footer: { Text("Не менее четырёх. Первые четыре постера формируют обложку; порядок меняется за ручку справа.") }
             }
             .environment(\.editMode, .constant(.active))
@@ -150,7 +170,7 @@ private struct AdminTierTemplateEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Отмена") {
-                        if value != initial { discardChanges = true } else { dismiss() }
+                        if session.hasUnsavedWork { discardChanges = true } else { onFinish() }
                     }.disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -159,34 +179,37 @@ private struct AdminTierTemplateEditor: View {
                     } label: {
                         if isSaving { ProgressView() } else { Text("Сохранить") }
                     }
-                    .disabled(isSaving || !auth.isAdmin || value == initial)
+                    .disabled(isSaving || !auth.isAdmin || !session.hasTemplateChanges)
                 }
             }
-            .sheet(isPresented: $showPicker) {
-                TierItemPickerSheet(existingIds: Set(value.items.map(\.mediaId)), onAdd: { items in
-                    var known = Set(value.items.map(\.mediaId))
-                    value.items.append(contentsOf: items.filter { known.insert($0.mediaId).inserted })
-                }, onDismiss: { showPicker = false })
+            .sheet(isPresented: $session.showPicker) {
+                TierItemPickerSheet(existingIds: Set(session.value.items.map(\.mediaId)),
+                                    draft: $session.picker, onAdd: { _ in
+                    session.addSelectedItems()
+                }, onDismiss: {
+                    session.picker = TierItemPickerDraft()
+                    session.showPicker = false
+                })
             }
             .confirmationDialog("Отменить изменения?", isPresented: $discardChanges, titleVisibility: .visible) {
-                Button("Не сохранять", role: .destructive) { dismiss() }
+                Button("Не сохранять", role: .destructive) { onFinish() }
                 Button("Продолжить редактирование", role: .cancel) {}
             }
             .alert("Не удалось сохранить шаблон", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("Понятно", role: .cancel) {}
             } message: { Text(error ?? "") }
         }
-        .interactiveDismissDisabled(isSaving || value != initial)
+        .interactiveDismissDisabled(isSaving || session.hasUnsavedWork)
     }
 
     private func save() async {
         guard !isSaving else { return }
-        if let message = value.validationMessage { error = message; return }
+        if let message = session.value.validationMessage { error = message; return }
         isSaving = true
         defer { isSaving = false }
         do {
-            try await TierListsRepository.shared.saveTemplate(value, expected: original)
-            dismiss()
+            try await TierListsRepository.shared.saveTemplate(session.value, expected: original)
+            onFinish()
         } catch { self.error = error.localizedDescription }
     }
 }
