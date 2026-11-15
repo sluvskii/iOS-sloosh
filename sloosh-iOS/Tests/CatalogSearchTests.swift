@@ -61,6 +61,11 @@ struct CatalogSearchTests {
         check(!CatalogSearchPolicy.matches(film, filters: SearchFilters(yearFrom: 2030), serverFiltered: true), "Known contradictory metadata is rejected even on browse pages")
         let normalized = SearchFilters(type: "movie", ratingFrom: 12, ratingTo: -1, yearFrom: 2026, yearTo: 1900, genres: "комедия,драма").normalized
         check(normalized.type == "FILM" && normalized.ratingFrom == 0 && normalized.ratingTo == 10 && normalized.yearFrom == 1900 && normalized.yearTo == 2026, "Normalize API type and malformed ranges")
+        let chipFilters = SearchFilters(type: "FILM", ratingFrom: 7, yearFrom: 2026, yearTo: 2026, genres: "комедия", countries: "Россия")
+        check(CatalogSearchFilter.year.label(in: chipFilters) == "2026", "Exact year is visible as a single-year constraint")
+        let withoutYear = CatalogSearchFilter.year.removing(from: chipFilters)
+        check(withoutYear.yearFrom == nil && withoutYear.yearTo == nil && withoutYear.type == "FILM" && withoutYear.ratingFrom == 7,
+              "Removing a filter chip clears both bounds but preserves unrelated constraints")
         let encoded = CatalogSearchRequest.discoveryItems(filters: SearchFilters(ratingFrom: 7.5, yearFrom: 1900, yearTo: 2028, genres: "комедия,драма", countries: "США"), page: 0)
         let params = Dictionary(uniqueKeysWithValues: encoded.map { ($0.name, $0.value ?? "") })
         check(params["page"] == "1" && params["ratingFrom"] == "7.5" && params["yearTo"] == "2028", "Transport uses locale-independent decimals and both bounds")

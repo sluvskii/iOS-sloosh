@@ -114,6 +114,8 @@ struct SearchView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $viewModel.searchQuery, prompt: "Название, оригинальное название…")
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
             .searchSuggestions {
                 ForEach(viewModel.suggestions, id: \.self) { suggestion in
                     Label(suggestion, systemImage: "magnifyingglass")
@@ -193,6 +195,29 @@ struct SearchView: View {
                     Spacer()
                     if !viewModel.isLoading, !viewModel.results.isEmpty {
                         Text("Показано: \(viewModel.results.count)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if !viewModel.searchFilters.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(CatalogSearchFilter.allCases) { field in
+                                if let label = field.label(in: viewModel.searchFilters) {
+                                    Button {
+                                        viewModel.searchFilters = field.removing(from: viewModel.searchFilters)
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Text(label).lineLimit(1)
+                                            Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                                        }
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 10).padding(.vertical, 7)
+                                        .glassEffect(.regular.interactive(), in: .capsule)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Убрать фильтр: \(label)")
+                                }
+                            }
+                        }
                     }
                 }
                 if let query = viewModel.resolvedQuery {
@@ -275,6 +300,7 @@ struct SearchDiscoveryView: View {
                                             .foregroundColor(.secondary)
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityLabel("Удалить запрос «\(query)» из истории")
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)

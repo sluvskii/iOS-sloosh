@@ -37,6 +37,8 @@ project. It is a substantive client stage, not the completed server redesign.
   show an inline retry, repeat the failed page, and merge/sort all loaded items.
   Scan at most four empty filtered pages per operation; then offer Continue.
   Empty filtered pages are NOT evidence that the entire catalog is empty.
+- Applied constraints are visible as individual removable chips; removing a range
+  clears both its bounds without silently changing other constraints.
 - Filter sheet edits are staged. Checkmark applies atomically; Cancel/swipe-down
   leaves active filters unchanged. Reset edits the staged draft only. Explicit
   inclusive year/rating lower AND upper bounds, 1880 through current year + 3 in

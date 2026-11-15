@@ -243,3 +243,47 @@ enum CatalogSearchRequest {
         return items
     }
 }
+
+/// One removable chip per independent constraint, not one per selected genre.
+enum CatalogSearchFilter: String, CaseIterable, Identifiable {
+    case type, order, rating, year, genres, countries, studio
+    var id: String { rawValue }
+
+    func label(in filters: SearchFilters) -> String? {
+        let f = filters.normalized
+        switch self {
+        case .type:
+            return f.type.map { ["FILM": "Фильмы", "TV_SERIES": "Сериалы", "CARTOON": "Мультфильмы", "ANIME": "Аниме"][$0] ?? $0 }
+        case .order:
+            return f.order.map { ["YEAR": "По году", "RATING": "По рейтингу", "NUM_VOTE": "По популярности"][$0] ?? $0 }
+        case .rating:
+            guard f.ratingFrom != nil || f.ratingTo != nil else { return nil }
+            func number(_ value: Double) -> String { String(format: "%.1f", locale: Locale(identifier: "ru_RU"), value) }
+            if let low = f.ratingFrom, let high = f.ratingTo { return "Рейтинг \(number(low))–\(number(high))" }
+            if let low = f.ratingFrom { return "Рейтинг от \(number(low))" }
+            return "Рейтинг до \(number(f.ratingTo!))"
+        case .year:
+            guard f.yearFrom != nil || f.yearTo != nil else { return nil }
+            if let low = f.yearFrom, let high = f.yearTo { return low == high ? String(low) : "\(low)–\(high)" }
+            if let low = f.yearFrom { return "С \(low) года" }
+            return "До \(f.yearTo!) года"
+        case .genres: return f.selectedGenres.isEmpty ? nil : f.selectedGenres.sorted().joined(separator: ", ").capitalized
+        case .countries: return f.selectedCountries.isEmpty ? nil : f.selectedCountries.sorted().joined(separator: ", ")
+        case .studio: return f.studio
+        }
+    }
+
+    func removing(from filters: SearchFilters) -> SearchFilters {
+        var f = filters
+        switch self {
+        case .type: f.type = nil
+        case .order: f.order = nil
+        case .rating: f.ratingFrom = nil; f.ratingTo = nil
+        case .year: f.yearFrom = nil; f.yearTo = nil
+        case .genres: f.genres = nil
+        case .countries: f.countries = nil
+        case .studio: f.studio = nil
+        }
+        return f.normalized
+    }
+}
