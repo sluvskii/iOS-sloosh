@@ -276,7 +276,7 @@ struct TierItemPickerSheet: View {
     }
 
     private func loadStudioItemsNextPage() async {
-        guard let studio = selectedStudio else { return }
+        guard !isLoadingStudio, let studio = selectedStudio else { return }
         isLoadingStudio = true
         let nextPage = studioPage + 1
         guard let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: nextPage) else {
@@ -304,19 +304,12 @@ extension TierListItem {
     }
 
     init?(from media: MediaDto) {
-        let id = media.identifier
-        guard !id.isEmpty else { return nil }
-        let typedId: String
-        if id.hasPrefix("movie_") || id.hasPrefix("tv_") || id.hasPrefix("kp_") || id.hasPrefix("tmdb_") {
-            typedId = id
-        } else if let tmdb = media.externalIds?.tmdb {
-            typedId = "\(media.type == "tv" ? "tv" : "movie")_\(tmdb)"
-        } else {
-            typedId = "\(media.type == "tv" ? "tv" : "movie")_\(id)"
-        }
+        guard let identity = CatalogArtworkIdentity(id: media.originalId?.stringValue, type: media.type)
+                ?? (media.externalIds?.tmdb).flatMap({ CatalogArtworkIdentity(id: String($0), type: media.type) }) else { return nil }
+        let typedId = identity.requestId
         self.init(
             mediaId: typedId,
-            mediaType: media.type ?? "movie",
+            mediaType: identity.mediaType ?? media.type ?? "movie",
             title: media.title ?? media.originalTitle ?? "",
             year: media.year?.intValue,
             posterUrl: media.displayPosterUrl(forLogoMode: false)

@@ -47,6 +47,7 @@ struct TierListEditorView: View {
 
     var body: some View {
         editorContent
+            .disabled(isPublishing)
             .navigationTitle("Редактор")
             .navigationBarTitleDisplayMode(.inline)
             .tint(.primary)
@@ -356,6 +357,8 @@ struct TierListEditorView: View {
                     .disabled(isPublishing || title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .disabled(isPublishing)
+            .interactiveDismissDisabled(isPublishing)
             .navigationTitle("Публикация")
             .navigationBarTitleDisplayMode(.inline)
             .tint(.primary)

@@ -11,6 +11,7 @@ struct TierTargetPickerSheet: View {
     @State private var drafts: [TierList] = []
     @State private var mine: [TierList] = []
     @State private var isLoading = true
+    @State private var isAdding = false
     @State private var newDraft: TierList?
 
     var body: some View {
@@ -58,14 +59,9 @@ struct TierTargetPickerSheet: View {
                     }
                 }
             }
-        .navigationDestination(item: $newDraft) { draft in
-            TierListEditorView(
-                draft: draft,
-                onPublished: { _ in onDismiss() },
-                onDismiss: { onDismiss() }
-            )
-        }
-
+            .navigationDestination(item: $newDraft) { draft in
+                TierListEditorView(draft: draft, onPublished: { _ in onDismiss() }, onDismiss: { onDismiss() })
+            }
             .navigationTitle("В тир-лист")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -86,6 +82,8 @@ struct TierTargetPickerSheet: View {
                 }
             }
         }
+        .disabled(isAdding)
+        .interactiveDismissDisabled(isAdding)
         .tint(.primary)
         .task {
             drafts = TierListsRepository.shared.loadDrafts()
@@ -97,7 +95,10 @@ struct TierTargetPickerSheet: View {
     @ViewBuilder
     private func targetRow(_ list: TierList, badge: String?) -> some View {
         Button {
+            guard !isAdding else { return }
+            isAdding = true
             Task {
+                defer { isAdding = false }
                 do {
                     try await TierListsRepository.shared.addItem(item, to: list)
                     ToastManager.shared.show(

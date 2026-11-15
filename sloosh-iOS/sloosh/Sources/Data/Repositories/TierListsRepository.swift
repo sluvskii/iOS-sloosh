@@ -77,6 +77,31 @@ final class TierListsRepository: ObservableObject {
         _ = data
     }
 
+    /// Conditional full-node write preserves live social fields and refuses to
+    /// resurrect a deleted list or silently replace concurrent author edits.
+    private func updateExisting(id: String, changes: (TierList) throws -> [String: Any]) async throws -> TierList {
+        guard let url = await makeURL(path: "tier_lists/\(id)") else { throw URLError(.badURL) }
+        var read = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+        read.setValue("true", forHTTPHeaderField: "X-Firebase-ETag")
+        let (data, response) = try await session.data(for: read)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let etag = http.value(forHTTPHeaderField: "ETag"),
+              var document = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [String: Any],
+              let current = TierList.decode(id: id, document: document) else { throw URLError(.resourceUnavailable) }
+        for (key, value) in try changes(current) { document[key] = value }
+        var write = URLRequest(url: url, timeoutInterval: 12)
+        write.httpMethod = "PUT"
+        write.setValue(etag, forHTTPHeaderField: "if-match")
+        write.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        write.httpBody = try JSONSerialization.data(withJSONObject: document)
+        let (_, result) = try await session.data(for: write)
+        guard let status = (result as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
+            throw NSError(domain: "sloosh.tiers", code: 2, userInfo: [NSLocalizedDescriptionKey: "Список изменился или недоступен. Ваши правки сохранены в черновике; обновите список перед повторной публикацией."])
+        }
+        guard let saved = TierList.decode(id: id, document: document) else { throw URLError(.cannotParseResponse) }
+        return saved
+    }
+
     // MARK: - Публичные списки
 
     /// Последние 100 публичных списков (orderBy createdAtMs). Дедуп параллельных вызовов,
@@ -221,11 +246,22 @@ final class TierListsRepository: ObservableObject {
         if wasDraft || list.createdAtMs == 0 { list.createdAtMs = Int64(Date().timeIntervalSince1970 * 1000) }
         list.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
 
-        var document = list.publishDocument
-        // Never overwrite social counters with the editor's stale snapshot.
-        if !wasDraft { document.removeValue(forKey: "likesCount"); document.removeValue(forKey: "viewsCount") }
-        let body = try JSONSerialization.data(withJSONObject: document)
-        try await dataRequest(path: "tier_lists/\(listId)", method: wasDraft ? "PUT" : "PATCH", body: body)
+        if wasDraft {
+            let body = try JSONSerialization.data(withJSONObject: list.publishDocument)
+            try await dataRequest(path: "tier_lists/\(listId)", method: "PUT", body: body)
+        } else {
+            let edited = list
+            list = try await updateExisting(id: listId) { current in
+                guard current.updatedAtMs == draft.updatedAtMs else {
+                    throw NSError(domain: "sloosh.tiers", code: 3, userInfo: [NSLocalizedDescriptionKey: "Автор уже изменил этот список. Сохраните черновик и откройте свежую версию."])
+                }
+                var fields = edited.publishDocument
+                fields.removeValue(forKey: "likesCount"); fields.removeValue(forKey: "viewsCount")
+                if edited.subtitle == nil { fields["subtitle"] = NSNull() }
+                return fields
+            }
+        }
+        guard accountId == author.id else { throw CancellationError() }
 
         // Публикация черновика: локальный черновик больше не нужен
         deleteDraft(id: draft.id)
@@ -411,24 +447,21 @@ final class TierListsRepository: ObservableObject {
     /// Добавляет фильм в пул «Не распределено»: для черновика — локально,
     /// для опубликованного — правка узла RTDB (авторская правка).
     func addItem(_ item: TierListItem, to target: TierList) async throws {
-        let local = target.isDraftList || target.id.hasPrefix("draft_")
-        let latest = local ? target : await fetchList(id: target.id, force: true)
-        guard var updated = latest else { throw URLError(.resourceUnavailable) }
-        guard !updated.unranked.contains(where: { $0.mediaId == item.mediaId }),
-              !updated.rows.contains(where: { $0.items.contains(where: { $0.mediaId == item.mediaId }) }) else { return }
-        updated.unranked.append(item)
-        updated.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
-
         if target.isDraftList || target.id.hasPrefix("draft_") {
-            saveDraft(updated)
+            var latest = loadDrafts().first { $0.id == target.id } ?? target
+            guard !latest.allItems.contains(where: { $0.mediaId == item.mediaId }) else { return }
+            latest.unranked.append(item)
+            saveDraft(latest)
             return
         }
-        let document = updated.publishDocument.filter { ["rows", "unranked", "updatedAtMs"].contains($0.key) }
-        let body = try JSONSerialization.data(withJSONObject: document)
-        try await dataRequest(path: "tier_lists/\(updated.id)", method: "PATCH", body: body)
-        if let index = publicLists.firstIndex(where: { $0.id == updated.id }) {
-            publicLists[index] = updated
+        let updated = try await updateExisting(id: target.id) { current in
+            var latest = current
+            if !latest.allItems.contains(where: { $0.mediaId == item.mediaId }) { latest.unranked.append(item) }
+            latest.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+            return latest.publishDocument.filter { ["rows", "unranked", "updatedAtMs"].contains($0.key) }
         }
+        if let index = publicLists.firstIndex(where: { $0.id == updated.id }) { publicLists[index] = updated }
+        persistFeed()
     }
 
     // MARK: - Черновики (локальные, per-user)

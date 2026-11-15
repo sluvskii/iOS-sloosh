@@ -63,7 +63,9 @@ enum TierListRepositoryTests {
                 precondition(request.value(forHTTPHeaderField: "if-match") == "\"v\(value)\"")
                 // URLProtocol may expose an HTTP body stream rather than httpBody;
                 // verify the resulting value on the next read instead of reading it.
-                value += repoCounterDirection(writes: writes)
+                let sent = try JSONDecoder().decode(Int.self, from: requestBody(request))
+                precondition(sent == value + repoCounterDirection(writes: writes))
+                value = sent
                 return (200, [:], Data("\(value)".utf8))
             }
             return (200, [:], Data("null".utf8))
@@ -79,12 +81,19 @@ enum TierListRepositoryTests {
 
         var publicationMethod: String?
         list.id = "published_id"; list.isDraft = true
+        list.likesCount = 10; list.viewsCount = 20
         TierTestURLProtocol.handle = { request in
+            if request.httpMethod == "GET" {
+                return (200, ["ETag": "\"publication\""], try JSONSerialization.data(withJSONObject: list.publishDocument))
+            }
             publicationMethod = request.httpMethod
+            let sent = try JSONSerialization.jsonObject(with: requestBody(request)) as! [String: Any]
+            precondition((sent["likesCount"] as? Int) == 10 && (sent["viewsCount"] as? Int) == 20)
+            precondition(request.value(forHTTPHeaderField: "if-match") == "\"publication\"")
             return (200, [:], Data("null".utf8))
         }
         let saved = try await repo.publish(list)
-        check(saved?.id == "published_id" && publicationMethod == "PATCH", "A locally saved edit updates its published ID, never creates a duplicate")
+        check(saved?.id == "published_id" && publicationMethod == "PUT", "A locally saved edit updates its published ID, never creates a duplicate")
 
         var pages = 0
         TierTestURLProtocol.handle = { request in
@@ -110,6 +119,22 @@ enum TierListRepositoryTests {
         check(!repo.isLiked(list.id), "Social state is isolated after an account switch")
         AuthRepository.shared.currentUser = TierTestUser(id: "alice")
         return count
+    }
+
+    private static func requestBody(_ request: URLRequest) throws -> Data {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { throw URLError(.zeroByteResource) }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 2048)
+        while true {
+            let size = stream.read(&buffer, maxLength: buffer.count)
+            if size < 0 { throw URLError(.cannotDecodeRawData) }
+            if size == 0 { break }
+            data.append(contentsOf: buffer.prefix(size))
+        }
+        return data
     }
 
     private static func repoCounterDirection(writes: Int) -> Int { writes <= 2 ? 1 : -1 }

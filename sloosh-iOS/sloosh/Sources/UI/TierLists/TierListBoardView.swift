@@ -82,6 +82,7 @@ struct TierListBoardView: View {
     @State private var targetRowId: String?
     @State private var targetIndex: Int = 0
     @State private var dragLocation: CGPoint = .zero
+    @State private var grabOffset: CGPoint = .zero
     @State private var isDragging = false
     @State private var highlightedRowId: String?
     @State private var dragStartBoardFrame: CGRect = .zero
@@ -210,7 +211,7 @@ struct TierListBoardView: View {
             if items.isEmpty {
                 ZStack {
                     if mode == .edit {
-                        Image(systemName: highlightedRowId == rowId ? "arrow.down.to.line" : "plus")
+                        Image(systemName: "arrow.down.to.line")
                             .font(.body.weight(.medium))
                             .foregroundStyle(.tertiary)
                     }
@@ -467,10 +468,13 @@ struct TierListBoardView: View {
         dragStartRowGeometries = !rowGeometries.isEmpty ? rowGeometries : dragStartRowGeometries
         dragStartItemGeometries = !itemGeometries.isEmpty ? itemGeometries : dragStartItemGeometries
 
+        if let frame = dragStartItemGeometries.first(where: { $0.mediaId == item.mediaId && $0.rowId == sourceRowId })?.frame {
+            grabOffset = CGPoint(x: windowPoint.x - frame.midX, y: windowPoint.y - frame.midY)
+        } else { grabOffset = .zero }
         let referenceBoardMinY = dragStartBoardFrame.minY
         let localPoint = CGPoint(
-            x: windowPoint.x - dragStartBoardFrame.minX,
-            y: windowPoint.y - referenceBoardMinY
+            x: windowPoint.x - dragStartBoardFrame.minX - grabOffset.x,
+            y: windowPoint.y - referenceBoardMinY - grabOffset.y
         )
         withAnimation(.spring(response: 0.25, dampingFraction: 0.78)) {
             activeDraggedItem = item
@@ -490,8 +494,8 @@ struct TierListBoardView: View {
         // Позиция под пальцем с поправкой на физический сдвиг доски в скролле
         let effectiveBoardY = dragStartBoardFrame.minY - scrollDelta
         let localPoint = CGPoint(
-            x: windowPoint.x - dragStartBoardFrame.minX,
-            y: windowPoint.y - effectiveBoardY
+            x: windowPoint.x - dragStartBoardFrame.minX - grabOffset.x,
+            y: windowPoint.y - effectiveBoardY - grabOffset.y
         )
         dragLocation = localPoint
 
