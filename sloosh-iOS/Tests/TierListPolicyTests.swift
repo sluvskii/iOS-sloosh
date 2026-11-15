@@ -158,6 +158,46 @@ struct TierListPolicyTests {
         for i in 0..<25 { alice.id = "draft_\(i)"; aliceStore.save(alice) }
         check(aliceStore.load().count == 25, "Never silently delete draft 21 and older")
 
+        // Autosave decisions use the production state machine and actual store.
+        let autosaveStore = TierDraftStore(defaults: defaults, userId: "autosave")
+        for pool in [[TierListItem](), template!.items] {
+            let initial = TierEditorSnapshot(title: "Мой тир-лист", subtitle: "", rows: TierRow.defaultRows(), unranked: pool)
+            var state = TierDraftAutosaveState(initial: initial, wasStored: false)
+            for _ in 0..<3 {
+                check(state.action(for: initial, didPublish: false) == .none,
+                      "Opening, backgrounding and leaving untouched blank/template editors never save a draft")
+            }
+            var changed = initial
+            changed.title = "Мой рейтинг"
+            check(state.action(for: changed, didPublish: false) == .save, "A real title edit starts autosave")
+            var saved = draft
+            saved.authorId = "autosave"; saved.id = "draft_autosave"
+            saved.title = changed.title; saved.rows = changed.rows; saved.unranked = changed.unranked
+            autosaveStore.save(saved)
+            check(autosaveStore.load().count == 1, "Edited work remains recoverable")
+            check(state.action(for: changed, didPublish: false) == .none, "Lifecycle callbacks do not rewrite unchanged work")
+            check(state.action(for: initial, didPublish: false) == .delete, "Undoing all edits removes only the new session draft")
+            autosaveStore.delete(id: saved.id)
+            check(autosaveStore.load().isEmpty, "No phantom draft remains after undo to the initial state")
+            check(state.action(for: initial, didPublish: false) == .none, "Repeated exit after undo stays a no-op")
+            check(state.action(for: changed, didPublish: true) == .none, "Publication cannot resurrect a deleted draft")
+            check(state.action(for: changed, didPublish: false) == .save, "Editing again after undo resumes autosave")
+
+            for edited in [
+                TierEditorSnapshot(title: initial.title, subtitle: "Описание", rows: initial.rows, unranked: pool),
+                TierEditorSnapshot(title: initial.title, subtitle: "", rows: Array(initial.rows.reversed()), unranked: pool),
+                TierEditorSnapshot(title: initial.title, subtitle: "", rows: initial.rows, unranked: pool + [sampleItem])
+            ] {
+                var freshState = TierDraftAutosaveState(initial: initial, wasStored: false)
+                check(freshState.action(for: edited, didPublish: false) == .save, "Description, row and film edits are saved")
+            }
+            var existing = TierDraftAutosaveState(initial: initial, wasStored: true)
+            check(existing.action(for: initial, didPublish: false) == .none, "Opening an existing draft does not rewrite it")
+            check(existing.action(for: changed, didPublish: false) == .save, "Existing draft edits still save")
+            check(existing.action(for: initial, didPublish: false) == .save, "Undo after autosave restores an existing draft, never deletes it")
+            check(existing.action(for: initial, didPublish: false) == .none, "Restored existing draft does not save repeatedly")
+        }
+
         // Source-level UI contract, not a gesture/pixel test: keep the exact
         // system API used before the polish pass and never chain a popup to it.
         let galleryUI = try String(contentsOfFile: "sloosh/Sources/UI/TierLists/TierListsHomeView.swift", encoding: .utf8)

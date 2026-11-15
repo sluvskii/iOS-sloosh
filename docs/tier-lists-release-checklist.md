@@ -105,3 +105,18 @@ device and live Firebase scenarios are checked.
   lost permissions, two-admin conflict and visibility after refresh on another
   device. Production rules must already grant the current admin UID access; errors
   are surfaced rather than treated as successful saves.
+
+## Draft creation only after editing
+
+- Opening/leaving a new editor or a template unchanged (including backgrounding,
+  opening/cancelling picker/row/publish sheets) must not create a local draft.
+- Title/description edits, film additions/removals/moves and row changes still
+  autosave after debounce, on background and on exit. Existing drafts are retained;
+  opening one unchanged must not update its timestamp or reorder the list.
+- Undo to the opening state removes only a draft created in this new session.
+  For a pre-existing draft, undo after autosave restores its original content instead.
+  Publication must never recreate a draft on disappearance or pending debounce.
+- Explicitly adding a film via the target picker still creates a recoverable draft.
+  Older drafts are not bulk-cleaned because they may contain intentional work.
+- CI exercises the autosave state machine and local store; verify the editor
+  lifecycle, debounce, undo and relaunch recovery on device in addition.
