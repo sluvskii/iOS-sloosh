@@ -882,6 +882,7 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             self.onMove = onMove
             self.onDrop = onDrop
             self.onCancel = onCancel
+            super.init()
             inactiveObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.cancelInteraction()
             }
