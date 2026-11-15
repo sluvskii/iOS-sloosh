@@ -38,11 +38,12 @@ struct AdminTierTemplatesView: View {
                                 }
                                 .padding(.vertical, 4)
                             }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) { deleting = template } label: { Label("Удалить", systemImage: "trash") }
-                                    .tint(.red)
-                            }
                         }
+                        .onDelete { offsets in
+                            guard let index = offsets.first, repo.templates.indices.contains(index) else { return }
+                            deleting = repo.templates[index]
+                        }
+                        .tint(.red)
                     }
                 }
                 if let message = repo.templatesError {
@@ -55,7 +56,6 @@ struct AdminTierTemplatesView: View {
                 Text("Доступно только администраторам").foregroundStyle(.secondary)
             }
         }
-        .tint(.primary)
         .scrollContentBackground(.hidden)
         .disabled(isDeleting)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
@@ -151,7 +151,6 @@ private struct AdminTierTemplateEditor: View {
             .disabled(isSaving || !auth.isAdmin)
             .navigationTitle(original == nil ? "Новый шаблон" : "Редактирование")
             .navigationBarTitleDisplayMode(.inline)
-            .tint(.primary)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Отмена") {

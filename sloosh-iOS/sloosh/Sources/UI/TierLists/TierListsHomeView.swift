@@ -5,7 +5,6 @@ import SwiftUI
 struct TierListsHomeView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var auth = AuthRepository.shared
-    @State private var pendingDeletion: TierList?
     @State private var actionError: String?
     @StateObject private var repo = TierListsRepository.shared
     @State private var editorDraft: TierList?
@@ -49,30 +48,32 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: draft.title, detail: "Черновик · \(draft.itemsCount) фильмов", posters: draft.allItems.compactMap(\.posterUrl))
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDeletion = draft
-                            } label: {
-                                Label("Удалить", systemImage: "trash")
-                            }
-                            .tint(.red)
-                        }
                     }
+                    .onDelete { offsets in
+                        let drafts = offsets.compactMap { myDrafts.indices.contains($0) ? myDrafts[$0] : nil }
+                        for draft in drafts { repo.deleteDraft(id: draft.id) }
+                        withAnimation { myDrafts = repo.loadDrafts() }
+                    }
+                    .tint(.red)
                     ForEach(myLists) { list in
                         Button {
                             viewerList = list
                         } label: {
                             row(title: list.title, detail: "\(list.itemsCount) фильмов", posters: list.allItems.compactMap(\.posterUrl))
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDeletion = list
-                            } label: {
-                                Label("Удалить", systemImage: "trash")
+                    }
+                    .onDelete { offsets in
+                        let lists = offsets.compactMap { myLists.indices.contains($0) ? myLists[$0] : nil }
+                        Task {
+                            for list in lists {
+                                do {
+                                    try await repo.deleteList(id: list.id)
+                                    withAnimation { myLists.removeAll { $0.id == list.id } }
+                                } catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
                             }
-                            .tint(.red)
                         }
                     }
+                    .tint(.red)
                 }
             }
 
@@ -109,7 +110,6 @@ struct TierListsHomeView: View {
             }
         }
         .navigationTitle("Тир-листы")
-        .tint(.primary)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -134,24 +134,6 @@ struct TierListsHomeView: View {
                 if let i = myLists.firstIndex(where: { $0.id == list.id }) { myLists[i] = list }
                 else { myLists.insert(list, at: 0) }
             }
-        }
-        .confirmationDialog("Удалить тир-лист?", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }), titleVisibility: .visible) {
-            Button("Удалить", role: .destructive) {
-                guard let list = pendingDeletion else { return }
-                Task {
-                    do {
-                        if list.isDraftList {
-                            repo.deleteDraft(id: list.id)
-                            myDrafts = repo.loadDrafts()
-                        } else {
-                            try await repo.deleteList(id: list.id)
-                            myLists.removeAll { $0.id == list.id }
-                        }
-                    } catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
-                    pendingDeletion = nil
-                }
-            }
-            Button("Отмена", role: .cancel) { pendingDeletion = nil }
         }
         .alert("Не удалось выполнить действие", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
             Button("Понятно", role: .cancel) {}

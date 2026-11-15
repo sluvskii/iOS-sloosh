@@ -20,7 +20,7 @@
   a server-maintained author index; do not silently cap author results.
 - Checked social writes, in-flight coalescing and ETag counter updates with bounded
   contention retry. Failed operations do not show false local success.
-- Confirmed deletion and error UI, forced feed refresh, authoritative empty feed.
+- System List.onDelete deletion and error UI, forced feed refresh, authoritative empty feed. Admin template deletion retains its confirmation.
 - Real share sheet presentation, export request coalescing, six-image download
   batches, thumbnail decoding, explicit renderer pixel scale/24 MP budget and
   tall-board fitting in stories. Export uses effective/current curated poster URLs.
@@ -78,8 +78,11 @@ device and live Firebase scenarios are checked.
 ## Admin template management and navigation polish
 
 - Details no longer has a tier-list action; the Profile entry sits beside the
-  avatar, leaving Downloads + Settings on the right. Destructive list swipes
-  explicitly use red, disable full-swipe deletion, and confirm drafts too.
+  avatar, leaving Downloads + Settings on the right. Deletion uses native
+  `ForEach.onDelete` in the system List, including the default full swipe. Red
+  tint is scoped to deletable content; no custom swipe button, label, gesture or
+  background is supplied. Drafts delete directly; remote rows update after checked
+  server success. Admin shared-template deletion still asks for confirmation.
 - Admin → Тир-листы uses the existing `tier_templates` Firebase rule (admin UID).
   Create/edit title, description and priority; add from the shared film picker,
   remove/reorder films with native handles. At least four unique films are required;
