@@ -58,6 +58,14 @@ struct TierTargetPickerSheet: View {
                     }
                 }
             }
+        .navigationDestination(item: $newDraft) { draft in
+            TierListEditorView(
+                draft: draft,
+                onPublished: { _ in onDismiss() },
+                onDismiss: { onDismiss() }
+            )
+        }
+
             .navigationTitle("В тир-лист")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -83,13 +91,6 @@ struct TierTargetPickerSheet: View {
             drafts = TierListsRepository.shared.loadDrafts()
             mine = await TierListsRepository.shared.fetchLists(forAuthorId: AuthRepository.shared.currentUser?.id ?? "")
             isLoading = false
-        }
-        .navigationDestination(item: $newDraft) { draft in
-            TierListEditorView(
-                draft: draft,
-                onPublished: { _ in onDismiss() },
-                onDismiss: { onDismiss() }
-            )
         }
     }
 

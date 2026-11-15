@@ -7,38 +7,38 @@ import UIKit
 enum TierListImageExporter {
 
     static func loadPosters(for list: TierList, progress: @escaping (Double) -> Void) async -> [String: UIImage] {
-        let allUrls = Array(NSSet(objects: list.allItems.compactMap(\.posterUrl).map { NSString(string: $0) })) as? [String] ?? []
+        let items = list.allItems
         var result: [String: UIImage] = [:]
-        var completed = 0.0
-        let total = Double(max(1, allUrls.count))
-        await withTaskGroup(of: (String, UIImage?).self) { group in
-            for url in allUrls {
-                group.addTask {
-                    guard let imageUrl = URL(string: url) else { return (url, nil) }
-                    // 1. Кэш URLCache (картинки, уже показанные в приложении)
-                    if let cached = URLCache.shared.cachedResponse(for: URLRequest(url: imageUrl)),
-                       let image = UIImage(data: cached.data) {
-                        return (url, image)
+        let unique = Dictionary(items.compactMap { item -> (String, String)? in
+            guard let original = item.posterUrl, let resolved = item.resolvedPosterURL else { return nil }
+            return (original, resolved)
+        }, uniquingKeysWith: { first, _ in first })
+        let entries = Array(unique)
+        var completed = 0
+        // Bounded batches avoid hundreds of simultaneous decodes on large boards.
+        for offset in stride(from: 0, to: entries.count, by: 6) {
+            guard !Task.isCancelled else { break }
+            let batch = Array(entries[offset..<min(offset + 6, entries.count)])
+            await withTaskGroup(of: (String, UIImage?).self) { group in
+                for (key, value) in batch {
+                    group.addTask {
+                        guard !Task.isCancelled, let raw = URL(string: value), let url = ImageCache.resolveEffectiveUrl(raw) else { return (key, nil) }
+                        if let cached = ImageCache.shared.image(forKey: url.absoluteString) { return (key, cached) }
+                        do {
+                            let (data, response) = try await ImageCache.session.data(for: URLRequest(url: url, timeoutInterval: 15))
+                            guard !Task.isCancelled, let http = response as? HTTPURLResponse, http.statusCode == 200 else { return (key, nil) }
+                            return (key, UIImage(data: data))
+                        } catch { return (key, nil) }
                     }
-                    // 2. Сеть
-                    do {
-                        var request = URLRequest(url: imageUrl)
-                        request.timeoutInterval = 15
-                        let (data, response) = try await URLSession.shared.data(for: request)
-                        if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                           let image = UIImage(data: data) {
-                            return (url, image)
-                        }
-                    } catch {}
-                    return (url, nil)
+                }
+                for await (key, image) in group {
+                    completed += 1
+                    if let image { result[key] = image }
+                    progress(Double(completed) / Double(max(1, entries.count)))
                 }
             }
-            for await (url, image) in group {
-                completed += 1
-                if let image { result[url] = image }
-                progress(completed / total)
-            }
         }
+        progress(1)
         return result
     }
 
@@ -92,7 +92,12 @@ enum TierListImageExporter {
         let contentHeight = max(400, cursor)
         let totalHeight = headerHeight + contentHeight + footerHeight
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: totalHeight))
+        let format = UIGraphicsImageRendererFormat()
+        // Logical export dimensions are pixels, not device points (3× used
+        // nine times the memory). Very long boards stay below a 24 MP budget.
+        format.scale = min(1, sqrt(24_000_000 / (width * totalHeight)))
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: totalHeight), format: format)
         return renderer.image { context in
             let cg = context.cgContext
             // Фон
@@ -158,7 +163,10 @@ enum TierListImageExporter {
         let boardImage = renderBoardImage(list: list, authorName: authorName, posters: posters)
         let width: CGFloat = 1080
         let height: CGFloat = 1920
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format)
         return renderer.image { context in
             let cg = context.cgContext
             let colors = [
@@ -193,7 +201,7 @@ enum TierListImageExporter {
             }
 
             // Доска по центру, вписанная по ширине
-            let boardScale = (width - 80) / boardImage.size.width
+            let boardScale = min((width - 80) / boardImage.size.width, (height - 440) / boardImage.size.height)
             let boardSize = CGSize(width: boardImage.size.width * boardScale, height: boardImage.size.height * boardScale)
             let boardY = min(max(200, (height - boardSize.height) / 2), height - boardSize.height - 140)
             boardImage.draw(in: CGRect(x: 40, y: boardY, width: boardSize.width, height: boardSize.height))

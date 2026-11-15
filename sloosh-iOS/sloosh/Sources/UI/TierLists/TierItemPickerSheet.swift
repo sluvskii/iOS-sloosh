@@ -3,6 +3,7 @@ import SwiftUI
 /// Добавление фильмов в тир-лист: чисто нативный List с системным поиском
 /// (.searchable), быстрым доступом к избранному, популярным фильмам и подборкам.
 struct TierItemPickerSheet: View {
+    var existingIds: Set<String> = []
     var onAdd: ([TierListItem]) -> Void
     var onDismiss: () -> Void
 
@@ -19,7 +20,9 @@ struct TierItemPickerSheet: View {
     @State private var studioPage = 1
     @State private var studioTotalPages = 1
     @State private var isLoadingStudio = false
-    @State private var selected: [String: TierListItem] = [:]
+    @State private var selected: [TierListItem] = []
+    @State private var loadError: String?
+    @State private var didLoadInitial = false
 
     var body: some View {
         NavigationStack {
@@ -34,6 +37,10 @@ struct TierItemPickerSheet: View {
                                 Spacer()
                             }
                             .padding(.vertical, 8)
+                        } else if let loadError {
+                            Text(loadError).foregroundStyle(.secondary)
+                        } else if trimmedSearch.count < 2 {
+                            Text("Введите хотя бы два символа").foregroundStyle(.secondary)
                         } else if searchResults.isEmpty {
                             Text("Ничего не найдено")
                                 .foregroundStyle(.secondary)
@@ -82,7 +89,9 @@ struct TierItemPickerSheet: View {
                     }
 
                     Section("Франшизы и подборки") {
-                        if studios.isEmpty {
+                        if studios.isEmpty && didLoadInitial {
+                            Button("Повторить загрузку") { Task { await loadInitialData() } }
+                        } else if studios.isEmpty {
                             ProgressView()
                                 .padding(.vertical, 4)
                         } else {
@@ -115,7 +124,7 @@ struct TierItemPickerSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Добавить (\(selected.count))") {
-                        onAdd(Array(selected.values))
+                        onAdd(selected)
                         dismiss()
                     }
                     .font(.body.weight(.semibold))
@@ -128,6 +137,7 @@ struct TierItemPickerSheet: View {
         .task {
             await loadInitialData()
         }
+        .onDisappear { searchTask?.cancel() }
         .onChange(of: searchText) { _, newValue in
             searchTask?.cancel()
             let query = newValue.trimmingCharacters(in: .whitespaces)
@@ -136,12 +146,21 @@ struct TierItemPickerSheet: View {
                 isSearching = false
                 return
             }
+            isSearching = true
+            searchResults = []
+            loadError = nil
             searchTask = Task {
                 try? await Task.sleep(nanoseconds: 280_000_000)
                 guard !Task.isCancelled else { return }
                 await MainActor.run { isSearching = true }
-                let items = ((try? await MoviesRepository.shared.searchMovies(query: query, page: 1)) ?? [])
-                    .compactMap(TierListItem.init)
+                let items: [TierListItem]
+                do { items = try await MoviesRepository.shared.searchMovies(query: query, page: 1).compactMap(TierListItem.init) }
+                catch {
+                    guard !Task.isCancelled else { return }
+                    loadError = "Не удалось выполнить поиск. Попробуйте ещё раз."
+                    isSearching = false
+                    return
+                }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     searchResults = items
@@ -154,18 +173,19 @@ struct TierItemPickerSheet: View {
     @ViewBuilder
     private func pickerRows(items: [TierListItem], paged: Bool) -> some View {
         ForEach(items) { item in
-            let isSelected = selected[item.mediaId] != nil
+            let isSelected = selected.contains { $0.mediaId == item.mediaId }
+            let isExisting = existingIds.contains(item.mediaId)
             Button {
                 if isSelected {
-                    selected.removeValue(forKey: item.mediaId)
+                    selected.removeAll { $0.mediaId == item.mediaId }
                 } else {
-                    selected[item.mediaId] = item
+                    selected.append(item)
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 HStack(spacing: 12) {
                     AsyncCachedImage(
-                        url: item.posterUrl.flatMap { URL(string: $0) },
+                        url: item.resolvedPosterURL.flatMap { URL(string: $0) },
                         placeholder: { Rectangle().fill(Color(UIColor.tertiarySystemFill)) },
                         content: { image in
                             Image(uiImage: image)
@@ -191,12 +211,14 @@ struct TierItemPickerSheet: View {
                     }
                     Spacer(minLength: 0)
 
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: (isSelected || isExisting) ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 20))
                         .foregroundStyle(isSelected ? Color.primary : Color(UIColor.tertiaryLabel))
                 }
             }
             .buttonStyle(.plain)
+            .disabled(isExisting)
+            .accessibilityValue(isExisting ? "Уже в тир-листе" : (isSelected ? "Выбрано" : "Не выбрано"))
             .onAppear {
                 if paged, item.mediaId == items.last?.mediaId, studioPage < studioTotalPages, !isLoadingStudio {
                     Task { await loadStudioItemsNextPage() }
@@ -222,7 +244,7 @@ struct TierItemPickerSheet: View {
                 mediaType: type,
                 title: title,
                 year: fav.year.flatMap(Int.init),
-                posterUrl: fav.posterUrl
+                posterUrl: fav.toMediaDto().displayPosterUrl(forLogoMode: false)
             )
         }
         await MainActor.run { favoriteItems = favs }
@@ -236,7 +258,7 @@ struct TierItemPickerSheet: View {
         // 3. Подборки и студии
         let sections = await MoviesRepository.shared.getCategories()
         let allStudios = sections.flatMap(\.items)
-        await MainActor.run { studios = allStudios }
+        await MainActor.run { studios = allStudios; didLoadInitial = true }
     }
 
     private func loadStudioItems(_ studio: CategoryItemDto) async {
@@ -245,6 +267,7 @@ struct TierItemPickerSheet: View {
         let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: 1)
         let items = (response?.items ?? []).compactMap(TierListItem.init)
         let pages = response?.totalPages ?? 1
+        guard !Task.isCancelled, selectedStudio?.id == studio.id else { return }
         await MainActor.run {
             studioItems = items
             studioTotalPages = max(1, pages)
@@ -255,9 +278,14 @@ struct TierItemPickerSheet: View {
     private func loadStudioItemsNextPage() async {
         guard let studio = selectedStudio else { return }
         isLoadingStudio = true
-        studioPage += 1
-        let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: studioPage)
-        let items = (response?.items ?? []).compactMap(TierListItem.init)
+        let nextPage = studioPage + 1
+        guard let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: nextPage) else {
+            isLoadingStudio = false
+            return
+        }
+        guard !Task.isCancelled, selectedStudio?.id == studio.id else { return }
+        studioPage = nextPage
+        let items = response.items.compactMap(TierListItem.init)
         await MainActor.run {
             let known = Set(studioItems.map(\.mediaId))
             studioItems.append(contentsOf: items.filter { !known.contains($0.mediaId) })
@@ -269,6 +297,12 @@ struct TierItemPickerSheet: View {
 // MARK: - Адаптеры MediaDto / MediaDetailsDto → TierListItem
 
 extension TierListItem {
+    var resolvedPosterURL: String? {
+        let item = MediaOverridesRepository.shared.catalogOverride(id: mediaId, type: mediaType, kpId: nil)
+        let chosen = item?.artworkURL(item?.posterUrl) ?? posterUrl
+        return normalizeImageUrl(path: chosen, id: mediaId)
+    }
+
     init?(from media: MediaDto) {
         let id = media.identifier
         guard !id.isEmpty else { return nil }
@@ -285,7 +319,7 @@ extension TierListItem {
             mediaType: media.type ?? "movie",
             title: media.title ?? media.originalTitle ?? "",
             year: media.year?.intValue,
-            posterUrl: media.poster ?? media.posterUrl
+            posterUrl: media.displayPosterUrl(forLogoMode: false)
         )
     }
 
@@ -301,7 +335,7 @@ extension TierListItem {
             mediaType: type,
             title: details.title ?? details.originalTitle ?? "",
             year: details.year,
-            posterUrl: details.poster ?? details.displayPosterUrl
+            posterUrl: details.displayPosterUrl
         )
     }
 }

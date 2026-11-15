@@ -14,7 +14,10 @@ struct TierListViewerView: View {
     @State private var isLoading = true
     @State private var isLiked = false
     @State private var showAuthorProfile = false
-    @State private var showRemixEditor = false
+    @State private var editorList: TierList?
+    @State private var isLiking = false
+    @State private var showDeleteConfirmation = false
+    @State private var actionError: String?
     @State private var showFriendSheet = false
     @State private var detailsItem: TierListItem?
     @State private var shareImage: UIImage?
@@ -41,8 +44,8 @@ struct TierListViewerView: View {
             .navigationDestination(isPresented: $showAuthorProfile) {
                 authorDestination
             }
-            .navigationDestination(isPresented: $showRemixEditor) {
-                remixDestination
+            .navigationDestination(item: $editorList) { draft in
+                TierListEditorView(draft: draft, onPublished: { updated in if updated.id == listId { list = updated } }, onDismiss: {})
             }
             .sheet(isPresented: $showFriendSheet) {
                 friendSheet
@@ -50,9 +53,21 @@ struct TierListViewerView: View {
             .overlay {
                 exportOverlay
             }
-            .overlay {
-                shareSheetOverlay
+            .sheet(isPresented: Binding(get: { shareImage != nil }, set: { if !$0 { shareImage = nil } })) {
+                if let image = shareImage { ShareSheet(items: [image]) }
             }
+            .confirmationDialog("Удалить тир-лист?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+                Button("Удалить", role: .destructive) {
+                    Task {
+                        do { try await repo.deleteList(id: listId); dismiss() }
+                        catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
+                    }
+                }
+                Button("Отмена", role: .cancel) {}
+            }
+            .alert("Не удалось выполнить действие", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+                Button("Понятно", role: .cancel) {}
+            } message: { Text(actionError ?? "") }
             .alert("Не удалось создать картинку", isPresented: exportAlertBinding) {
                 Button("Понятно", role: .cancel) {}
             } message: {
@@ -162,10 +177,7 @@ struct TierListViewerView: View {
     @ViewBuilder
     private func deleteOwnListButton(_ current: TierList) -> some View {
         Button("Удалить тир-лист", role: .destructive) {
-            Task {
-                try? await TierListsRepository.shared.deleteList(id: current.id)
-                dismiss()
-            }
+            showDeleteConfirmation = true
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
@@ -178,17 +190,23 @@ struct TierListViewerView: View {
         ToolbarItem(placement: .topBarLeading) {
             Button {
                 Task {
-                    let (liked, count) = await like()
-                    isLiked = liked
-                    if let current = list, current.id == listId {
+                    guard !isLiking else { return }
+                    isLiking = true
+                    defer { isLiking = false }
+                    do {
+                        guard let current = list else { return }
+                        let (liked, count) = try await repo.toggleLike(current)
+                        isLiked = liked
                         list?.likesCount = count
-                    }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } catch { actionError = "Лайк не сохранён. Проверьте подключение и повторите попытку." }
                 }
             } label: {
                 Image(systemName: isLiked ? "heart.fill" : "heart")
                     .foregroundStyle(isLiked ? .red : .primary)
             }
-            .disabled(list == nil)
+            .disabled(list == nil || isLiking)
+            .accessibilityLabel(isLiked ? "Убрать лайк" : "Нравится")
         }
     }
 
@@ -201,7 +219,7 @@ struct TierListViewerView: View {
                 Image(systemName: "ellipsis.circle")
                     .foregroundStyle(.primary)
             }
-            .disabled(list == nil)
+            .disabled(list == nil || isExporting)
         }
     }
 
@@ -228,8 +246,21 @@ struct TierListViewerView: View {
             Label("Отправить друзьям", systemImage: "paperplane")
         }
         Divider()
+        if let current = list, current.authorId == AuthRepository.shared.currentUser?.id {
+            Button {
+                editorList = current
+            } label: { Label("Редактировать", systemImage: "pencil") }
+        }
         Button {
-            showRemixEditor = true
+            if var copy = list {
+                copy.id = "draft_\(UUID().uuidString)"
+                copy.isDraft = true
+                copy.authorId = AuthRepository.shared.currentUser?.id ?? ""
+                copy.authorName = AuthRepository.shared.currentUser?.displayName ?? ""
+                copy.createdAtMs = 0; copy.updatedAtMs = 0
+                copy.likesCount = nil; copy.viewsCount = nil
+                editorList = copy
+            }
         } label: {
             Label("Сделать свой", systemImage: "square.and.pencil")
         }
@@ -258,29 +289,6 @@ struct TierListViewerView: View {
     }
 
     @ViewBuilder
-    private var remixDestination: some View {
-        if let source = list {
-            let remix: TierList = {
-                var remix = source
-                remix.id = "draft_\(UUID().uuidString)"
-                remix.isDraft = true
-                remix.authorId = AuthRepository.shared.currentUser?.id ?? ""
-                remix.authorName = AuthRepository.shared.currentUser?.displayName ?? ""
-                remix.createdAtMs = 0
-                remix.updatedAtMs = 0
-                remix.likesCount = nil
-                remix.viewsCount = nil
-                return remix
-            }()
-            TierListEditorView(
-                draft: remix,
-                onPublished: { _ in },
-                onDismiss: {}
-            )
-        }
-    }
-
-    @ViewBuilder
     private var friendSheet: some View {
         if let current = list {
             ShareToFriendSheet(tierList: current)
@@ -304,14 +312,6 @@ struct TierListViewerView: View {
         }
     }
 
-    @ViewBuilder
-    private var shareSheetOverlay: some View {
-        if let image = shareImage {
-            ShareSheet(items: [image])
-                .onDisappear { shareImage = nil }
-        }
-    }
-
     private var exportAlertBinding: Binding<Bool> {
         Binding(
             get: { exportError != nil },
@@ -320,10 +320,9 @@ struct TierListViewerView: View {
     }
 
     private func load() async {
-        var loaded: TierList? = initialList
-        if loaded == nil {
-            loaded = await TierListsRepository.shared.fetchList(id: listId)
-        }
+        list = initialList
+        let loaded = await repo.fetchList(id: listId, force: true) ?? initialList
+        guard !Task.isCancelled else { return }
         list = loaded
         isLoading = false
         if let loaded {
@@ -338,16 +337,8 @@ struct TierListViewerView: View {
         }
     }
 
-    private func like() async -> (Bool, Int) {
-        guard let current = list else { return (isLiked, 0) }
-        let (liked, count) = await TierListsRepository.shared.toggleLike(current)
-        TierListsRepository.shared.applyLikeCount(listId: current.id, count: count)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        return (liked, count)
-    }
-
     private func exportToPhotos() async {
-        guard let current = list else { return }
+        guard !isExporting, let current = list else { return }
         isExporting = true
         exportProgress = 0
         let posters = await loadPosters(for: current)
@@ -357,7 +348,7 @@ struct TierListViewerView: View {
     }
 
     private func exportStoriesImage() async {
-        guard let current = list else { return }
+        guard !isExporting, let current = list else { return }
         isExporting = true
         exportProgress = 0
         let posters = await loadPosters(for: current)
@@ -367,7 +358,7 @@ struct TierListViewerView: View {
     }
 
     private func shareBoardImage() async {
-        guard let current = list else { return }
+        guard !isExporting, let current = list else { return }
         isExporting = true
         exportProgress = 0
         let posters = await loadPosters(for: current)

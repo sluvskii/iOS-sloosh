@@ -113,6 +113,50 @@ struct TierListPolicyTests {
         check(poolItems.isEmpty, "Item removed from pool")
         check(testRows[0].items[0].mediaId == "movie_123", "Item identity preserved")
 
+        // The production move reducer, not a hand-written simulation.
+        let second = TierListItem(mediaId: "tv_123", mediaType: "tv", title: "Series", year: nil, posterUrl: nil)
+        var actualRows = [TierRow(id: "s", label: "S", colorHex: "FF0000", items: [sampleItem, second]), TierRow(id: "a", label: "A", colorHex: "00FF00", items: [])]
+        var actualPool: [TierListItem] = []
+        TierBoardPolicy.move(sampleItem.mediaId, to: "s", at: 1, rows: &actualRows, unranked: &actualPool)
+        check(actualRows[0].items.map(\.mediaId) == [second.mediaId, sampleItem.mediaId], "Same-row forward insertion uses post-removal index")
+        TierBoardPolicy.move(sampleItem.mediaId, to: "a", at: 900, rows: &actualRows, unranked: &actualPool)
+        check(actualRows[1].items == [sampleItem] && actualRows[0].items == [second], "Empty row accepts movie without losing equal-number TV")
+        TierBoardPolicy.move(sampleItem.mediaId, to: TierBoardPolicy.pool, at: -5, rows: &actualRows, unranked: &actualPool)
+        check(actualPool == [sampleItem] && actualRows[1].items.isEmpty, "Empty pool is a real destination")
+        let before = actualRows
+        TierBoardPolicy.move(second.mediaId, to: "deleted-row", at: 0, rows: &actualRows, unranked: &actualPool)
+        check(actualRows == before && actualPool == [sampleItem], "Deleted/invalid destination is a no-op")
+        for index in -5...10 {
+            TierBoardPolicy.move(second.mediaId, to: "s", at: index, rows: &actualRows, unranked: &actualPool)
+            check((actualRows.flatMap(\.items) + actualPool).count == 2, "Repeated boundary moves never duplicate/lose items")
+        }
+        check(TierBoardPolicy.validationMessage(title: "  ", subtitle: nil, rows: actualRows, items: actualPool) != nil, "Reject whitespace title")
+        check(TierBoardPolicy.validationMessage(title: String(repeating: "я", count: 121), subtitle: nil, rows: actualRows, items: actualPool) != nil, "Check Firebase title limit before network")
+        check(TierBoardPolicy.validationMessage(title: "Test", subtitle: nil, rows: actualRows, items: []) != nil, "Reject empty publication")
+        check(TierBoardPolicy.validationMessage(title: "Test", subtitle: nil, rows: actualRows, items: [sampleItem, sampleItem]) != nil, "Reject duplicates")
+        check(TierBoardPolicy.validationMessage(title: "Test", subtitle: nil, rows: actualRows, items: [sampleItem, second]) == nil, "Typed movie and series are independent")
+
+        let suite = "sloosh.tier.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var alice = draft; alice.authorId = "alice"; alice.id = "draft_alice"
+        var bob = draft; bob.authorId = "bob"; bob.id = "draft_bob"
+        var guest = draft; guest.authorId = ""; guest.id = "draft_guest"
+        defaults.set(try! JSONEncoder().encode([alice, bob, guest]), forKey: "sloosh_tier_drafts_v1")
+        let aliceStore = TierDraftStore(defaults: defaults, userId: "alice")
+        let bobStore = TierDraftStore(defaults: defaults, userId: "bob")
+        check(aliceStore.load().map(\.id) == [alice.id], "Migrate only proven owner drafts")
+        check(bobStore.load().map(\.id) == [bob.id], "Other account keeps its work")
+        check(TierDraftStore(defaults: defaults, userId: nil).load().map(\.id) == [guest.id], "Guest drafts are not adopted by a logged-in user")
+        aliceStore.save(bob)
+        check(aliceStore.load().count == 1, "An old editor cannot save into a different account")
+        alice.title = "Edited"; aliceStore.save(alice)
+        check(aliceStore.load().first?.title == "Edited", "Update replaces draft instead of duplicating")
+        aliceStore.delete(id: alice.id)
+        check(aliceStore.load().isEmpty && bobStore.load().count == 1, "Deletion cannot resurrect legacy draft or delete another account")
+        for i in 0..<25 { alice.id = "draft_\(i)"; aliceStore.save(alice) }
+        check(aliceStore.load().count == 25, "Never silently delete draft 21 and older")
+
         print("tier-list-policy: \(count) checks passed")
     }
 }

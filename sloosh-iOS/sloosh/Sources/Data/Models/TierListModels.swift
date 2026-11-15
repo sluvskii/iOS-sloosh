@@ -236,3 +236,75 @@ struct TierTemplate: Codable, Identifiable, Hashable {
         )
     }
 }
+
+/// Shared by the live board and tests. Indices refer to the destination AFTER
+/// removing the lifted item. Invalid/deleted destinations never lose a movie.
+enum TierBoardPolicy {
+    static let pool = "__pool__"
+    static func move(_ mediaId: String, to destination: String, at index: Int,
+                     rows: inout [TierRow], unranked: inout [TierListItem]) {
+        guard destination == pool || rows.contains(where: { $0.id == destination }),
+              let item = (rows.flatMap(\.items) + unranked).first(where: { $0.mediaId == mediaId }) else { return }
+        for i in rows.indices { rows[i].items.removeAll { $0.mediaId == mediaId } }
+        unranked.removeAll { $0.mediaId == mediaId }
+        if destination == pool {
+            unranked.insert(item, at: max(0, min(index, unranked.count)))
+        } else if let i = rows.firstIndex(where: { $0.id == destination }) {
+            rows[i].items.insert(item, at: max(0, min(index, rows[i].items.count)))
+        }
+    }
+
+    static func validationMessage(title: String, subtitle: String?, rows: [TierRow], items: [TierListItem]) -> String? {
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Добавьте название" }
+        if title.count > 120 { return "Название — не больше 120 символов" }
+        if (subtitle?.count ?? 0) > 300 { return "Описание — не больше 300 символов" }
+        if rows.isEmpty { return "Добавьте хотя бы один уровень" }
+        if items.isEmpty { return "Добавьте хотя бы один фильм или сериал" }
+        if Set(items.map(\.mediaId)).count != items.count { return "Уберите повторяющиеся фильмы" }
+        return nil
+    }
+
+    static func draftKey(userId: String?) -> String { "sloosh_tier_drafts_v2_\(userId ?? "guest")" }
+    static func belongsToAccount(_ list: TierList, userId: String?) -> Bool {
+        list.authorId == (userId ?? "")
+    }
+}
+
+struct TierEditorSnapshot: Equatable {
+    var title: String
+    var subtitle: String
+    var rows: [TierRow]
+    var unranked: [TierListItem]
+}
+
+/// Account-isolated persistence, including a conservative migration: unowned
+/// legacy drafts remain guest drafts, never silently attached to a signed-in UID.
+struct TierDraftStore {
+    let defaults: UserDefaults
+    let userId: String?
+    private var key: String { TierBoardPolicy.draftKey(userId: userId) }
+
+    func load() -> [TierList] {
+        if defaults.data(forKey: key) == nil,
+           let old = defaults.data(forKey: "sloosh_tier_drafts_v1"),
+           let legacy = try? JSONDecoder().decode([TierList].self, from: old) {
+            write(legacy.filter { TierBoardPolicy.belongsToAccount($0, userId: userId) })
+        }
+        guard let data = defaults.data(forKey: key), let lists = try? JSONDecoder().decode([TierList].self, from: data) else { return [] }
+        return lists.filter { TierBoardPolicy.belongsToAccount($0, userId: userId) }.sorted { $0.updatedAtMs > $1.updatedAtMs }
+    }
+    func save(_ list: TierList) {
+        guard TierBoardPolicy.belongsToAccount(list, userId: userId) else { return }
+        var lists = load().filter { $0.id != list.id }
+        var copy = list
+        copy.isDraft = true
+        copy.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        lists.insert(copy, at: 0)
+        // Never silently discard older work to enforce a UI limit.
+        write(lists)
+    }
+    func delete(id: String) { write(load().filter { $0.id != id }) }
+    private func write(_ lists: [TierList]) {
+        if let data = try? JSONEncoder().encode(lists) { defaults.set(data, forKey: key) }
+    }
+}
