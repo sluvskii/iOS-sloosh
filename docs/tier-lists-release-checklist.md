@@ -120,3 +120,26 @@ device and live Firebase scenarios are checked.
   Older drafts are not bulk-cleaned because they may contain intentional work.
 - CI exercises the autosave state machine and local store; verify the editor
   lifecycle, debounce, undo and relaunch recovery on device in addition.
+
+## Admin picker background / recovery
+
+- Select films in Admin → Тир-листы → template → Добавить фильмы without pressing
+  Добавить. Background/foreground repeatedly (also while search is loading): the
+  picker and ordered checkmarks must remain, with the query/collection preserved.
+- Avatar updates must refresh only the profile tab label, never recreate the TabView
+  content, dismiss admin sheets or clear selections. Confirm tab labels/settings
+  still update, profile avatar still refreshes, and Moments/playback are unaffected.
+- Admin session edits and pending picks are checkpointed locally under the current
+  account, independently from user drafts. Reopen the admin tier tab after process
+  termination: recover the editor and picker. Search/collection results reload;
+  scroll position and previously loaded collection pages are not persisted.
+- Adding the selection changes only the local template, deduplicated in selection
+  order. Only Сохранить sends a checked admin write; original server data is retained
+  for conflict detection. Explicit Отмена in picker clears only pending picks;
+  swipe-dismiss keeps them available when reopening the picker. Explicit editor
+  discard/successful save clears the checkpoint. Backgrounding is never cancellation.
+- Verify account switching does not expose another account's recovery. Recovery is
+  loaded only after admin verification. Network/save failure must retain local work.
+- CI covers checkpoint round-trip, account isolation, query/collection/selection
+  recovery, deduplication, cancel/clear and cosmetic root-identity source contracts.
+  Real sheet lifecycle and termination/resume require the above device checks.

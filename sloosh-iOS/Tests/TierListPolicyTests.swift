@@ -198,11 +198,53 @@ struct TierListPolicyTests {
             check(existing.action(for: initial, didPublish: false) == .none, "Restored existing draft does not save repeatedly")
         }
 
+        // A local checkpoint preserves BOTH committed template edits and pending
+        // picks across view/process reconstruction; it is never a server write.
+        let adminStore = AdminTierTemplateSessionStore(defaults: defaults, userId: "alice")
+        let otherAdminStore = AdminTierTemplateSessionStore(defaults: defaults, userId: "bob")
+        var adminSession = AdminTierTemplateSession(original: template!)
+        check(!adminSession.hasUnsavedWork, "An unchanged template has no unsaved work")
+        adminSession.value.title = "Локальное название"
+        adminSession.showPicker = true
+        adminSession.picker.searchText = "Тест"
+        adminSession.picker.collection = TierPickerCollection(id: "collection_1", name: "Подборка")
+        adminSession.picker.selected = [sampleItem, second, sampleItem, template!.items[0]]
+        adminStore.save(adminSession)
+        let reopenedStore = AdminTierTemplateSessionStore(defaults: defaults, userId: "alice")
+        var recovered = reopenedStore.load()!
+        check(recovered == adminSession, "Reconstruction restores session identity, template, picker visibility, query, collection and ordered pending selections")
+        check(recovered.original == template, "Recovery retains the original server version for conflict checks")
+        check(recovered.value.items == template!.items, "Unconfirmed picks never leak into the template")
+        check(otherAdminStore.load() == nil, "Another account cannot restore this admin session")
+        recovered.addSelectedItems()
+        check(recovered.value.items == template!.items + [sampleItem, second], "Confirm adds pending items once in selection order, filtering typed duplicates")
+        check(recovered.picker == TierItemPickerDraft() && !recovered.showPicker, "Confirm clears only pending picks and closes picker")
+        reopenedStore.save(recovered)
+        check(reopenedStore.load()?.value == recovered.value, "Confirmed but unpublished template edits also survive restart")
+        reopenedStore.clear()
+        check(reopenedStore.load() == nil, "Explicit save/discard clears recovery instead of reopening a ghost session")
+        var pendingOnly = AdminTierTemplateSession(original: nil)
+        check(!pendingOnly.hasUnsavedWork && !pendingOnly.hasTemplateChanges, "Opening a blank admin editor alone is not an edit")
+        pendingOnly.picker.selected = [sampleItem]
+        check(pendingOnly.hasUnsavedWork && !pendingOnly.hasTemplateChanges, "Pending picks count as recoverable work, not committed template changes")
+        pendingOnly.picker = TierItemPickerDraft()
+        check(!pendingOnly.hasUnsavedWork, "Explicit picker cancel discards pending picks")
+        let guestAdminStore = AdminTierTemplateSessionStore(defaults: defaults, userId: "")
+        guestAdminStore.save(adminSession)
+        check(guestAdminStore.load() == nil, "Admin recovery is never saved for a signed-out guest")
+        defaults.set(Data("broken".utf8), forKey: "sloosh_admin_tier_session_v1_alice")
+        check(adminStore.load() == nil, "Corrupt local recovery does not crash the admin panel")
+        adminStore.clear()
+
+        let appUI = try String(contentsOfFile: "sloosh/Sources/UI/Home/ContentView.swift", encoding: .utf8)
+        check(appUI.contains(".id(authRepo.currentUser?.id)"), "Tab content identity is account-scoped, not driven by cosmetic avatar/settings refresh")
+        check(!appUI.contains("\\(avatarVersion)"), "Avatar refresh must not recreate the entire tab tree and dismiss editors")
+
         // Source-level UI contract, not a gesture/pixel test: keep the exact
         // system API used before the polish pass and never chain a popup to it.
         let galleryUI = try String(contentsOfFile: "sloosh/Sources/UI/TierLists/TierListsHomeView.swift", encoding: .utf8)
         let adminUI = try String(contentsOfFile: "sloosh/Sources/UI/Admin/AdminTierTemplatesView.swift", encoding: .utf8)
-            .components(separatedBy: "private struct TemplateEditSession")[0]
+            .components(separatedBy: "private struct AdminTierTemplateEditor")[0]
         check(galleryUI.components(separatedBy: ".buttonStyle(.plain)").count - 1 == 4,
               "Draft, published, template and popular row buttons must not tint their text with the brand accent")
         check(adminUI.contains(".buttonStyle(.plain)"), "Admin template row buttons must keep neutral text")
