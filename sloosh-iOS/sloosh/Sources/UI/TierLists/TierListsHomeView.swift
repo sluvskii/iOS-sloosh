@@ -154,6 +154,7 @@ struct TierListsHomeView: View {
             TierListEditorView(
                 draft: draft,
                 onPublished: { published in
+                    myLists.removeAll { $0.id == published.id }
                     myLists.insert(published, at: 0)
                     myDrafts = repo.loadDrafts()
                     viewerList = published

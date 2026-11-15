@@ -20,6 +20,7 @@ struct TierItemPickerSheet: View {
     @State private var studioPage = 1
     @State private var studioTotalPages = 1
     @State private var isLoadingStudio = false
+    @State private var studioError: String?
     @State private var selected: [TierListItem] = []
     @State private var loadError: String?
     @State private var didLoadInitial = false
@@ -73,6 +74,13 @@ struct TierItemPickerSheet: View {
                             .padding(.vertical, 8)
                         } else {
                             pickerRows(items: studioItems, paged: true)
+                            if let studioError { Text(studioError).font(.footnote).foregroundStyle(.secondary) }
+                            if studioItems.isEmpty {
+                                Button("Повторить загрузку") { Task { await loadStudioItems(studio) } }
+                            } else if studioPage < studioTotalPages {
+                                Button(isLoadingStudio ? "Загрузка…" : "Загрузить ещё") { Task { await loadStudioItemsNextPage() } }
+                                    .disabled(isLoadingStudio)
+                            }
                         }
                     }
                 } else {
@@ -229,24 +237,8 @@ struct TierItemPickerSheet: View {
 
     private func loadInitialData() async {
         // 1. Избранное пользователя
-        let favs = FavoritesRepository.shared.favorites.compactMap { fav -> TierListItem? in
-            guard let id = fav.mediaId ?? fav.id, !id.isEmpty else { return nil }
-            let title = fav.title ?? "Без названия"
-            let type = fav.type ?? "movie"
-            let typedId: String
-            if id.hasPrefix("movie_") || id.hasPrefix("tv_") || id.hasPrefix("kp_") || id.hasPrefix("tmdb_") {
-                typedId = id
-            } else {
-                typedId = "\(type)_\(id)"
-            }
-            return TierListItem(
-                mediaId: typedId,
-                mediaType: type,
-                title: title,
-                year: fav.year.flatMap(Int.init),
-                posterUrl: fav.toMediaDto().displayPosterUrl(forLogoMode: false)
-            )
-        }
+        didLoadInitial = false
+        let favs = FavoritesRepository.shared.favorites.compactMap { TierListItem(from: $0.toMediaDto()) }
         await MainActor.run { favoriteItems = favs }
 
         // 2. Популярные фильмы
@@ -263,10 +255,17 @@ struct TierItemPickerSheet: View {
 
     private func loadStudioItems(_ studio: CategoryItemDto) async {
         isLoadingStudio = true
+        studioError = nil
         studioPage = 1
-        let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: 1)
-        let items = (response?.items ?? []).compactMap(TierListItem.init)
-        let pages = response?.totalPages ?? 1
+        guard let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: 1) else {
+            guard selectedStudio?.id == studio.id else { return }
+            studioItems = []
+            studioError = "Не удалось загрузить подборку."
+            isLoadingStudio = false
+            return
+        }
+        let items = response.items.compactMap(TierListItem.init)
+        let pages = response.totalPages
         guard !Task.isCancelled, selectedStudio?.id == studio.id else { return }
         await MainActor.run {
             studioItems = items
@@ -278,8 +277,11 @@ struct TierItemPickerSheet: View {
     private func loadStudioItemsNextPage() async {
         guard !isLoadingStudio, let studio = selectedStudio else { return }
         isLoadingStudio = true
+        studioError = nil
         let nextPage = studioPage + 1
         guard let response = try? await MoviesRepository.shared.getCollection(id: studio.id, page: nextPage) else {
+            guard selectedStudio?.id == studio.id else { return }
+            studioError = "Не удалось загрузить следующую страницу."
             isLoadingStudio = false
             return
         }
