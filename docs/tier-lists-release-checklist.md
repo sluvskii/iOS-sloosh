@@ -80,7 +80,7 @@ device and live Firebase scenarios are checked.
 - Details no longer has a tier-list action; the Profile entry sits beside the
   avatar, leaving Downloads + Settings on the right. Deletion uses native
   SwiftUI `swipeActions(edge: .trailing)` as in d5b1207, with a destructive Button,
-  a system trash Label and red tint. Default full swipe stays enabled. There is no
+  a system trash Label with explicit white foreground and red button tint. Default full swipe stays enabled. There is no
   hand-built gesture/background or second confirmation popover after a swipe,
   including admin templates. Remote rows update only after checked server success;
   failed requests still show an error. Non-swipe editor discard protection remains.

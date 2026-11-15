@@ -54,6 +54,7 @@ struct TierListsHomeView: View {
                                 myDrafts = repo.loadDrafts()
                             } label: {
                                 Label("Удалить", systemImage: "trash")
+                                    .foregroundStyle(.white)
                             }
                             .tint(.red)
                         }
@@ -74,6 +75,7 @@ struct TierListsHomeView: View {
                                 }
                             } label: {
                                 Label("Удалить", systemImage: "trash")
+                                    .foregroundStyle(.white)
                             }
                             .tint(.red)
                         }
