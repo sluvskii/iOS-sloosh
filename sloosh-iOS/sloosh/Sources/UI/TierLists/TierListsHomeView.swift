@@ -48,32 +48,36 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: draft.title, detail: "Черновик · \(draft.itemsCount) фильмов", posters: draft.allItems.compactMap(\.posterUrl))
                         }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                repo.deleteDraft(id: draft.id)
+                                myDrafts = repo.loadDrafts()
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
+                            }
+                            .tint(.red)
+                        }
                     }
-                    .onDelete { offsets in
-                        let drafts = offsets.compactMap { myDrafts.indices.contains($0) ? myDrafts[$0] : nil }
-                        for draft in drafts { repo.deleteDraft(id: draft.id) }
-                        withAnimation { myDrafts = repo.loadDrafts() }
-                    }
-                    .tint(.red)
                     ForEach(myLists) { list in
                         Button {
                             viewerList = list
                         } label: {
                             row(title: list.title, detail: "\(list.itemsCount) фильмов", posters: list.allItems.compactMap(\.posterUrl))
                         }
-                    }
-                    .onDelete { offsets in
-                        let lists = offsets.compactMap { myLists.indices.contains($0) ? myLists[$0] : nil }
-                        Task {
-                            for list in lists {
-                                do {
-                                    try await repo.deleteList(id: list.id)
-                                    withAnimation { myLists.removeAll { $0.id == list.id } }
-                                } catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                Task {
+                                    do {
+                                        try await repo.deleteList(id: list.id)
+                                        myLists.removeAll { $0.id == list.id }
+                                    } catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
+                                }
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
-                    .tint(.red)
                 }
             }
 

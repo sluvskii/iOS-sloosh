@@ -158,6 +158,18 @@ struct TierListPolicyTests {
         for i in 0..<25 { alice.id = "draft_\(i)"; aliceStore.save(alice) }
         check(aliceStore.load().count == 25, "Never silently delete draft 21 and older")
 
+        // Source-level UI contract, not a gesture/pixel test: keep the exact
+        // system API used before the polish pass and never chain a popup to it.
+        let galleryUI = try String(contentsOfFile: "sloosh/Sources/UI/TierLists/TierListsHomeView.swift", encoding: .utf8)
+        let adminUI = try String(contentsOfFile: "sloosh/Sources/UI/Admin/AdminTierTemplatesView.swift", encoding: .utf8)
+            .components(separatedBy: "private struct TemplateEditSession")[0]
+        for source in [galleryUI, adminUI] {
+            check(source.contains(".swipeActions(edge: .trailing)"), "Restore the historical system swipeActions API")
+            check(source.contains("Button(role: .destructive)") && source.contains(".tint(.red)"), "Keep native destructive actions red")
+            check(!source.contains(".confirmationDialog("), "Swipe removal must not open a second popover")
+            check(!source.contains("allowsFullSwipe: false"), "Do not restrict native full swipe")
+        }
+
         let networkChecks = try await TierListRepositoryTests.run()
         print("tier-list-repository: \(networkChecks) production-transport checks passed")
         print("tier-list-policy: \(count) checks passed")

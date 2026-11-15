@@ -6,7 +6,6 @@ struct AdminTierTemplatesView: View {
     @ObservedObject private var repo = TierListsRepository.shared
     @ObservedObject private var auth = AuthRepository.shared
     @State private var editing: TemplateEditSession?
-    @State private var deleting: TierTemplate?
     @State private var isLoading = true
     @State private var isDeleting = false
     @State private var error: String?
@@ -38,12 +37,21 @@ struct AdminTierTemplatesView: View {
                                 }
                                 .padding(.vertical, 4)
                             }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    guard !isDeleting else { return }
+                                    isDeleting = true
+                                    Task {
+                                        defer { isDeleting = false }
+                                        do { try await repo.deleteTemplate(template) }
+                                        catch { self.error = error.localizedDescription }
+                                    }
+                                } label: {
+                                    Label("Удалить", systemImage: "trash")
+                                }
+                                .tint(.red)
+                            }
                         }
-                        .onDelete { offsets in
-                            guard let index = offsets.first, repo.templates.indices.contains(index) else { return }
-                            deleting = repo.templates[index]
-                        }
-                        .tint(.red)
                     }
                 }
                 if let message = repo.templatesError {
@@ -63,19 +71,6 @@ struct AdminTierTemplatesView: View {
         .refreshable { await reload() }
         .sheet(item: $editing, onDismiss: { Task { await reload() } }) { session in
             AdminTierTemplateEditor(original: session.original)
-        }
-        .confirmationDialog("Удалить шаблон?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { template in
-            Button("Удалить", role: .destructive) {
-                isDeleting = true
-                Task {
-                    defer { isDeleting = false; deleting = nil }
-                    do { try await repo.deleteTemplate(template) }
-                    catch { self.error = error.localizedDescription }
-                }
-            }
-            Button("Отмена", role: .cancel) { deleting = nil }
-        } message: { template in
-            Text("«\(template.title)» исчезнет из шаблонов. Списки пользователей останутся.")
         }
         .alert("Не удалось выполнить действие", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("Понятно", role: .cancel) {}
