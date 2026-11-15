@@ -866,6 +866,7 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         private var initialScrollOffset: CGFloat = 0
         private let autoScroller = TierListAutoScroller()
         private var lastWindowPoint: CGPoint = .zero
+        private var inactiveObserver: NSObjectProtocol?
 
         init(
             onLift: @escaping (CGPoint) -> Void,
@@ -877,9 +878,13 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             self.onMove = onMove
             self.onDrop = onDrop
             self.onCancel = onCancel
+            inactiveObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.cancelInteraction()
+            }
         }
 
         deinit {
+            if let inactiveObserver { NotificationCenter.default.removeObserver(inactiveObserver) }
             autoScroller.stop()
             if isDraggingActive {
                 let scroll = parentScrollView

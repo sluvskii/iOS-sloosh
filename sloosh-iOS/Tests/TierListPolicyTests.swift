@@ -2,7 +2,8 @@ import Foundation
 
 @main
 struct TierListPolicyTests {
-    static func main() {
+    @MainActor
+    static func main() async throws {
         var count = 0
         func check(_ condition: Bool, _ description: String) {
             precondition(condition, description)
@@ -157,6 +158,8 @@ struct TierListPolicyTests {
         for i in 0..<25 { alice.id = "draft_\(i)"; aliceStore.save(alice) }
         check(aliceStore.load().count == 25, "Never silently delete draft 21 and older")
 
+        let networkChecks = try await TierListRepositoryTests.run()
+        print("tier-list-repository: \(networkChecks) production-transport checks passed")
         print("tier-list-policy: \(count) checks passed")
     }
 }

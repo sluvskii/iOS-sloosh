@@ -13,6 +13,8 @@ final class TierListsRepository: ObservableObject {
     /// Редакторские шаблоны из tier_templates.
     @Published private(set) var templates: [TierTemplate] = []
 
+    private let session: URLSession
+    private let defaults: UserDefaults
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private var accountId: String? { AuthRepository.shared.currentUser?.id }
     private var likedDefaultsKey: String { "sloosh_liked_tier_lists_v2_\(accountId ?? "guest")" }
@@ -24,19 +26,21 @@ final class TierListsRepository: ObservableObject {
     private var inFlightTemplates: Task<[TierTemplate], Never>?
     private var lastFetchDate: Date?
     private var likedIds: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: likedDefaultsKey) ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: likedDefaultsKey) }
+        get { Set(defaults.stringArray(forKey: likedDefaultsKey) ?? []) }
+        set { defaults.set(Array(newValue), forKey: likedDefaultsKey) }
     }
     private var viewedIds: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: viewedDefaultsKey) ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: viewedDefaultsKey) }
+        get { Set(defaults.stringArray(forKey: viewedDefaultsKey) ?? []) }
+        set { defaults.set(Array(newValue), forKey: viewedDefaultsKey) }
     }
     private var socialWrites: Set<String> = []
 
     private let encoder = JSONEncoder()
 
-    private init() {
-        if let data = UserDefaults.standard.data(forKey: feedCacheKey),
+    init(session: URLSession = .shared, defaults: UserDefaults = .standard) {
+        self.session = session
+        self.defaults = defaults
+        if let data = defaults.data(forKey: feedCacheKey),
            let cached = try? JSONDecoder().decode([TierList].self, from: data),
            !cached.isEmpty {
             publicLists = cached
@@ -65,7 +69,7 @@ final class TierListsRepository: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         request.timeoutInterval = 12
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200...299).contains(http.statusCode) else {
             throw NSError(domain: "sloosh.tiers", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Не удалось сохранить изменения. Проверьте подключение и права доступа."])
@@ -98,7 +102,7 @@ final class TierListsRepository: ObservableObject {
             var request = URLRequest(url: url)
             request.timeoutInterval = 12
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                     self.lastError = "Не удалось обновить тир-листы. Потяните вниз, чтобы повторить."
                     return self.publicLists
@@ -115,7 +119,7 @@ final class TierListsRepository: ObservableObject {
                     self.lastFetchDate = Date()
                 }
                 if let snapshot = try? self.encoder.encode(decoded) {
-                    UserDefaults.standard.set(snapshot, forKey: self.feedCacheKey)
+                    defaults.set(snapshot, forKey: self.feedCacheKey)
                 }
                 return decoded
             } catch {
@@ -135,7 +139,7 @@ final class TierListsRepository: ObservableObject {
         guard let url = await makeURL(path: "tier_lists/\(id)") else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               !raw.isEmpty,
@@ -159,7 +163,7 @@ final class TierListsRepository: ObservableObject {
                     query.append(URLQueryItem(name: "startAt", value: String(data: try JSONEncoder().encode(cursor), encoding: .utf8)!))
                 }
                 guard let url = await makeURL(path: "tier_lists", query: query) else { throw URLError(.badURL) }
-                let (data, response) = try await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 12))
+                let (data, response) = try await session.data(for: URLRequest(url: url, timeoutInterval: 12))
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
                 let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
                 guard value is NSNull || value is [String: Any] else { throw URLError(.cannotParseResponse) }
@@ -236,7 +240,7 @@ final class TierListsRepository: ObservableObject {
     }
 
     private func persistFeed() {
-        if let data = try? encoder.encode(publicLists) { UserDefaults.standard.set(data, forKey: feedCacheKey) }
+        if let data = try? encoder.encode(publicLists) { defaults.set(data, forKey: feedCacheKey) }
     }
 
     /// Удаление своего списка + каскадная чистка лайков/просмотров (паттерн deleteClip).
@@ -246,7 +250,7 @@ final class TierListsRepository: ObservableObject {
         try? await dataRequest(path: "tier_lists_views/\(id)", method: "DELETE", body: nil)
         publicLists.removeAll { $0.id == id }
         if let snapshot = try? encoder.encode(publicLists) {
-            UserDefaults.standard.set(snapshot, forKey: feedCacheKey)
+            defaults.set(snapshot, forKey: feedCacheKey)
         }
     }
 
@@ -268,7 +272,7 @@ final class TierListsRepository: ObservableObject {
         for _ in 0..<5 {
             var read = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
             read.setValue("true", forHTTPHeaderField: "X-Firebase-ETag")
-            let (data, response) = try await URLSession.shared.data(for: read)
+            let (data, response) = try await session.data(for: read)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                   let etag = http.value(forHTTPHeaderField: "ETag") else { throw URLError(.badServerResponse) }
             let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
@@ -278,7 +282,7 @@ final class TierListsRepository: ObservableObject {
             write.setValue(etag, forHTTPHeaderField: "if-match")
             write.setValue("application/json", forHTTPHeaderField: "Content-Type")
             write.httpBody = try JSONEncoder().encode(max(0, next))
-            let (_, result) = try await URLSession.shared.data(for: write)
+            let (_, result) = try await session.data(for: write)
             guard let status = (result as? HTTPURLResponse)?.statusCode else { throw URLError(.badServerResponse) }
             if status == 412 { continue }
             guard (200..<300).contains(status) else { throw URLError(.badServerResponse) }
@@ -338,7 +342,7 @@ final class TierListsRepository: ObservableObject {
             var request = URLRequest(url: url)
             request.timeoutInterval = 12
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                       let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     return self.templates
@@ -429,7 +433,7 @@ final class TierListsRepository: ObservableObject {
 
     // MARK: - Черновики (локальные, per-user)
 
-    func loadDrafts() -> [TierList] { TierDraftStore(defaults: .standard, userId: accountId).load() }
-    func saveDraft(_ draft: TierList) { TierDraftStore(defaults: .standard, userId: accountId).save(draft) }
-    func deleteDraft(id: String) { TierDraftStore(defaults: .standard, userId: accountId).delete(id: id) }
+    func loadDrafts() -> [TierList] { TierDraftStore(defaults: defaults, userId: accountId).load() }
+    func saveDraft(_ draft: TierList) { TierDraftStore(defaults: defaults, userId: accountId).save(draft) }
+    func deleteDraft(id: String) { TierDraftStore(defaults: defaults, userId: accountId).delete(id: id) }
 }

@@ -1,4 +1,5 @@
 import UIKit
+import ImageIO
 
 /// Экспорт тир-листа картинкой для соцсетей: полная доска (1080 шириной)
 /// и вертикальный формат для сторис (1080×1920) с фирменной плашкой.
@@ -27,7 +28,13 @@ enum TierListImageExporter {
                         do {
                             let (data, response) = try await ImageCache.session.data(for: URLRequest(url: url, timeoutInterval: 15))
                             guard !Task.isCancelled, let http = response as? HTTPURLResponse, http.statusCode == 200 else { return (key, nil) }
-                            return (key, UIImage(data: data))
+                            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                                  let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                    kCGImageSourceThumbnailMaxPixelSize: 360,
+                                    kCGImageSourceCreateThumbnailWithTransform: true
+                                  ] as CFDictionary) else { return (key, nil) }
+                            return (key, UIImage(cgImage: thumbnail))
                         } catch { return (key, nil) }
                     }
                 }
@@ -204,7 +211,7 @@ enum TierListImageExporter {
             let boardScale = min((width - 80) / boardImage.size.width, (height - 440) / boardImage.size.height)
             let boardSize = CGSize(width: boardImage.size.width * boardScale, height: boardImage.size.height * boardScale)
             let boardY = min(max(200, (height - boardSize.height) / 2), height - boardSize.height - 140)
-            boardImage.draw(in: CGRect(x: 40, y: boardY, width: boardSize.width, height: boardSize.height))
+            boardImage.draw(in: CGRect(x: (width - boardSize.width) / 2, y: boardY, width: boardSize.width, height: boardSize.height))
 
             // Плашка бренда
             let brandAttributes: [NSAttributedString.Key: Any] = [
