@@ -179,6 +179,9 @@ struct CatalogSearchTests {
         check(CatalogSearchPolicy.merge([film], [series], order: "RATING").first?.artworkIdentifier == series.artworkIdentifier, "Rating sorting is stable over all loaded pages")
         let source = try String(contentsOfFile: "sloosh/Sources/Data/Repositories/MoviesRepository.swift", encoding: .utf8)
         check(!source.contains("filteredResults = rawResults") && !source.contains("filteredResults = studioItems"), "Repository never restores unfiltered data when filters eliminate a page")
+        let homeSource = try String(contentsOfFile: "sloosh/Sources/UI/Home/HomeView.swift", encoding: .utf8)
+        check(homeSource.contains("if key.searchFilters.isEmpty, (cachedItems[key]"), "Home network recovery cannot show unfiltered cached shelves under selected filters")
+        check(homeSource.contains("filter: key.filter, searchFilters: key.searchFilters"), "Home uses the captured filter snapshot instead of mutable selection state")
         print("PASS: \(count) production catalog search policy/state/transport-contract checks")
     }
 }

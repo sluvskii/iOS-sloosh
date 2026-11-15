@@ -269,7 +269,7 @@ enum CatalogSearchFilter: String, CaseIterable, Identifiable {
             return "До \(f.yearTo!) года"
         case .genres: return f.selectedGenres.isEmpty ? nil : f.selectedGenres.sorted().joined(separator: ", ").capitalized
         case .countries: return f.selectedCountries.isEmpty ? nil : f.selectedCountries.sorted().joined(separator: ", ")
-        case .studio: return f.studio
+        case .studio: return f.studio.map { StudioBrand.find(by: $0)?.name ?? $0 }
         }
     }
 

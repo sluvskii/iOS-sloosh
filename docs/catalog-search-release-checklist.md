@@ -50,8 +50,12 @@ project. It is a substantive client stage, not the completed server redesign.
   as filtered by the existing server contract; known contradictions are rejected.
 - Never restore an unfiltered page because a selected filter eliminated it.
   Never substitute a studio-name title search for a studio collection in filtering.
+- Search discovery genre/studio chips use this same paged search engine rather
+  than older screens with different hidden quality/poster gates. Home recovery
+  no longer substitutes an unfiltered cached shelf under active filters; its
+  requests use the captured selection snapshot.
 - Unsupported title+studio filtering is not offered in the Search filter sheet;
-  studios remain available via discovery collections and Home filters. A
+  studios remain available as discovery collection scopes and Home filters. A
   programmatic title+studio combination errors explicitly rather than ignoring
   the studio. Popularity is not offered as a local title sort without popularity
   metadata. Title year/rating sorts say "по загруженным результатам"; global

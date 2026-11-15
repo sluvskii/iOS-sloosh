@@ -324,7 +324,9 @@ struct SearchDiscoveryView: View {
                             "Ужасы", "Детектив", "Мелодрама", "Приключения", "Фэнтези",
                             "Мультфильм", "Криминал", "Семейный", "Аниме"
                         ], id: \.self) { genre in
-                            NavigationLink(destination: GenreCatalogView(genre: genre)) {
+                            Button {
+                                viewModel.searchFilters = SearchFilters(genres: genre.lowercased())
+                            } label: {
                                 Text(genre)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.primary)
@@ -347,7 +349,9 @@ struct SearchDiscoveryView: View {
                     
                     FlowLayout(spacing: 8) {
                         ForEach(StudioBrand.all) { brand in
-                            NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                            Button {
+                                viewModel.searchFilters = SearchFilters(studio: brand.id)
+                            } label: {
                                 Text(brand.name)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.primary)

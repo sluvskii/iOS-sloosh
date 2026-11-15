@@ -930,7 +930,7 @@ class HomeViewModel: ObservableObject {
             var canLoad = force ? true : currentCanLoadMore
 
             while newItems.isEmpty && canLoad {
-                let fetched = try await fetchPage(cursor, category: cat, filter: selectedFilter, force: force && cursor.page == 1)
+                let fetched = try await fetchPage(cursor, category: cat, filter: key.filter, searchFilters: key.searchFilters, force: force && cursor.page == 1)
                 
                 if fetched.isEmpty {
                     if !advanceCursor(&cursor, key: key) {
@@ -982,7 +982,7 @@ class HomeViewModel: ObservableObject {
             }
         } catch {
             print("Failed to load category data: \(error)")
-            if (cachedItems[key] == nil || cachedItems[key]?.isEmpty == true), let fallback = await loadFallbackFromDisk(for: cat) {
+            if key.searchFilters.isEmpty, (cachedItems[key] == nil || cachedItems[key]?.isEmpty == true), let fallback = await loadFallbackFromDisk(for: cat) {
                 cachedItems[key] = fallback
             }
         }
@@ -1072,7 +1072,7 @@ class HomeViewModel: ObservableObject {
         }
     }
 
-    private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter, force: Bool = false) async throws -> [MediaDto] {
+    private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter, searchFilters: SearchFilters, force: Bool = false) async throws -> [MediaDto] {
         if cursor.phase == .original {
             switch category {
             case .all:
