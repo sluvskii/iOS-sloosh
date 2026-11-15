@@ -597,63 +597,22 @@ class MoviesApi {
     
     func searchMovies(query: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
         var queryItems = [
-            URLQueryItem(name: "page", value: String(page))
+            URLQueryItem(name: "page", value: String(max(1, min(500, page))))
         ]
         
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = CatalogSearchQuery.text(query)
         if !trimmed.isEmpty {
             queryItems.append(URLQueryItem(name: "query", value: trimmed))
         }
         
-        // v1/search использует Kinopoisk Full-Text Fuzzy Search:
-        // - правильно обрабатывает опечатки, е/ё, транслит
-        // - даёт корректный порядок результатов по релевантности
+        // Keep the original title query; client fallbacks are explicit, bounded
+        // and used only after a successful empty title-search response.
         return try await performRequest(endpoint: "api/v1/search", queryItems: queryItems)
     }
 
     func discoverMovies(filters: SearchFilters, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
-        var queryItems = [
-            URLQueryItem(name: "page", value: String(page))
-        ]
-        
-        if let type = filters.type, !type.isEmpty {
-            queryItems.append(URLQueryItem(name: "type", value: type))
-        }
-        
-        if let order = filters.order, !order.isEmpty {
-            queryItems.append(URLQueryItem(name: "order", value: order))
-        }
-        
-        if let genres = filters.genres, !genres.isEmpty {
-            queryItems.append(URLQueryItem(name: "genres", value: genres.lowercased()))
-        }
-        
-        if let countries = filters.countries, !countries.isEmpty {
-            queryItems.append(URLQueryItem(name: "countries", value: countries))
-        }
-
-        if let ratingFrom = filters.ratingFrom, ratingFrom > 0 {
-            queryItems.append(URLQueryItem(name: "ratingFrom", value: String(format: "%.1f", ratingFrom)))
-        }
-
-        if let ratingTo = filters.ratingTo, ratingTo > 0 {
-            queryItems.append(URLQueryItem(name: "ratingTo", value: String(format: "%.1f", ratingTo)))
-        }
-
-        if let yearFrom = filters.yearFrom, yearFrom >= 1880 {
-            queryItems.append(URLQueryItem(name: "yearFrom", value: String(yearFrom)))
-        }
-
-        if let yearTo = filters.yearTo, yearTo >= 1880 {
-            queryItems.append(URLQueryItem(name: "yearTo", value: String(yearTo)))
-        }
-
-        if let studio = filters.studio, !studio.isEmpty {
-            queryItems.append(URLQueryItem(name: "studio", value: studio))
-        }
-        
-        // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
-        return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
+        return try await performRequest(endpoint: "api/v2/search",
+                                        queryItems: CatalogSearchRequest.discoveryItems(filters: filters, page: page))
     }
 
     // MARK: - Categories & Collections (feat/ts-migration)

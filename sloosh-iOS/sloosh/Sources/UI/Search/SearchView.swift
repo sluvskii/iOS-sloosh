@@ -2,7 +2,12 @@ import SwiftUI
 import Combine
 
 struct SearchView: View {
-    @StateObject private var viewModel = SearchViewModel()
+    @StateObject private var viewModel = SearchViewModel(
+        historyScope: AuthRepository.shared.currentUser?.id ?? "guest",
+        loadPage: { query, page, filters in
+            try await MoviesRepository.shared.searchMoviesResponse(query: query, page: page, filters: filters)
+        }
+    )
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var showFilters = false
@@ -18,7 +23,7 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.searchFilters.isEmpty {
+                if viewModel.isDiscovery {
                     SearchDiscoveryView(viewModel: viewModel)
                 } else if viewModel.isLoading && viewModel.results.isEmpty {
                     ProgressView("Ищем...")
@@ -42,11 +47,21 @@ struct SearchView: View {
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.results.isEmpty {
-                    SearchEmptyState(
-                        icon: "film",
-                        title: "Ничего не найдено",
-                        subtitle: "Попробуйте изменить запрос"
-                    )
+                    VStack(spacing: 16) {
+                        SearchEmptyState(
+                            icon: "magnifyingglass",
+                            title: viewModel.hasMore ? "В этой части каталога совпадений нет" : "Ничего не найдено",
+                            subtitle: viewModel.searchFilters.isEmpty ? "Проверьте название или выберите подсказку" : "Попробуйте убрать часть фильтров — они не сбрасываются автоматически"
+                        )
+                        if viewModel.hasMore {
+                            Button("Продолжить поиск") { Task { await viewModel.loadNextPage() } }
+                                .disabled(viewModel.isAppending)
+                        }
+                        if !viewModel.searchFilters.isEmpty {
+                            Button("Сбросить фильтры") { viewModel.searchFilters = SearchFilters() }
+                        }
+                        if viewModel.isAppending { ProgressView() }
+                    }
                 } else {
                     ScrollView {
                         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -68,8 +83,9 @@ struct SearchView: View {
                                         }
                                         .tint(nil)
                                     }
+                                    .simultaneousGesture(TapGesture().onEnded { viewModel.rememberCurrentQuery() })
                                     .onAppear {
-                                        if movie.id == viewModel.results.last?.id {
+                                        if movie.artworkIdentifier == viewModel.results.last?.artworkIdentifier {
                                             Task {
                                                 await viewModel.loadNextPage()
                                             }
@@ -84,7 +100,12 @@ struct SearchView: View {
                             }
                         }
                         .padding(padding)
+                        paginationFooter
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 20)
                     }
+                    .scrollDismissesKeyboard(.interactively)
+                    .scrollEdgeEffectStyle(.soft, for: .bottom)
                     .refreshable {
                         await viewModel.performSearch(reset: true)
                     }
@@ -92,7 +113,20 @@ struct SearchView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
+            .searchable(text: $viewModel.searchQuery, prompt: "Название, оригинальное название…")
+            .searchSuggestions {
+                ForEach(viewModel.suggestions, id: \.self) { suggestion in
+                    Label(suggestion, systemImage: "magnifyingglass")
+                        .searchCompletion(suggestion)
+                }
+            }
+            .onSubmit(of: .search) { Task { await viewModel.submit() } }
+            .safeAreaInset(edge: .top, spacing: 0) { searchContext }
+            .task {
+                if let items = try? await MoviesRepository.shared.getPopularMovies(page: 1) {
+                    viewModel.setDiscoveryTitles(items.map(\.displayTitle))
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Поиск")
@@ -140,6 +174,52 @@ struct SearchView: View {
             }
         }
     }
+    @ViewBuilder
+    private var searchContext: some View {
+        if !viewModel.isDiscovery {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    if !viewModel.searchFilters.isEmpty {
+                        Button { showFilters = true } label: {
+                            Label("Фильтры: \(viewModel.searchFilters.activeCount)", systemImage: "line.3.horizontal.decrease")
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        Button("Сбросить") { viewModel.searchFilters = SearchFilters() }
+                            .font(.subheadline)
+                    }
+                    Spacer()
+                    if !viewModel.isLoading, !viewModel.results.isEmpty {
+                        Text("Показано: \(viewModel.results.count)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let query = viewModel.resolvedQuery {
+                    Text("Результаты для «\(query)»")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .accessibilityLabel("Уточнённый запрос: \(query)")
+                }
+                if viewModel.usesLocalSorting {
+                    Text("Сортировка по загруженным результатам")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 6)
+        }
+    }
+
+    @ViewBuilder
+    private var paginationFooter: some View {
+        if let error = viewModel.error {
+            VStack(spacing: 10) {
+                Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button("Повторить загрузку") { Task { await viewModel.retry() } }
+            }
+        } else if viewModel.hasMore && !viewModel.isAppending {
+            Button("Показать ещё") { Task { await viewModel.loadNextPage() } }
+        }
+    }
 }
 
 struct SearchDiscoveryView: View {
@@ -148,6 +228,17 @@ struct SearchDiscoveryView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
+                FlowLayout(spacing: 8) {
+                    Button("Фильмы") { viewModel.searchFilters = SearchFilters(type: "FILM") }
+                    Button("Сериалы") { viewModel.searchFilters = SearchFilters(type: "TV_SERIES") }
+                    Button("Новинки") {
+                        viewModel.searchFilters = SearchFilters(order: "YEAR", yearFrom: Calendar.current.component(.year, from: Date()))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(.primary)
+                .padding(.horizontal, 16)
+
                 // 1. History
                 if !viewModel.history.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -260,177 +351,5 @@ struct SearchEmptyState: View {
             title: title,
             description: subtitle
         )
-    }
-}
-
-@MainActor
-class SearchViewModel: ObservableObject {
-    @Published var searchQuery = ""
-    @Published var searchFilters = SearchFilters()
-    @Published var results: [MediaDto] = []
-    @Published var history: [String] = []
-    @Published var isLoading = false
-    @Published var isAppending = false
-    @Published var error: String?
-    @Published var page = 1
-    @Published var totalPages = 1
-    @Published var directPlaybackMovie: MediaDto? = nil
-    @Published var playerConfig: PlayerConfig? = nil
-
-    private let historyKey = "search_history"
-    private let maxHistory = 5
-    private var searchTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
-
-    init() {
-        loadHistory()
-        
-        Publishers.CombineLatest($searchQuery, $searchFilters)
-            .dropFirst()
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] _ in
-                guard let self = self else { return }
-                Task {
-                    self.page = 1
-                    await self.performSearch(reset: true)
-                }
-            }
-            .store(in: &cancellables)
-    }
-
-    func selectHistory(_ query: String) {
-        searchQuery = query
-    }
-
-    func removeHistory(_ query: String) {
-        history.removeAll { $0 == query }
-        persistHistory()
-    }
-
-    func clearHistory() {
-        history = []
-        persistHistory()
-    }
-
-    func loadNextPage() async {
-        guard !isLoading, !isAppending, page < totalPages else { return }
-        page += 1
-        await performSearch(reset: false)
-    }
-
-    func setPage(_ newPage: Int) async {
-        let clamped = max(1, min(newPage, max(totalPages, 1)))
-        guard clamped != page else { return }
-        page = clamped
-        await performSearch(reset: true, saveHistory: false)
-    }
-
-    func retry() async {
-        await performSearch(reset: results.isEmpty, saveHistory: false)
-    }
-
-    func performSearch(reset: Bool, saveHistory: Bool = true) async {
-        searchTask?.cancel()
-
-        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty || !searchFilters.isEmpty else {
-            results = []
-            error = nil
-            isLoading = false
-            isAppending = false
-            totalPages = 1
-            page = 1
-            return
-        }
-
-        searchTask = Task {
-            do {
-                if Task.isCancelled { return }
-
-                if reset {
-                    isLoading = true
-                    if page == 1 {
-                        results = []
-                    }
-                } else {
-                    isAppending = true
-                }
-                error = nil
-
-                let response = try await MoviesRepository.shared.searchMoviesResponse(query: trimmedQuery, page: page, filters: searchFilters)
-                if !Task.isCancelled {
-                    let rawResults = response.results ?? []
-                    let newResults = rawResults.filter { item in
-                        let poster = item.displayPosterUrl ?? item.posterUrl ?? item.poster_path ?? item.displayBackdropUrl ?? ""
-                        let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
-                        let title = (item.title ?? item.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        let hasTitle = !title.isEmpty
-                        return hasTitle && (hasPoster || item.isUnreleased)
-                    }
-                    
-                    totalPages = max(response.effectiveTotalPages, 1)
-                    if page <= 1 || reset {
-                        results = newResults
-                    } else {
-                        let existing = Set(results.map(\.id))
-                        let uniqueItems = newResults.filter { !existing.contains($0.id) }
-                        var merged = results + uniqueItems
-                        if searchFilters.order == "YEAR" {
-                            merged.sort { a, b in
-                                let yearA = a.effectiveYear ?? 0
-                                let yearB = b.effectiveYear ?? 0
-                                if yearA != yearB { return yearA > yearB }
-                                let dateA = a.releaseDate ?? ""
-                                let dateB = b.releaseDate ?? ""
-                                if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
-                                return a.effectiveRating > b.effectiveRating
-                            }
-                        } else if searchFilters.order == "RATING" {
-                            merged.sort { a, b in
-                                let ratingA = a.effectiveRating
-                                let ratingB = b.effectiveRating
-                                if ratingA != ratingB { return ratingA > ratingB }
-                                return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
-                            }
-                        }
-                        results = merged
-                    }
-
-                    if saveHistory && !newResults.isEmpty && page == 1 {
-                        updateHistory(with: trimmedQuery)
-                    }
-                }
-            } catch {
-                if !Task.isCancelled {
-                    if let localized = error as? LocalizedError, let desc = localized.errorDescription {
-                        self.error = desc
-                    } else {
-                        self.error = "Нет подключения к интернету"
-                    }
-                }
-            }
-
-            if !Task.isCancelled {
-                isLoading = false
-                isAppending = false
-            }
-        }
-    }
-
-    private func loadHistory() {
-        let raw = UserDefaults.standard.string(forKey: historyKey) ?? ""
-        history = raw
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private func updateHistory(with query: String) {
-        history = ([query] + history.filter { $0 != query }).prefix(maxHistory).map { $0 }
-        persistHistory()
-    }
-
-    private func persistHistory() {
-        UserDefaults.standard.set(history.joined(separator: "\n"), forKey: historyKey)
     }
 }
