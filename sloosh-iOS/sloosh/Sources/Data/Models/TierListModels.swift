@@ -298,6 +298,34 @@ struct TierEditorSnapshot: Equatable {
     var unranked: [TierListItem]
 }
 
+/// Opening an editor is not an edit. Track persisted content separately from
+/// the opening snapshot so undo works even after a debounced save has fired.
+struct TierDraftAutosaveState {
+    enum Action: Equatable { case none, save, delete }
+
+    private let initial: TierEditorSnapshot
+    private let wasStored: Bool
+    private var persisted: TierEditorSnapshot?
+
+    init(initial: TierEditorSnapshot, wasStored: Bool) {
+        self.initial = initial
+        self.wasStored = wasStored
+        self.persisted = wasStored ? initial : nil
+    }
+
+    mutating func action(for snapshot: TierEditorSnapshot, didPublish: Bool) -> Action {
+        guard !didPublish else { return .none }
+        if !wasStored && snapshot == initial {
+            guard persisted != nil else { return .none }
+            persisted = nil
+            return .delete
+        }
+        guard snapshot != persisted else { return .none }
+        persisted = snapshot
+        return .save
+    }
+}
+
 /// Account-isolated persistence, including a conservative migration: unowned
 /// legacy drafts remain guest drafts, never silently attached to a signed-in UID.
 struct TierDraftStore {

@@ -73,6 +73,9 @@ struct TierTargetPickerSheet: View {
                     Button {
                         var seeded = TierListsRepository.shared.makeDraft(title: "Новый тир-лист")
                         seeded.unranked.append(item)
+                        // This is an explicit add-film action, unlike merely
+                        // opening a blank editor or previewing a template.
+                        TierListsRepository.shared.saveDraft(seeded)
                         newDraft = seeded
                     } label: {
                         Image(systemName: "plus")

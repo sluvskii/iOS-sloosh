@@ -25,6 +25,7 @@ struct TierListEditorView: View {
     @State private var restoringSnapshot: TierEditorSnapshot?
     private var editSnapshot: TierEditorSnapshot { TierEditorSnapshot(title: title, subtitle: subtitle, rows: rows, unranked: unranked) }
     @State private var autosaveTask: Task<Void, Never>?
+    @State private var autosaveState: TierDraftAutosaveState
 
     init(draft: TierList, onPublished: @escaping (TierList) -> Void, onDismiss: @escaping () -> Void) {
         self.draft = draft
@@ -32,8 +33,13 @@ struct TierListEditorView: View {
         self.onDismiss = onDismiss
         _title = State(initialValue: draft.title)
         _subtitle = State(initialValue: draft.subtitle ?? "")
-        _rows = State(initialValue: draft.rows.isEmpty ? TierRow.defaultRows() : draft.rows)
+        let initialRows = draft.rows.isEmpty ? TierRow.defaultRows() : draft.rows
+        _rows = State(initialValue: initialRows)
         _unranked = State(initialValue: draft.unranked)
+        _autosaveState = State(initialValue: TierDraftAutosaveState(
+            initial: TierEditorSnapshot(title: draft.title, subtitle: draft.subtitle ?? "", rows: initialRows, unranked: draft.unranked),
+            wasStored: TierListsRepository.shared.loadDrafts().contains { $0.id == draft.id }
+        ))
     }
 
     private var draftSnapshot: TierList {
@@ -535,8 +541,12 @@ struct TierListEditorView: View {
     }
 
     private func autosaveDraft() {
-        guard !didPublish else { return }
-        TierListsRepository.shared.saveDraft(draftSnapshot)
+        guard draft.authorId == (AuthRepository.shared.currentUser?.id ?? "") else { return }
+        switch autosaveState.action(for: editSnapshot, didPublish: didPublish) {
+        case .none: break
+        case .save: TierListsRepository.shared.saveDraft(draftSnapshot)
+        case .delete: deleteDraftLocally()
+        }
     }
 
     private func deleteDraftLocally() {
