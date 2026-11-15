@@ -64,7 +64,7 @@ final class SearchViewModel: ObservableObject {
     var hasMore: Bool { !isDiscovery && page > 0 && page < totalPages }
     var suggestions: [String] {
         CatalogSearchQuery.suggestions(for: searchQuery,
-                                       candidates: history + results.flatMap { [$0.title, $0.name, $0.originalTitle].compactMap { $0 } } + discoveryTitles)
+                                       candidates: history + results.prefix(60).flatMap { [$0.title, $0.name, $0.originalTitle].compactMap { $0 } } + discoveryTitles)
     }
     var usesLocalSorting: Bool { !CatalogSearchQuery.text(searchQuery).isEmpty && searchFilters.order != nil }
 

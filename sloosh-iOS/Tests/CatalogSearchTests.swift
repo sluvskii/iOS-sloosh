@@ -70,7 +70,9 @@ struct CatalogSearchTests {
         let params = Dictionary(uniqueKeysWithValues: encoded.map { ($0.name, $0.value ?? "") })
         check(params["page"] == "1" && params["ratingFrom"] == "7.5" && params["yearTo"] == "2028", "Transport uses locale-independent decimals and both bounds")
         var components = URLComponents(string: "https://example.com/search")!
-        components.queryItems = [URLQueryItem(name: "query", value: CatalogSearchQuery.text("Любовь & смерть + жизнь"))]
+        components.percentEncodedQuery = CatalogSearchRequest.encodedQuery([URLQueryItem(name: "query", value: CatalogSearchQuery.text("Любовь & смерть + жизнь"))])
+        check(components.percentEncodedQuery?.contains("%2B") == true && components.percentEncodedQuery?.contains("+") == false,
+              "Literal plus is escaped for form-style server query parsers")
         check(URLComponents(url: components.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value == "Любовь & смерть + жизнь", "Reserved punctuation round-trips without corrupting the query")
 
         // Delayed transport deliberately ignores cancellation to test generation fencing.

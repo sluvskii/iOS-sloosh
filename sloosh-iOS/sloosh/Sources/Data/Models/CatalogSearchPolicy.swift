@@ -227,6 +227,14 @@ enum CatalogSearchError: LocalizedError {
 
 /// Shared by transport and tests: stable sets and locale-independent decimals.
 enum CatalogSearchRequest {
+    static func encodedQuery(_ items: [URLQueryItem]) -> String? {
+        var components = URLComponents()
+        components.queryItems = items
+        // URLSearchParams-style servers interpret a raw '+' as a space.
+        // URLComponents alone deliberately leaves '+' unescaped.
+        return components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+    }
+
     static func discoveryItems(filters: SearchFilters, page: Int) -> [URLQueryItem] {
         let f = filters.normalized
         var items = [URLQueryItem(name: "page", value: String(max(1, min(500, page))))]

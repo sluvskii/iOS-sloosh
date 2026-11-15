@@ -376,6 +376,8 @@ class MoviesApi {
         body: Data? = nil,
         allowSelfHealingRetry: Bool = true
     ) async throws -> T {
+        let isCatalogSearch = endpoint == "api/v1/search" || endpoint == "api/v2/search"
+        if isCatalogSearch { try Task.checkCancellation() }
         let allCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
         // Сначала пробуем хосты, которые недавно работали. Если таких нет — пробуем все.
         let healthy = allCandidates.filter { MoviesApi.isHostHealthy($0) }
@@ -388,6 +390,7 @@ class MoviesApi {
             var components = URLComponents(string: "\(currentBase)/\(endpoint)")
             if !queryItems.isEmpty {
                 components?.queryItems = queryItems
+                if isCatalogSearch { components?.percentEncodedQuery = CatalogSearchRequest.encodedQuery(queryItems) }
             }
             guard let url = components?.url else { continue }
             
@@ -406,6 +409,7 @@ class MoviesApi {
             let maxRetries = baseCandidates.count > 1 ? 2 : 3
             
             for attempt in 0..<maxRetries {
+                if isCatalogSearch { try Task.checkCancellation() }
                 if attempt > 0 {
                     // Экспоненциальная задержка: 0.4с, 0.8с
                     let delay = UInt64(400_000_000) * UInt64(1 << (attempt - 1))

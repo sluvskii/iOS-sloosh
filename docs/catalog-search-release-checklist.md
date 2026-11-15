@@ -16,6 +16,8 @@ project. It is a substantive client stage, not the completed server redesign.
 
 ## Client behavior
 
+- Literal `+` in title queries is percent-escaped, not interpreted as a space by
+  form-style server query parsers. Canceled catalog requests stop before retry.
 - One debounced task per normalized query/filter identity. Invalidate the previous
   generation synchronously before debounce, ignore canceled/late completions, and
   freeze the request/filter snapshot. Clear returns immediately to discovery.
