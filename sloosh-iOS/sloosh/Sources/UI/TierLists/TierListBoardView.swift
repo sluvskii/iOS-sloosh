@@ -36,6 +36,9 @@ struct BoardItemGeometryKey: PreferenceKey {
 /// - Плавный аппаратный автоскролл экрана при подтягивании карточки к верхнему или нижнему краю (CADisplayLink).
 struct TierListBoardView: View {
     enum Mode { case edit, view }
+    @ObservedObject private var artwork = MediaOverridesRepository.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let mode: Mode
     @Binding var rows: [TierRow]
@@ -79,6 +82,7 @@ struct TierListBoardView: View {
     @State private var targetRowId: String?
     @State private var targetIndex: Int = 0
     @State private var dragLocation: CGPoint = .zero
+    @State private var grabOffset: CGPoint = .zero
     @State private var isDragging = false
     @State private var highlightedRowId: String?
     @State private var dragStartBoardFrame: CGRect = .zero
@@ -115,6 +119,8 @@ struct TierListBoardView: View {
                 }
             )
             .tint(.primary)
+            .onChange(of: scenePhase) { _, phase in if phase != .active { cancelDrag() } }
+            .onDisappear { cancelDrag() }
     }
 
     // MARK: - Структура доски
@@ -203,9 +209,15 @@ struct TierListBoardView: View {
     private func itemsGrid(rowId: String, items: [TierListItem]) -> some View {
         TierFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
             if items.isEmpty {
-                Color.clear
-                    .frame(maxWidth: .infinity, minHeight: posterHeight)
-                    .contentShape(Rectangle())
+                ZStack {
+                    if mode == .edit {
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: posterHeight)
+                .contentShape(Rectangle())
             } else {
                 ForEach(Array(items.enumerated()), id: \.element.mediaId) { index, item in
                     itemCell(item: item, sourceRowId: rowId, index: index)
@@ -238,6 +250,25 @@ struct TierListBoardView: View {
                 }
             )
             .contentShape(Rectangle())
+            .overlay(alignment: .leading) {
+                if isDragging, targetRowId == sourceRowId, !isBeingDragged,
+                   insertionAnchor(items: sourceRowId == TierBoardPolicy.pool ? unranked : (rows.first { $0.id == sourceRowId }?.items ?? [])) == item.mediaId {
+                    Capsule().fill(Color.primary).frame(width: 3, height: posterHeight - 8).offset(x: -5)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .trailing) {
+                let remaining = (sourceRowId == TierBoardPolicy.pool ? unranked : (rows.first { $0.id == sourceRowId }?.items ?? [])).filter { $0.mediaId != activeDraggedItem?.mediaId }
+                if isDragging, targetRowId == sourceRowId, remaining.last?.mediaId == item.mediaId, targetIndex >= remaining.count {
+                    Capsule().fill(Color.primary).frame(width: 3, height: posterHeight - 8).offset(x: 5)
+                        .allowsHitTesting(false)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(item.title)
+            .accessibilityHint(mode == .edit ? "Действия и выбор уровня" : "Открыть фильм")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { if mode == .edit { onTapItem?(item) } else { onOpenDetails?(item) } }
 
         if mode == .edit {
             card
@@ -274,7 +305,7 @@ struct TierListBoardView: View {
     @ViewBuilder
     private func itemCard(item: TierListItem, isLifted: Bool) -> some View {
         AsyncCachedImage(
-            url: item.posterUrl.flatMap { URL(string: $0) },
+            url: item.resolvedPosterURL.flatMap { URL(string: $0) },
             placeholder: {
                 Rectangle().fill(Color(UIColor.tertiarySystemFill))
             },
@@ -389,16 +420,18 @@ struct TierListBoardView: View {
                         )
                 )
                 .id("__pool__")
-                .background(
-                    GeometryReader { geo in
-                        Color.clear.preference(
-                            key: BoardRowGeometryKey.self,
-                            value: [BoardRowGeometry(rowId: "__pool__", frame: geo.frame(in: .global))]
-                        )
-                    }
-                )
+
             }
         }
+        .background(GeometryReader { geo in
+            Color.clear.preference(key: BoardRowGeometryKey.self,
+                                  value: [BoardRowGeometry(rowId: TierBoardPolicy.pool, frame: geo.frame(in: .global))])
+        })
+    }
+
+    private func insertionAnchor(items: [TierListItem]) -> String? {
+        let remaining = items.filter { $0.mediaId != activeDraggedItem?.mediaId }
+        return remaining.indices.contains(targetIndex) ? remaining[targetIndex].mediaId : nil
     }
 
     // MARK: - Поднятая карточка под пальцем (Overlay) — строго 0° наклон (без раскачиваний)
@@ -407,7 +440,18 @@ struct TierListBoardView: View {
     private var draggedCardOverlay: some View {
         if isDragging, let item = activeDraggedItem {
             itemCard(item: item, isLifted: true)
-                .scaleEffect(1.05)
+                .scaleEffect(reduceMotion ? 1 : 1.05)
+                .overlay(alignment: .bottom) {
+                    Text(targetRowId.map { id in
+                        let label = id == TierBoardPolicy.pool ? "Не распределено" : (rows.first { $0.id == id }?.label ?? "")
+                        return "\(label) · \(targetIndex + 1)"
+                    } ?? "Отпустите для отмены")
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(.background, in: Capsule())
+                    .offset(y: 34)
+                }
                 .position(x: dragLocation.x, y: dragLocation.y)
                 .transition(.identity)
                 .zIndex(999)
@@ -424,10 +468,13 @@ struct TierListBoardView: View {
         dragStartRowGeometries = !rowGeometries.isEmpty ? rowGeometries : dragStartRowGeometries
         dragStartItemGeometries = !itemGeometries.isEmpty ? itemGeometries : dragStartItemGeometries
 
+        if let frame = dragStartItemGeometries.first(where: { $0.mediaId == item.mediaId && $0.rowId == sourceRowId })?.frame {
+            grabOffset = CGPoint(x: windowPoint.x - frame.midX, y: windowPoint.y - frame.midY)
+        } else { grabOffset = .zero }
         let referenceBoardMinY = dragStartBoardFrame.minY
         let localPoint = CGPoint(
-            x: windowPoint.x - dragStartBoardFrame.minX,
-            y: windowPoint.y - referenceBoardMinY
+            x: windowPoint.x - dragStartBoardFrame.minX - grabOffset.x,
+            y: windowPoint.y - referenceBoardMinY - grabOffset.y
         )
         withAnimation(.spring(response: 0.25, dampingFraction: 0.78)) {
             activeDraggedItem = item
@@ -447,13 +494,17 @@ struct TierListBoardView: View {
         // Позиция под пальцем с поправкой на физический сдвиг доски в скролле
         let effectiveBoardY = dragStartBoardFrame.minY - scrollDelta
         let localPoint = CGPoint(
-            x: windowPoint.x - dragStartBoardFrame.minX,
-            y: windowPoint.y - effectiveBoardY
+            x: windowPoint.x - dragStartBoardFrame.minX - grabOffset.x,
+            y: windowPoint.y - effectiveBoardY - grabOffset.y
         )
         dragLocation = localPoint
 
         // Находим целевую строку с учётом текущего сдвига скролла
-        guard let newTargetRowId = findTargetRow(at: windowPoint, scrollDelta: scrollDelta) else { return }
+        guard let newTargetRowId = findTargetRow(at: windowPoint, scrollDelta: scrollDelta) else {
+            targetRowId = nil
+            highlightedRowId = nil
+            return
+        }
 
         // Находим целевой индекс с учётом текущего сдвига скролла
         let newTargetIndex = findTargetIndex(in: newTargetRowId, at: windowPoint, scrollDelta: scrollDelta)
@@ -472,33 +523,14 @@ struct TierListBoardView: View {
 
     private func commitMove() {
         guard let dragged = activeDraggedItem,
-              let sourceRow = draggedFromRowId,
+              draggedFromRowId != nil,
               let targetRow = targetRowId else {
             cancelDrag()
             return
         }
 
         withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-            let currentSourceIndex = currentIndex(for: dragged.mediaId, in: sourceRow)
-
-            // Если переместили в другую строку или сменили индекс в текущей
-            if sourceRow != targetRow || targetIndex != currentSourceIndex {
-                // 1. Удаляем из исходного места
-                if sourceRow == "__pool__" {
-                    unranked.removeAll { $0.mediaId == dragged.mediaId }
-                } else if let rIdx = rows.firstIndex(where: { $0.id == sourceRow }) {
-                    rows[rIdx].items.removeAll { $0.mediaId == dragged.mediaId }
-                }
-
-                // 2. Вставляем в целевое место по индексу targetIndex
-                if targetRow == "__pool__" {
-                    let safeIndex = max(0, min(targetIndex, unranked.count))
-                    unranked.insert(dragged, at: safeIndex)
-                } else if let rIdx = rows.firstIndex(where: { $0.id == targetRow }) {
-                    let safeIndex = max(0, min(targetIndex, rows[rIdx].items.count))
-                    rows[rIdx].items.insert(dragged, at: safeIndex)
-                }
-            }
+            TierBoardPolicy.move(dragged.mediaId, to: targetRow, at: targetIndex, rows: &rows, unranked: &unranked)
 
             activeDraggedItem = nil
             draggedFromRowId = nil
@@ -534,6 +566,12 @@ struct TierListBoardView: View {
         let liveRows: [(rowId: String, frame: CGRect)] = baseRows.map {
             ($0.rowId, $0.frame.offsetBy(dx: 0, dy: -scrollDelta))
         }
+
+        guard let top = liveRows.map({ $0.frame.minY }).min(),
+              let bottom = liveRows.map({ $0.frame.maxY }).max(),
+              windowPoint.y >= top - 24, windowPoint.y <= bottom + 24,
+              windowPoint.x >= dragStartBoardFrame.minX - 24,
+              windowPoint.x <= dragStartBoardFrame.maxX + 24 else { return nil }
 
         // 1. Точное попадание в строку
         if let exact = liveRows.first(where: { row in
@@ -708,9 +746,10 @@ final class TierListAutoScroller {
         guard let scrollView = scrollView, touchPointInWindow != .zero else { return }
         guard let window = window ?? scrollView.window else { return }
 
+        let visible = scrollView.convert(scrollView.bounds, to: window).intersection(window.bounds)
+        let safeTop = max(window.safeAreaInsets.top, visible.minY)
+        let safeBottom = max(window.safeAreaInsets.bottom, window.bounds.maxY - visible.maxY)
         let windowBounds = window.bounds
-        let safeTop: CGFloat = window.safeAreaInsets.top
-        let safeBottom: CGFloat = window.safeAreaInsets.bottom
 
         // Верхний порог автоскролла: навигационная панель (~ safeTop + 44)
         let topBarThreshold: CGFloat = max(safeTop + 44.0, 90.0)
@@ -793,9 +832,9 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             target: context.coordinator,
             action: #selector(Coordinator.handleLongPress(_:))
         )
-        recognizer.minimumPressDuration = 0.22
+        recognizer.minimumPressDuration = 0.3
         recognizer.allowableMovement = 12
-        recognizer.cancelsTouchesInView = false
+        recognizer.cancelsTouchesInView = true
         recognizer.delegate = context.coordinator
         view.addGestureRecognizer(recognizer)
 
@@ -808,6 +847,10 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         context.coordinator.onMove = onMove
         context.coordinator.onDrop = onDrop
         context.coordinator.onCancel = onCancel
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.cancelInteraction()
     }
 
     func makeCoordinator() -> Coordinator {
@@ -827,6 +870,7 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         private var initialScrollOffset: CGFloat = 0
         private let autoScroller = TierListAutoScroller()
         private var lastWindowPoint: CGPoint = .zero
+        private var inactiveObserver: NSObjectProtocol?
 
         init(
             onLift: @escaping (CGPoint) -> Void,
@@ -838,9 +882,14 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
             self.onMove = onMove
             self.onDrop = onDrop
             self.onCancel = onCancel
+            super.init()
+            inactiveObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.cancelInteraction()
+            }
         }
 
         deinit {
+            if let inactiveObserver { NotificationCenter.default.removeObserver(inactiveObserver) }
             autoScroller.stop()
             if isDraggingActive {
                 let scroll = parentScrollView
@@ -850,6 +899,15 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
                     cancelBlock()
                 }
             }
+        }
+
+        func cancelInteraction() {
+            autoScroller.stop()
+            parentScrollView?.panGestureRecognizer.isEnabled = true
+            guard isDraggingActive else { return }
+            isDraggingActive = false
+            let cancel = onCancel
+            DispatchQueue.main.async { cancel() }
         }
 
         private func finishDrag(cancelled: Bool) {
@@ -935,8 +993,8 @@ private struct InteractiveDragGestureRecognizer: UIViewRepresentable {
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            // Наш жест перетаскивания карточки тир-листа всегда имеет наивысший приоритет над жестами навигации и свайпов
-            return true
+            // Never make normal scroll/back gestures wait for the long press.
+            return false
         }
     }
 }

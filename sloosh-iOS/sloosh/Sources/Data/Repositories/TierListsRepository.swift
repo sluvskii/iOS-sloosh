@@ -13,24 +13,34 @@ final class TierListsRepository: ObservableObject {
     /// Редакторские шаблоны из tier_templates.
     @Published private(set) var templates: [TierTemplate] = []
 
+    private let session: URLSession
+    private let defaults: UserDefaults
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
-    private let likedDefaultsKey = "sloosh_liked_tier_lists_v1"
-    private let viewedDefaultsKey = "sloosh_viewed_tier_lists_v1"
+    private var accountId: String? { AuthRepository.shared.currentUser?.id }
+    private var likedDefaultsKey: String { "sloosh_liked_tier_lists_v2_\(accountId ?? "guest")" }
+    private var viewedDefaultsKey: String { "sloosh_viewed_tier_lists_v2_\(accountId ?? "guest")" }
     private let feedCacheKey = "sloosh_tier_lists_cache_v1"
-    private let draftsKey = "sloosh_tier_drafts_v1"
+    @Published private(set) var lastError: String?
 
     private var inFlightLists: Task<[TierList], Never>?
     private var inFlightTemplates: Task<[TierTemplate], Never>?
     private var lastFetchDate: Date?
-    private var likedIds: Set<String> = []
-    private var viewedIds: Set<String> = []
+    private var likedIds: Set<String> {
+        get { Set(defaults.stringArray(forKey: likedDefaultsKey) ?? []) }
+        set { defaults.set(Array(newValue), forKey: likedDefaultsKey) }
+    }
+    private var viewedIds: Set<String> {
+        get { Set(defaults.stringArray(forKey: viewedDefaultsKey) ?? []) }
+        set { defaults.set(Array(newValue), forKey: viewedDefaultsKey) }
+    }
+    private var socialWrites: Set<String> = []
 
     private let encoder = JSONEncoder()
 
-    private init() {
-        likedIds = Set(UserDefaults.standard.stringArray(forKey: likedDefaultsKey) ?? [])
-        viewedIds = Set(UserDefaults.standard.stringArray(forKey: viewedDefaultsKey) ?? [])
-        if let data = UserDefaults.standard.data(forKey: feedCacheKey),
+    init(session: URLSession = .shared, defaults: UserDefaults = .standard) {
+        self.session = session
+        self.defaults = defaults
+        if let data = defaults.data(forKey: feedCacheKey),
            let cached = try? JSONDecoder().decode([TierList].self, from: data),
            !cached.isEmpty {
             publicLists = cached
@@ -59,12 +69,37 @@ final class TierListsRepository: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         request.timeoutInterval = 12
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200...299).contains(http.statusCode) else {
-            throw URLError(.badServerResponse) // отличимая от сети ошибка прав доступа/валидации
+            throw NSError(domain: "sloosh.tiers", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Не удалось сохранить изменения. Проверьте подключение и права доступа."])
         }
         _ = data
+    }
+
+    /// Conditional full-node write preserves live social fields and refuses to
+    /// resurrect a deleted list or silently replace concurrent author edits.
+    private func updateExisting(id: String, changes: (TierList) throws -> [String: Any]) async throws -> TierList {
+        guard let url = await makeURL(path: "tier_lists/\(id)") else { throw URLError(.badURL) }
+        var read = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+        read.setValue("true", forHTTPHeaderField: "X-Firebase-ETag")
+        let (data, response) = try await session.data(for: read)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let etag = http.value(forHTTPHeaderField: "ETag"),
+              var document = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [String: Any],
+              let current = TierList.decode(id: id, document: document) else { throw URLError(.resourceUnavailable) }
+        for (key, value) in try changes(current) { document[key] = value }
+        var write = URLRequest(url: url, timeoutInterval: 12)
+        write.httpMethod = "PUT"
+        write.setValue(etag, forHTTPHeaderField: "if-match")
+        write.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        write.httpBody = try JSONSerialization.data(withJSONObject: document)
+        let (_, result) = try await session.data(for: write)
+        guard let status = (result as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
+            throw NSError(domain: "sloosh.tiers", code: 2, userInfo: [NSLocalizedDescriptionKey: "Список изменился или недоступен. Ваши правки сохранены в черновике; обновите список перед повторной публикацией."])
+        }
+        guard let saved = TierList.decode(id: id, document: document) else { throw URLError(.cannotParseResponse) }
+        return saved
     }
 
     // MARK: - Публичные списки
@@ -72,6 +107,7 @@ final class TierListsRepository: ObservableObject {
     /// Последние 100 публичных списков (orderBy createdAtMs). Дедуп параллельных вызовов,
     /// короткий TTL и дисковый снапшот для мгновенного холодного старта.
     func fetchPublicLists(force: Bool = false) async -> [TierList] {
+        lastError = nil
         if let inFlight = inFlightLists {
             return await inFlight.value
         }
@@ -91,13 +127,14 @@ final class TierListsRepository: ObservableObject {
             var request = URLRequest(url: url)
             request.timeoutInterval = 12
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    self.lastError = "Не удалось обновить тир-листы. Потяните вниз, чтобы повторить."
                     return self.publicLists
                 }
-                guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    return self.publicLists
-                }
+                let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+                guard value is NSNull || value is [String: Any] else { throw URLError(.cannotParseResponse) }
+                let raw = value as? [String: Any] ?? [:]
                 let decoded = raw.compactMap { key, value -> TierList? in
                     guard let document = value as? [String: Any] else { return nil }
                     return TierList.decode(id: key, document: document)
@@ -107,10 +144,11 @@ final class TierListsRepository: ObservableObject {
                     self.lastFetchDate = Date()
                 }
                 if let snapshot = try? self.encoder.encode(decoded) {
-                    UserDefaults.standard.set(snapshot, forKey: self.feedCacheKey)
+                    defaults.set(snapshot, forKey: self.feedCacheKey)
                 }
                 return decoded
             } catch {
+                self.lastError = "Нет подключения. Показаны сохранённые тир-листы."
                 return self.publicLists
             }
         }
@@ -121,12 +159,12 @@ final class TierListsRepository: ObservableObject {
     }
 
     /// Один список по id (deep link / просмотрщик).
-    func fetchList(id: String) async -> TierList? {
-        if let cached = publicLists.first(where: { $0.id == id }) { return cached }
+    func fetchList(id: String, force: Bool = false) async -> TierList? {
+        if !force, let cached = publicLists.first(where: { $0.id == id }) { return cached }
         guard let url = await makeURL(path: "tier_lists/\(id)") else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               !raw.isEmpty,
@@ -138,8 +176,36 @@ final class TierListsRepository: ObservableObject {
 
     /// Списки конкретного автора (паттерн fetchClips(forAuthorId:)): берём свежие 100 и фильтруем.
     func fetchLists(forAuthorId authorId: String) async -> [TierList] {
-        let all = await fetchPublicLists()
-        return all.filter { $0.authorId == authorId }
+        guard !authorId.isEmpty else { return [] }
+        // $key is indexed by RTDB itself. Scan bounded pages, not just the last
+        // 100 global publications; no new production index/rules are required.
+        var cursor: String?
+        var result: [TierList] = []
+        do {
+            while !Task.isCancelled {
+                var query = [URLQueryItem(name: "orderBy", value: "\"$key\""), URLQueryItem(name: "limitToFirst", value: "201")]
+                if let cursor {
+                    query.append(URLQueryItem(name: "startAt", value: String(data: try JSONEncoder().encode(cursor), encoding: .utf8)!))
+                }
+                guard let url = await makeURL(path: "tier_lists", query: query) else { throw URLError(.badURL) }
+                let (data, response) = try await session.data(for: URLRequest(url: url, timeoutInterval: 12))
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+                let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+                guard value is NSNull || value is [String: Any] else { throw URLError(.cannotParseResponse) }
+                let raw = value as? [String: Any] ?? [:]
+                let keys = raw.keys.sorted()
+                for key in keys where cursor == nil || key > cursor! {
+                    if let doc = raw[key] as? [String: Any], let list = TierList.decode(id: key, document: doc), list.authorId == authorId { result.append(list) }
+                }
+                guard raw.count == 201, let last = keys.last, last != cursor else { break }
+                cursor = last
+            }
+            try Task.checkCancellation()
+            return result.sorted { $0.updatedAtMs > $1.updatedAtMs }
+        } catch {
+            lastError = "Не удалось загрузить все списки автора. Повторите попытку."
+            return publicLists.filter { $0.authorId == authorId }
+        }
     }
 
     /// Ранжинг для вкладки «Популярные»: вовлечённость + свежесть (формула клипов).
@@ -165,8 +231,11 @@ final class TierListsRepository: ObservableObject {
     /// Возвращает опубликованный список (с реальным id вместо draft_) либо nil.
     func publish(_ draft: TierList) async throws -> TierList? {
         guard let author = authorPayload() else { return nil }
+        if let message = TierBoardPolicy.validationMessage(title: draft.title, subtitle: draft.subtitle, rows: draft.rows, items: draft.allItems) {
+            throw NSError(domain: "sloosh.tiers", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        }
         var list = draft
-        let wasDraft = list.isDraftList || list.id.hasPrefix("draft_")
+        let wasDraft = list.id.hasPrefix("draft_")
         let listId = wasDraft ? UUID().uuidString : list.id
         list.id = listId
         list.isDraft = nil
@@ -177,18 +246,37 @@ final class TierListsRepository: ObservableObject {
         if wasDraft || list.createdAtMs == 0 { list.createdAtMs = Int64(Date().timeIntervalSince1970 * 1000) }
         list.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
 
-        guard let body = try? JSONSerialization.data(withJSONObject: list.publishDocument) else { return nil }
-        try await dataRequest(path: "tier_lists/\(listId)", method: "PUT", body: body)
+        if wasDraft {
+            let body = try JSONSerialization.data(withJSONObject: list.publishDocument)
+            try await dataRequest(path: "tier_lists/\(listId)", method: "PUT", body: body)
+        } else {
+            let edited = list
+            list = try await updateExisting(id: listId) { current in
+                guard current.updatedAtMs == draft.updatedAtMs else {
+                    throw NSError(domain: "sloosh.tiers", code: 3, userInfo: [NSLocalizedDescriptionKey: "Автор уже изменил этот список. Сохраните черновик и откройте свежую версию."])
+                }
+                var fields = edited.publishDocument
+                fields.removeValue(forKey: "likesCount"); fields.removeValue(forKey: "viewsCount")
+                if edited.subtitle == nil { fields["subtitle"] = NSNull() }
+                return fields
+            }
+        }
+        guard accountId == author.id else { throw CancellationError() }
 
         // Публикация черновика: локальный черновик больше не нужен
-        if wasDraft { deleteDraft(id: draft.id) }
+        deleteDraft(id: draft.id)
 
         if let index = publicLists.firstIndex(where: { $0.id == listId }) {
             publicLists[index] = list
         } else {
             publicLists.insert(list, at: 0)
         }
+        persistFeed()
         return list
+    }
+
+    private func persistFeed() {
+        if let data = try? encoder.encode(publicLists) { defaults.set(data, forKey: feedCacheKey) }
     }
 
     /// Удаление своего списка + каскадная чистка лайков/просмотров (паттерн deleteClip).
@@ -198,7 +286,7 @@ final class TierListsRepository: ObservableObject {
         try? await dataRequest(path: "tier_lists_views/\(id)", method: "DELETE", body: nil)
         publicLists.removeAll { $0.id == id }
         if let snapshot = try? encoder.encode(publicLists) {
-            UserDefaults.standard.set(snapshot, forKey: feedCacheKey)
+            defaults.set(snapshot, forKey: feedCacheKey)
         }
     }
 
@@ -213,91 +301,69 @@ final class TierListsRepository: ObservableObject {
         }
     }
 
-    func toggleLike(_ list: TierList) async -> (isLiked: Bool, likesCount: Int) {
-        let userId = AuthRepository.shared.currentUser?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "unknown")"
-        let wasLiked = likedIds.contains(list.id)
-        let newIsLiked = !wasLiked
-        let baseCount = list.likesCount ?? 0
-        let currentCount = max(0, baseCount + (newIsLiked ? 1 : -1))
-
-        // 1. Оптимистичное локальное состояние
-        if newIsLiked { likedIds.insert(list.id) } else { likedIds.remove(list.id) }
-        UserDefaults.standard.set(Array(likedIds), forKey: likedDefaultsKey)
-        if let index = publicLists.firstIndex(where: { $0.id == list.id }) {
-            publicLists[index].likesCount = currentCount
+    /// ETag compare-and-set retries contention without losing concurrent likes.
+    /// The existing child write rule also refuses writes to deleted lists.
+    private func adjustCounter(listId: String, field: String, delta: Int) async throws -> Int {
+        guard let url = await makeURL(path: "tier_lists/\(listId)/\(field)") else { throw URLError(.badURL) }
+        for _ in 0..<5 {
+            var read = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+            read.setValue("true", forHTTPHeaderField: "X-Firebase-ETag")
+            let (data, response) = try await session.data(for: read)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let etag = http.value(forHTTPHeaderField: "ETag") else { throw URLError(.badServerResponse) }
+            let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            let next = max(0, (value as? NSNumber)?.intValue ?? 0) + delta
+            var write = URLRequest(url: url, timeoutInterval: 12)
+            write.httpMethod = "PUT"
+            write.setValue(etag, forHTTPHeaderField: "if-match")
+            write.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            write.httpBody = try JSONEncoder().encode(max(0, next))
+            let (_, result) = try await session.data(for: write)
+            guard let status = (result as? HTTPURLResponse)?.statusCode else { throw URLError(.badServerResponse) }
+            if status == 412 { continue }
+            guard (200..<300).contains(status) else { throw URLError(.badServerResponse) }
+            return max(0, next)
         }
-
-        // 2. Сеть: лайк — свой узел, счётчик — только при живом содержимом
-        let liked = newIsLiked
-        let count = currentCount
-        let listId = list.id
-        Task.detached { [databaseBaseURL] in
-            let token = await AuthRepository.shared.ensureFreshToken()
-            func url(_ path: String) -> URL? {
-                URL(string: "\(databaseBaseURL)/\(path).json?auth=\(token ?? "")")
-            }
-            if let likeUrl = url("tier_lists_likes/\(listId)/\(userId)") {
-                var likeReq = URLRequest(url: likeUrl)
-                likeReq.httpMethod = liked ? "PUT" : "DELETE"
-                if liked {
-                    likeReq.httpBody = try? JSONEncoder().encode(true)
-                    likeReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                }
-                _ = try? await URLSession.shared.data(for: likeReq)
-            }
-            // Счётчик пишем только если список ещё существует — иначе запись по
-            // пути likesCount «воскресит» удалённый список одним полем.
-            if let contentUrl = url("tier_lists/\(listId)/title"), let (raw, _) = try? await URLSession.shared.data(from: contentUrl),
-               let text = String(data: raw, encoding: .utf8), text != "null", !text.isEmpty,
-               let countUrl = url("tier_lists/\(listId)/likesCount") {
-                var countReq = URLRequest(url: countUrl)
-                countReq.httpMethod = "PUT"
-                countReq.httpBody = try? JSONEncoder().encode(count)
-                countReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                _ = try? await URLSession.shared.data(for: countReq)
-            }
-        }
-        return (newIsLiked, currentCount)
+        throw URLError(.resourceUnavailable)
     }
 
-    // MARK: - Просмотры (дедуп: один просмотр на пользователя)
+    func toggleLike(_ list: TierList) async throws -> (isLiked: Bool, likesCount: Int) {
+        guard let userId = accountId else { throw URLError(.userAuthenticationRequired) }
+        let key = "like|\(userId)|\(list.id)"
+        guard socialWrites.insert(key).inserted else { throw URLError(.resourceUnavailable) }
+        defer { socialWrites.remove(key) }
+        let liked = !likedIds.contains(list.id)
+        let path = "tier_lists_likes/\(list.id)/\(userId)"
+        try await dataRequest(path: path, method: liked ? "PUT" : "DELETE", body: liked ? try JSONEncoder().encode(true) : nil)
+        let count: Int
+        do { count = try await adjustCounter(listId: list.id, field: "likesCount", delta: liked ? 1 : -1) }
+        catch {
+            // Best effort compensation of the marker; never show a false success.
+            try? await dataRequest(path: path, method: liked ? "DELETE" : "PUT", body: liked ? nil : try JSONEncoder().encode(true))
+            throw error
+        }
+        guard accountId == userId else { throw CancellationError() }
+        if liked { likedIds.insert(list.id) } else { likedIds.remove(list.id) }
+        applyLikeCount(listId: list.id, count: count)
+        persistFeed()
+        return (liked, count)
+    }
 
     func recordView(_ listId: String) {
-        guard !viewedIds.contains(listId) else { return }
-        viewedIds.insert(listId)
-        UserDefaults.standard.set(Array(viewedIds), forKey: viewedDefaultsKey)
-        let userId = AuthRepository.shared.currentUser?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "unknown")"
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        Task.detached { [databaseBaseURL] in
-            let token = await AuthRepository.shared.ensureFreshToken()
-            func url(_ path: String) -> URL? {
-                URL(string: "\(databaseBaseURL)/\(path).json?auth=\(token ?? "")")
-            }
-            if let viewUrl = url("tier_lists_views/\(listId)/\(userId)") {
-                var viewReq = URLRequest(url: viewUrl)
-                viewReq.httpMethod = "PUT"
-                viewReq.httpBody = try? JSONEncoder().encode(nowMs)
-                viewReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                _ = try? await URLSession.shared.data(for: viewReq)
-            }
-            // Счётчик: read-modify-write с guard-ом содержимого (как likesCount у клипов)
-            if let contentUrl = url("tier_lists/\(listId)/title"),
-               let (raw, _) = try? await URLSession.shared.data(from: contentUrl),
-               let text = String(data: raw, encoding: .utf8), text != "null", !text.isEmpty {
-                var current = 0
-                if let countUrl = url("tier_lists/\(listId)/viewsCount"),
-                   let (countData, _) = try? await URLSession.shared.data(from: countUrl),
-                   let value = try? JSONSerialization.jsonObject(with: countData) as? NSNumber {
-                    current = value.intValue
-                }
-                if let countUrl = url("tier_lists/\(listId)/viewsCount") {
-                    var countReq = URLRequest(url: countUrl)
-                    countReq.httpMethod = "PUT"
-                    countReq.httpBody = try? JSONEncoder().encode(current + 1)
-                    countReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    _ = try? await URLSession.shared.data(for: countReq)
-                }
-            }
+        guard let userId = accountId, !viewedIds.contains(listId) else { return }
+        let key = "view|\(userId)|\(listId)"
+        guard socialWrites.insert(key).inserted else { return }
+        Task {
+            defer { socialWrites.remove(key) }
+            do {
+                let body = try JSONEncoder().encode(Int64(Date().timeIntervalSince1970 * 1000))
+                try await dataRequest(path: "tier_lists_views/\(listId)/\(userId)", method: "PUT", body: body)
+                let count = try await adjustCounter(listId: listId, field: "viewsCount", delta: 1)
+                guard accountId == userId else { return }
+                viewedIds.insert(listId)
+                if let i = publicLists.firstIndex(where: { $0.id == listId }) { publicLists[i].viewsCount = count }
+                persistFeed()
+            } catch { /* Keep retry eligible after a failed request. */ }
         }
     }
 
@@ -312,7 +378,7 @@ final class TierListsRepository: ObservableObject {
             var request = URLRequest(url: url)
             request.timeoutInterval = 12
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                       let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     return self.templates
@@ -381,52 +447,26 @@ final class TierListsRepository: ObservableObject {
     /// Добавляет фильм в пул «Не распределено»: для черновика — локально,
     /// для опубликованного — правка узла RTDB (авторская правка).
     func addItem(_ item: TierListItem, to target: TierList) async throws {
-        var updated = target
-        guard !updated.unranked.contains(where: { $0.mediaId == item.mediaId }),
-              !updated.rows.contains(where: { $0.items.contains(where: { $0.mediaId == item.mediaId }) }) else { return }
-        updated.unranked.append(item)
-        updated.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
-
         if target.isDraftList || target.id.hasPrefix("draft_") {
-            saveDraft(updated)
+            var latest = loadDrafts().first { $0.id == target.id } ?? target
+            guard !latest.allItems.contains(where: { $0.mediaId == item.mediaId }) else { return }
+            latest.unranked.append(item)
+            saveDraft(latest)
             return
         }
-        guard let body = try? JSONSerialization.data(withJSONObject: updated.publishDocument) else { return }
-        try await dataRequest(path: "tier_lists/\(updated.id)", method: "PUT", body: body)
-        if let index = publicLists.firstIndex(where: { $0.id == updated.id }) {
-            publicLists[index] = updated
+        let updated = try await updateExisting(id: target.id) { current in
+            var latest = current
+            if !latest.allItems.contains(where: { $0.mediaId == item.mediaId }) { latest.unranked.append(item) }
+            latest.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+            return latest.publishDocument.filter { ["rows", "unranked", "updatedAtMs"].contains($0.key) }
         }
+        if let index = publicLists.firstIndex(where: { $0.id == updated.id }) { publicLists[index] = updated }
+        persistFeed()
     }
 
     // MARK: - Черновики (локальные, per-user)
 
-    func loadDrafts() -> [TierList] {
-        guard let data = UserDefaults.standard.data(forKey: draftsKey),
-              let drafts = try? JSONDecoder().decode([TierList].self, from: data) else { return [] }
-        return drafts.sorted { $0.updatedAtMs > $1.updatedAtMs }
-    }
-
-    func saveDraft(_ draft: TierList) {
-        var drafts = loadDrafts()
-        var draft = draft
-        draft.isDraft = true
-        draft.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
-        if let index = drafts.firstIndex(where: { $0.id == draft.id }) {
-            drafts[index] = draft
-        } else {
-            drafts.insert(draft, at: 0)
-        }
-        if drafts.count > 20 { drafts = Array(drafts.prefix(20)) }
-        if let data = try? encoder.encode(drafts) {
-            UserDefaults.standard.set(data, forKey: draftsKey)
-        }
-    }
-
-    func deleteDraft(id: String) {
-        var drafts = loadDrafts()
-        drafts.removeAll { $0.id == id }
-        if let data = try? encoder.encode(drafts) {
-            UserDefaults.standard.set(data, forKey: draftsKey)
-        }
-    }
+    func loadDrafts() -> [TierList] { TierDraftStore(defaults: defaults, userId: accountId).load() }
+    func saveDraft(_ draft: TierList) { TierDraftStore(defaults: defaults, userId: accountId).save(draft) }
+    func deleteDraft(id: String) { TierDraftStore(defaults: defaults, userId: accountId).delete(id: id) }
 }

@@ -16,9 +16,14 @@ struct TierListEditorView: View {
     @State private var showPublishField = false
     @State private var editingRow: TierRow?
     @State private var tappedItem: TierListItem?
+    @State private var didPublish = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var isPublishing = false
     @State private var isDraggingCard = false
     @State private var publishError: String?
+    @State private var undoHistory: [TierEditorSnapshot] = []
+    @State private var restoringSnapshot: TierEditorSnapshot?
+    private var editSnapshot: TierEditorSnapshot { TierEditorSnapshot(title: title, subtitle: subtitle, rows: rows, unranked: unranked) }
     @State private var autosaveTask: Task<Void, Never>?
 
     init(draft: TierList, onPublished: @escaping (TierList) -> Void, onDismiss: @escaping () -> Void) {
@@ -42,21 +47,40 @@ struct TierListEditorView: View {
 
     var body: some View {
         editorContent
+            .disabled(isPublishing)
             .navigationTitle("Редактор")
             .navigationBarTitleDisplayMode(.inline)
             .tint(.primary)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { showPublishField = true }
+                    Button {
+                        guard let previous = undoHistory.popLast() else { return }
+                        restoringSnapshot = previous
+                        title = previous.title; subtitle = previous.subtitle
+                        rows = previous.rows; unranked = previous.unranked
+                    } label: { Image(systemName: "arrow.uturn.backward") }
+                    .disabled(undoHistory.isEmpty || isDraggingCard || isPublishing)
+                    .accessibilityLabel("Отменить изменение")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Опубликовать") { showPublishField = true }
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.primary)
                         .disabled(isPublishing)
                 }
             }
-            .onDisappear { autosaveDraft() }
-            .onChange(of: rows) { _, _ in scheduleAutosave() }
-            .onChange(of: unranked) { _, _ in scheduleAutosave() }
-            .onChange(of: title) { _, _ in scheduleAutosave() }
+            .onDisappear { autosaveTask?.cancel(); autosaveDraft() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { autosaveTask?.cancel(); autosaveDraft() }
+            }
+            .onChange(of: editSnapshot) { old, new in
+                if restoringSnapshot == new { restoringSnapshot = nil }
+                else {
+                    undoHistory.append(old)
+                    if undoHistory.count > 30 { undoHistory.removeFirst() }
+                }
+                scheduleAutosave()
+            }
             .sheet(isPresented: $showAddSheet) { addSheet }
             .sheet(isPresented: $showPublishField) { publishSheet }
             .sheet(item: Binding(
@@ -184,7 +208,7 @@ struct TierListEditorView: View {
         HStack(spacing: 6) {
             Image(systemName: "info.circle")
                 .font(.footnote)
-            Text("Зажмите карточку для переноса. Тап — быстрое меню действий.")
+            Text("Удерживайте карточку для переноса. Коснитесь, чтобы выбрать уровень. Черновик сохраняется автоматически.")
                 .font(.footnote)
         }
         .foregroundStyle(.secondary)
@@ -275,6 +299,7 @@ struct TierListEditorView: View {
     @ViewBuilder
     private var addSheet: some View {
         TierItemPickerSheet(
+            existingIds: Set((rows.flatMap(\.items) + unranked).map(\.mediaId)),
             onAdd: { items in
                 var known = Set(unranked.map(\.mediaId))
                 rows.forEach { row in row.items.forEach { known.insert($0.mediaId) } }
@@ -332,6 +357,8 @@ struct TierListEditorView: View {
                     .disabled(isPublishing || title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .disabled(isPublishing)
+            .interactiveDismissDisabled(isPublishing)
             .navigationTitle("Публикация")
             .navigationBarTitleDisplayMode(.inline)
             .tint(.primary)
@@ -353,10 +380,22 @@ struct TierListEditorView: View {
     }
 
     private func publish() async {
+        guard !isPublishing else { return }
+        guard draft.authorId == (AuthRepository.shared.currentUser?.id ?? "") else {
+            publishError = "Аккаунт изменился. Откройте редактор заново."
+            return
+        }
+        if let message = TierBoardPolicy.validationMessage(title: title, subtitle: subtitle, rows: rows, items: rows.flatMap(\.items) + unranked) {
+            publishError = message
+            return
+        }
         isPublishing = true
         publishError = nil
+        autosaveTask?.cancel()
         do {
             if let published = try await TierListsRepository.shared.publish(draftSnapshot) {
+                didPublish = true
+                autosaveTask?.cancel()
                 deleteDraftLocally()
                 showPublishField = false
                 onPublished(published)
@@ -496,6 +535,7 @@ struct TierListEditorView: View {
     }
 
     private func autosaveDraft() {
+        guard !didPublish else { return }
         TierListsRepository.shared.saveDraft(draftSnapshot)
     }
 

@@ -4,6 +4,9 @@ import SwiftUI
 /// Шаблоны, Популярные), системный навбар, системный back, swipe-удаление.
 struct TierListsHomeView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var auth = AuthRepository.shared
+    @State private var pendingDeletion: TierList?
+    @State private var actionError: String?
     @StateObject private var repo = TierListsRepository.shared
     @State private var editorDraft: TierList?
     @State private var viewerList: TierList?
@@ -25,6 +28,10 @@ struct TierListsHomeView: View {
                 }
             } footer: {
                 Text("Расставьте фильмы по уровням и поделитесь картинкой")
+            }
+
+            if let error = repo.lastError {
+                Section { Text(error).font(.footnote).foregroundStyle(.secondary) }
             }
 
             Section("Мои тир-листы") {
@@ -59,10 +66,7 @@ struct TierListsHomeView: View {
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                Task {
-                                    try? await TierListsRepository.shared.deleteList(id: list.id)
-                                    myLists.removeAll { $0.id == list.id }
-                                }
+                                pendingDeletion = list
                             } label: {
                                 Label("Удалить", systemImage: "trash")
                             }
@@ -72,8 +76,10 @@ struct TierListsHomeView: View {
             }
 
             Section("Шаблоны") {
-                if repo.templates.isEmpty {
+                if repo.templates.isEmpty && isLoadingMine {
                     ProgressView()
+                } else if repo.templates.isEmpty {
+                    Text("Шаблоны пока недоступны. Можно создать свой тир-лист.").foregroundStyle(.secondary)
                 } else {
                     ForEach(repo.templates) { template in
                         Button {
@@ -114,17 +120,48 @@ struct TierListsHomeView: View {
                 }
             }
         }
-        .task { await reload() }
+        .task(id: auth.currentUser?.id) {
+            myLists = []
+            myDrafts = []
+            isLoadingMine = true
+            await reload()
+        }
+        .onChange(of: repo.publicLists) { _, lists in
+            let fresh = lists.filter { $0.authorId == auth.currentUser?.id }
+            for list in fresh {
+                if let i = myLists.firstIndex(where: { $0.id == list.id }) { myLists[i] = list }
+                else { myLists.insert(list, at: 0) }
+            }
+        }
+        .confirmationDialog("Удалить тир-лист?", isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }), titleVisibility: .visible) {
+            Button("Удалить", role: .destructive) {
+                guard let list = pendingDeletion else { return }
+                Task {
+                    do {
+                        try await repo.deleteList(id: list.id)
+                        myLists.removeAll { $0.id == list.id }
+                    } catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
+                    pendingDeletion = nil
+                }
+            }
+            Button("Отмена", role: .cancel) { pendingDeletion = nil }
+        }
+        .alert("Не удалось выполнить действие", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button("Понятно", role: .cancel) {}
+        } message: { Text(actionError ?? "") }
         .refreshable { await reload(force: true) }
         .navigationDestination(item: $editorDraft) { draft in
             TierListEditorView(
                 draft: draft,
                 onPublished: { published in
+                    myLists.removeAll { $0.id == published.id }
                     myLists.insert(published, at: 0)
+                    myDrafts = repo.loadDrafts()
                     viewerList = published
                 },
                 onDismiss: {}
             )
+            .onDisappear { myDrafts = repo.loadDrafts() }
         }
         .navigationDestination(item: $viewerList) { list in
             TierListViewerView(listId: list.id, initialList: list)
@@ -132,9 +169,13 @@ struct TierListsHomeView: View {
     }
 
     private func reload(force: Bool = false) async {
-        myDrafts = TierListsRepository.shared.loadDrafts()
-        myLists = await TierListsRepository.shared.fetchLists(forAuthorId: AuthRepository.shared.currentUser?.id ?? "")
-        _ = await TierListsRepository.shared.fetchTemplates(force: force)
+        let userId = auth.currentUser?.id
+        myDrafts = repo.loadDrafts()
+        _ = await repo.fetchPublicLists(force: force)
+        let mine = await repo.fetchLists(forAuthorId: userId ?? "")
+        _ = await repo.fetchTemplates(force: force)
+        guard !Task.isCancelled, userId == auth.currentUser?.id else { return }
+        myLists = mine
         isLoadingMine = false
     }
 
