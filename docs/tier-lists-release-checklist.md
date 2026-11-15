@@ -20,7 +20,7 @@
   a server-maintained author index; do not silently cap author results.
 - Checked social writes, in-flight coalescing and ETag counter updates with bounded
   contention retry. Failed operations do not show false local success.
-- System List.onDelete deletion and error UI, forced feed refresh, authoritative empty feed. Admin template deletion retains its confirmation.
+- Standard SwiftUI swipeActions deletion and error UI, forced feed refresh, authoritative empty feed. Swipe deletion does not open a second confirmation dialog.
 - Real share sheet presentation, export request coalescing, six-image download
   batches, thumbnail decoding, explicit renderer pixel scale/24 MP budget and
   tall-board fitting in stories. Export uses effective/current curated poster URLs.
@@ -79,10 +79,11 @@ device and live Firebase scenarios are checked.
 
 - Details no longer has a tier-list action; the Profile entry sits beside the
   avatar, leaving Downloads + Settings on the right. Deletion uses native
-  `ForEach.onDelete` in the system List, including the default full swipe. Red
-  tint is scoped to deletable content; no custom swipe button, label, gesture or
-  background is supplied. Drafts delete directly; remote rows update after checked
-  server success. Admin shared-template deletion still asks for confirmation.
+  SwiftUI `swipeActions(edge: .trailing)` as in d5b1207, with a destructive Button,
+  a system trash Label and red tint. Default full swipe stays enabled. There is no
+  hand-built gesture/background or second confirmation popover after a swipe,
+  including admin templates. Remote rows update only after checked server success;
+  failed requests still show an error. Non-swipe editor discard protection remains.
 - Admin → Тир-листы uses the existing `tier_templates` Firebase rule (admin UID).
   Create/edit title, description and priority; add from the shared film picker,
   remove/reorder films with native handles. At least four unique films are required;
