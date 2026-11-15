@@ -47,6 +47,7 @@ public struct AdminDashboardView: View {
         case reports = "Жалобы"
         case channels = "Каналы"
         case artworks = "Оформление"
+        case tierTemplates = "Тир-листы"
         case diagnostics = "Система"
 
         var id: Self { self }
@@ -58,6 +59,7 @@ public struct AdminDashboardView: View {
             case .reports: return "exclamationmark.bubble.fill"
             case .channels: return "megaphone.fill"
             case .artworks: return "paintbrush.fill"
+            case .tierTemplates: return "list.star"
             case .diagnostics: return "waveform.path.ecg"
             }
         }
@@ -134,6 +136,8 @@ public struct AdminDashboardView: View {
             channelsTab
         case .artworks:
             artworksTab
+        case .tierTemplates:
+            AdminTierTemplatesView()
         case .diagnostics:
             diagnosticsTab
         }

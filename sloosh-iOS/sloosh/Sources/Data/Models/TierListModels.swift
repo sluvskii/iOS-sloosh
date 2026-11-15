@@ -209,6 +209,27 @@ struct TierTemplate: Codable, Identifiable, Hashable {
     var priority: Int?
     var items: [TierListItem]
 
+    var validationMessage: String? {
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Добавьте название шаблона" }
+        if title.count > 120 { return "Название — не больше 120 символов" }
+        if (subtitle?.count ?? 0) > 300 { return "Описание — не больше 300 символов" }
+        if items.count < 4 { return "Добавьте хотя бы четыре фильма или сериала" }
+        if Set(items.map(\.mediaId)).count != items.count { return "Уберите повторяющиеся фильмы" }
+        return nil
+    }
+
+    var publishDocument: [String: Any] {
+        var result: [String: Any] = ["title": title, "priority": priority ?? 0]
+        if let subtitle, !subtitle.isEmpty { result["subtitle"] = subtitle }
+        result["items"] = items.map { item -> [String: Any] in
+            var value: [String: Any] = ["mediaId": item.mediaId, "mediaType": item.mediaType, "title": item.title]
+            if let year = item.year { value["year"] = year }
+            if let url = item.posterUrl { value["posterUrl"] = url }
+            return value
+        }
+        return result
+    }
+
     var coverPosterUrls: [String] {
         Array(items.prefix(4).compactMap(\.posterUrl))
     }

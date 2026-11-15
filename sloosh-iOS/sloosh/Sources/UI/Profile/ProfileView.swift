@@ -124,11 +124,18 @@ struct ProfileView: View {
                             .backdropForeground()
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .padding(.horizontal, 100)
+                            .padding(.horizontal, 108)
 
                         HStack {
                             // Left Avatar / Sign-In Button
-                            avatarHeaderButton
+                            HStack(spacing: 8) {
+                                avatarHeaderButton
+                                TelegramGlassIconButton(systemName: "list.star", iconSize: 19) {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    showsTierLists = true
+                                }
+                                .accessibilityLabel("Тир-листы")
+                            }
 
                             Spacer()
 
@@ -150,22 +157,6 @@ struct ProfileView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Загрузки")
-
-                                Button {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    showsTierLists = true
-                                } label: {
-                                    Image(systemName: "list.star")
-                                        .font(.system(size: 19, weight: .medium))
-                                        .foregroundStyle(.primary)
-                                        .glassForeground()
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Тир-листы")
 
                                 Button {
                                     let generator = UIImpactFeedbackGenerator(style: .medium)
