@@ -48,13 +48,13 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: draft.title, detail: "Черновик · \(draft.itemsCount) фильмов", posters: draft.allItems.compactMap(\.posterUrl))
                         }
+                        .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 repo.deleteDraft(id: draft.id)
                                 myDrafts = repo.loadDrafts()
                             } label: {
                                 Label("Удалить", systemImage: "trash")
-                                    .foregroundStyle(.white)
                             }
                             .tint(.red)
                         }
@@ -65,6 +65,7 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: list.title, detail: "\(list.itemsCount) фильмов", posters: list.allItems.compactMap(\.posterUrl))
                         }
+                        .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 Task {
@@ -75,7 +76,6 @@ struct TierListsHomeView: View {
                                 }
                             } label: {
                                 Label("Удалить", systemImage: "trash")
-                                    .foregroundStyle(.white)
                             }
                             .tint(.red)
                         }
@@ -95,6 +95,7 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: template.title, detail: template.subtitle ?? "\(template.items.count) фильмов", posters: template.coverPosterUrls)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -111,6 +112,7 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: list.title, detail: "от \(list.authorName) · \(list.likesCount ?? 0) ❤︎", posters: list.allItems.compactMap(\.posterUrl))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
