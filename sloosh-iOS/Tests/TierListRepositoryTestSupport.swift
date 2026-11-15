@@ -13,6 +13,7 @@ struct TierTestUser {
 @MainActor
 final class AuthRepository {
     static let shared = AuthRepository()
+    var isAdmin = false
     @Published var currentUser: TierTestUser? = TierTestUser(id: "alice")
     func ensureFreshToken() async -> String? { "unit-test-token" }
 }
@@ -118,6 +119,89 @@ enum TierListRepositoryTests {
         AuthRepository.shared.currentUser = TierTestUser(id: "bob")
         check(!repo.isLiked(list.id), "Social state is isolated after an account switch")
         AuthRepository.shared.currentUser = TierTestUser(id: "alice")
+        count += try await templateTests(repo)
+        return count
+    }
+
+    @MainActor
+    private static func templateTests(_ repo: TierListsRepository) async throws -> Int {
+        var count = 0
+        func check(_ value: Bool, _ message: String) { precondition(value, message); count += 1 }
+        let items = (1...4).map { TierListItem(mediaId: "movie_\($0)", mediaType: "movie", title: "Film \($0)", year: nil, posterUrl: "https://example.com/\($0).jpg") }
+        let template = TierTemplate(id: "test-template", title: "Original", subtitle: "Description", priority: 5, items: items)
+        var remote: [String: Any]?
+        var revision = 0
+        var failWrite: Int?
+        var writes = 0
+        var requests = 0
+        TierTestURLProtocol.handle = { request in
+            requests += 1
+            if request.url!.path == "/tier_templates.json" {
+                return (200, [:], try JSONSerialization.data(withJSONObject: remote.map { [template.id: $0] } ?? [:]))
+            }
+            if request.httpMethod == "GET" {
+                return (200, ["ETag": "\"template-\(revision)\""], try JSONSerialization.data(withJSONObject: remote as Any? ?? NSNull(), options: [.fragmentsAllowed]))
+            }
+            writes += 1
+            precondition(request.value(forHTTPHeaderField: "if-match") == "\"template-\(revision)\"")
+            if let failWrite { return (failWrite, [:], Data()) }
+            if request.httpMethod == "DELETE" { remote = nil }
+            else {
+                remote = try JSONSerialization.jsonObject(with: requestBody(request)) as? [String: Any]
+                precondition(remote?["id"] == nil && remote?["rows"] == nil)
+            }
+            revision += 1
+            return (200, [:], Data("null".utf8))
+        }
+        AuthRepository.shared.isAdmin = false
+        do { try await repo.saveTemplate(template, expected: nil); preconditionFailure("Non-admin wrote a template") }
+        catch { check(requests == 0, "Client gates template writes before transport; Firebase still enforces admin rules") }
+        AuthRepository.shared.isAdmin = true
+        defer { AuthRepository.shared.isAdmin = false }
+        try await repo.saveTemplate(template, expected: nil)
+        check(repo.templates == [template] && writes == 1, "Create publishes only after checked durable success")
+        let userDraft = repo.makeDraft(from: template)
+        var edited = template
+        edited.title = "Edited"; edited.items.reverse(); edited.subtitle = nil
+        try await repo.saveTemplate(edited, expected: template)
+        check(repo.templates == [edited] && remote?["subtitle"] == nil, "Edit persists title, poster order and description removal")
+        check(userDraft.unranked == template.items && userDraft.title == template.title, "Template edit never rewrites existing user drafts")
+        let previousWrites = writes
+        do { try await repo.saveTemplate(template, expected: template); preconditionFailure("Stale template overwrote another admin") }
+        catch { check(writes == previousWrites, "Stale original fails before mutation") }
+        failWrite = 403
+        do { try await repo.saveTemplate(template, expected: edited); preconditionFailure("Denied save reported success") }
+        catch { check(repo.templates == [edited], "Denied save retains confirmed local state") }
+        failWrite = 412
+        do { try await repo.deleteTemplate(edited); preconditionFailure("Conflicting delete reported success") }
+        catch { check(repo.templates == [edited], "Conditional delete conflict retains template") }
+        failWrite = nil
+        try await repo.deleteTemplate(edited)
+        check(repo.templates.isEmpty && remote == nil, "Successful deletion updates gallery cache")
+        do { try await repo.saveTemplate(edited, expected: edited); preconditionFailure("Deleted template resurrected") }
+        catch { check(remote == nil, "Deleted original cannot be silently recreated") }
+        var invalid = template; invalid.items.removeLast()
+        let beforeInvalid = requests
+        do { try await repo.saveTemplate(invalid, expected: nil); preconditionFailure("Invalid template saved") }
+        catch { check(requests == beforeInvalid, "Four-film minimum is checked before network") }
+        TierTestURLProtocol.handle = { _ in (200, [:], Data("null".utf8)) }
+        _ = await repo.fetchTemplates(force: true)
+        check(repo.templates.isEmpty && repo.templatesError == nil, "Root null is authoritative empty templates")
+        TierTestURLProtocol.handle = { _ in (403, [:], Data()) }
+        _ = await repo.fetchTemplates(force: true)
+        check(repo.templatesError != nil, "Template read errors are visible, not endless loading")
+        var indexFallbackCalls = 0
+        var source = repo.makeDraft(title: "Fallback")
+        source.rows[0].items = items
+        TierTestURLProtocol.handle = { request in
+            indexFallbackCalls += 1
+            let order = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "orderBy" }?.value
+            if order == "\"createdAtMs\"" { return (400, [:], Data(#"{"error":"Index not defined, add .indexOn"}"#.utf8)) }
+            precondition(order == "\"$key\"")
+            return (200, [:], try JSONSerialization.data(withJSONObject: ["fallback": source.publishDocument]))
+        }
+        let feed = await repo.fetchPublicLists(force: true)
+        check(feed.count == 1 && indexFallbackCalls == 2 && repo.lastError == nil, "Missing Firebase date index falls back to key paging rather than breaking gallery")
         return count
     }
 

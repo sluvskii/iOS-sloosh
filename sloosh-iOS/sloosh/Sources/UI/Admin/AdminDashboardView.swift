@@ -47,6 +47,7 @@ public struct AdminDashboardView: View {
         case reports = "Жалобы"
         case channels = "Каналы"
         case artworks = "Оформление"
+        case tierTemplates = "Тир-листы"
         case diagnostics = "Система"
 
         var id: Self { self }
@@ -58,6 +59,7 @@ public struct AdminDashboardView: View {
             case .reports: return "exclamationmark.bubble.fill"
             case .channels: return "megaphone.fill"
             case .artworks: return "paintbrush.fill"
+            case .tierTemplates: return "list.star"
             case .diagnostics: return "waveform.path.ecg"
             }
         }
@@ -134,6 +136,13 @@ public struct AdminDashboardView: View {
             channelsTab
         case .artworks:
             artworksTab
+        case .tierTemplates:
+            AdminTierTemplatesView()
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, offset in
+                    scrollOffsets[.tierTemplates] = offset
+                }
         case .diagnostics:
             diagnosticsTab
         }
@@ -155,8 +164,12 @@ public struct AdminDashboardView: View {
                     AdminRefreshButton(repo: repo) {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task {
-                            await repo.fetchOverviewStats()
-                            await commentsRepo.fetchReports()
+                            if selectedTab == .tierTemplates {
+                                _ = await TierListsRepository.shared.fetchTemplates(force: true)
+                            } else {
+                                await repo.fetchOverviewStats()
+                                await commentsRepo.fetchReports()
+                            }
                         }
                     }
 

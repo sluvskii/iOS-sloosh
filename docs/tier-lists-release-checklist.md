@@ -74,3 +74,25 @@ Parent marker cleanup on delete remains subject to existing rules. A failed fetc
 can display the last confirmed cached list; a deleted offline item is not proof of
 remote existence. Do not label the public release fully verified until the above
 device and live Firebase scenarios are checked.
+
+## Admin template management and navigation polish
+
+- Details no longer has a tier-list action; the Profile entry sits beside the
+  avatar, leaving Downloads + Settings on the right. Destructive list swipes
+  explicitly use red, disable full-swipe deletion, and confirm drafts too.
+- Admin → Тир-листы uses the existing `tier_templates` Firebase rule (admin UID).
+  Create/edit title, description and priority; add from the shared film picker,
+  remove/reorder films with native handles. At least four unique films are required;
+  the first four determine the template cover. Cancel warns about unsaved edits.
+- Durable checked, conditional writes reject permission/network failure, stale
+  admin edits, concurrent deletes and deleted-record resurrection. Template fetches
+  fence old responses, accept root null, force-refresh on gallery entry/pull and
+  use the existing admin Refresh action. No live database writes are run by tests.
+- Future template edits require no new IPA; users load the current remote version.
+  Existing drafts/publications are independent copies and are deliberately not
+  rewritten. The initial admin UI itself requires installing this client build.
+- Verify on device: profile title spacing and taps, Details action removal, native
+  swipe red/white contrast in both themes; admin save/cancel/reorder/remove/add,
+  lost permissions, two-admin conflict and visibility after refresh on another
+  device. Production rules must already grant the current admin UID access; errors
+  are surfaced rather than treated as successful saves.

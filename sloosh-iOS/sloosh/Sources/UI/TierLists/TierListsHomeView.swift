@@ -49,13 +49,13 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: draft.title, detail: "Черновик · \(draft.itemsCount) фильмов", posters: draft.allItems.compactMap(\.posterUrl))
                         }
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                TierListsRepository.shared.deleteDraft(id: draft.id)
-                                myDrafts = TierListsRepository.shared.loadDrafts()
+                                pendingDeletion = draft
                             } label: {
                                 Label("Удалить", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                     ForEach(myLists) { list in
@@ -64,12 +64,13 @@ struct TierListsHomeView: View {
                         } label: {
                             row(title: list.title, detail: "\(list.itemsCount) фильмов", posters: list.allItems.compactMap(\.posterUrl))
                         }
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 pendingDeletion = list
                             } label: {
                                 Label("Удалить", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -118,6 +119,7 @@ struct TierListsHomeView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.primary)
                 }
+                .tint(.primary)
             }
         }
         .task(id: auth.currentUser?.id) {
@@ -138,8 +140,13 @@ struct TierListsHomeView: View {
                 guard let list = pendingDeletion else { return }
                 Task {
                     do {
-                        try await repo.deleteList(id: list.id)
-                        myLists.removeAll { $0.id == list.id }
+                        if list.isDraftList {
+                            repo.deleteDraft(id: list.id)
+                            myDrafts = repo.loadDrafts()
+                        } else {
+                            try await repo.deleteList(id: list.id)
+                            myLists.removeAll { $0.id == list.id }
+                        }
                     } catch { actionError = "Не удалось удалить тир-лист. Повторите попытку." }
                     pendingDeletion = nil
                 }
@@ -173,7 +180,7 @@ struct TierListsHomeView: View {
         myDrafts = repo.loadDrafts()
         _ = await repo.fetchPublicLists(force: force)
         let mine = await repo.fetchLists(forAuthorId: userId ?? "")
-        _ = await repo.fetchTemplates(force: force)
+        _ = await repo.fetchTemplates(force: true)
         guard !Task.isCancelled, userId == auth.currentUser?.id else { return }
         myLists = mine
         isLoadingMine = false

@@ -25,6 +25,10 @@ final class TierListsRepository: ObservableObject {
     private var inFlightLists: Task<[TierList], Never>?
     private var inFlightTemplates: Task<[TierTemplate], Never>?
     private var lastFetchDate: Date?
+    private var templatesFetchedAt: Date?
+    private var templatesGeneration = 0
+    private var isWritingTemplate = false
+    @Published private(set) var templatesError: String?
     private var likedIds: Set<String> {
         get { Set(defaults.stringArray(forKey: likedDefaultsKey) ?? []) }
         set { defaults.set(Array(newValue), forKey: likedDefaultsKey) }
@@ -128,6 +132,16 @@ final class TierListsRepository: ObservableObject {
             request.timeoutInterval = 12
             do {
                 let (data, response) = try await session.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode == 400,
+                   String(data: data, encoding: .utf8)?.localizedCaseInsensitiveContains("index not defined") == true {
+                    // Older production rules may lack createdAtMs indexing. Keep
+                    // the gallery usable through the already indexed $key path.
+                    let all = try await self.fetchListPages(authorId: nil)
+                    self.publicLists = Array(all.sorted { $0.createdAtMs == $1.createdAtMs ? $0.id < $1.id : $0.createdAtMs > $1.createdAtMs }.prefix(100))
+                    self.lastFetchDate = Date()
+                    self.persistFeed()
+                    return self.publicLists
+                }
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                     self.lastError = "Не удалось обновить тир-листы. Потяните вниз, чтобы повторить."
                     return self.publicLists
@@ -177,35 +191,38 @@ final class TierListsRepository: ObservableObject {
     /// Списки конкретного автора (паттерн fetchClips(forAuthorId:)): берём свежие 100 и фильтруем.
     func fetchLists(forAuthorId authorId: String) async -> [TierList] {
         guard !authorId.isEmpty else { return [] }
+        do { return try await fetchListPages(authorId: authorId) }
+        catch {
+            lastError = "Не удалось загрузить все списки автора. Повторите попытку."
+            return publicLists.filter { $0.authorId == authorId }
+        }
+    }
+
+    private func fetchListPages(authorId: String?) async throws -> [TierList] {
         // $key is indexed by RTDB itself. Scan bounded pages, not just the last
         // 100 global publications; no new production index/rules are required.
         var cursor: String?
         var result: [TierList] = []
-        do {
-            while !Task.isCancelled {
-                var query = [URLQueryItem(name: "orderBy", value: "\"$key\""), URLQueryItem(name: "limitToFirst", value: "201")]
-                if let cursor {
-                    query.append(URLQueryItem(name: "startAt", value: String(data: try JSONEncoder().encode(cursor), encoding: .utf8)!))
-                }
-                guard let url = await makeURL(path: "tier_lists", query: query) else { throw URLError(.badURL) }
-                let (data, response) = try await session.data(for: URLRequest(url: url, timeoutInterval: 12))
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-                let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-                guard value is NSNull || value is [String: Any] else { throw URLError(.cannotParseResponse) }
-                let raw = value as? [String: Any] ?? [:]
-                let keys = raw.keys.sorted()
-                for key in keys where cursor == nil || key > cursor! {
-                    if let doc = raw[key] as? [String: Any], let list = TierList.decode(id: key, document: doc), list.authorId == authorId { result.append(list) }
-                }
-                guard raw.count == 201, let last = keys.last, last != cursor else { break }
-                cursor = last
+        while !Task.isCancelled {
+            var query = [URLQueryItem(name: "orderBy", value: "\"$key\""), URLQueryItem(name: "limitToFirst", value: "201")]
+            if let cursor {
+                query.append(URLQueryItem(name: "startAt", value: String(data: try JSONEncoder().encode(cursor), encoding: .utf8)!))
             }
-            try Task.checkCancellation()
-            return result.sorted { $0.updatedAtMs > $1.updatedAtMs }
-        } catch {
-            lastError = "Не удалось загрузить все списки автора. Повторите попытку."
-            return publicLists.filter { $0.authorId == authorId }
+            guard let url = await makeURL(path: "tier_lists", query: query) else { throw URLError(.badURL) }
+            let (data, response) = try await session.data(for: URLRequest(url: url, timeoutInterval: 12))
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+            let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            guard value is NSNull || value is [String: Any] else { throw URLError(.cannotParseResponse) }
+            let raw = value as? [String: Any] ?? [:]
+            let keys = raw.keys.sorted()
+            for key in keys where cursor == nil || key > cursor! {
+                if let doc = raw[key] as? [String: Any], let list = TierList.decode(id: key, document: doc), (authorId == nil || list.authorId == authorId) { result.append(list) }
+            }
+            guard raw.count == 201, let last = keys.last, last != cursor else { break }
+            cursor = last
         }
+        try Task.checkCancellation()
+        return result.sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
     /// Ранжинг для вкладки «Популярные»: вовлечённость + свежесть (формула клипов).
@@ -370,35 +387,101 @@ final class TierListsRepository: ObservableObject {
     // MARK: - Шаблоны
 
     func fetchTemplates(force: Bool = false) async -> [TierTemplate] {
-        if !templates.isEmpty && !force { return templates }
+        guard !isWritingTemplate else { return templates }
+        if !force, let fetched = templatesFetchedAt, Date().timeIntervalSince(fetched) < 60 { return templates }
         if let inFlight = inFlightTemplates { return await inFlight.value }
+        let started = templatesGeneration
+        templatesError = nil
         let task = Task<[TierTemplate], Never> { [weak self] in
             guard let self else { return [] }
-            guard let url = await self.makeURL(path: "tier_templates") else { return self.templates }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 12
             do {
-                let (data, response) = try await session.data(for: request)
-                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-                      let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    return self.templates
-                }
+                guard let url = await self.makeURL(path: "tier_templates") else { throw URLError(.badURL) }
+                let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+                let (data, response) = try await self.session.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+                let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+                guard value is NSNull || value is [String: Any] else { throw URLError(.cannotParseResponse) }
+                let raw = value as? [String: Any] ?? [:]
                 let decoded = raw.compactMap { key, value -> TierTemplate? in
                     guard let document = value as? [String: Any] else { return nil }
                     return TierTemplate.decode(id: key, document: document)
-                }.sorted {
-                    ($0.priority ?? 0) > ($1.priority ?? 0)
                 }
-                await MainActor.run { self.templates = decoded }
-                return decoded
+                guard !Task.isCancelled, started == self.templatesGeneration else { return self.templates }
+                self.templates = Self.sortedTemplates(decoded)
+                self.templatesFetchedAt = Date()
             } catch {
-                return self.templates
+                if !Task.isCancelled, started == self.templatesGeneration {
+                    self.templatesError = "Не удалось обновить шаблоны. Повторите попытку."
+                }
             }
+            return self.templates
         }
         inFlightTemplates = task
         let result = await task.value
-        inFlightTemplates = nil
+        if started == templatesGeneration { inFlightTemplates = nil }
         return result
+    }
+
+    private static func sortedTemplates(_ values: [TierTemplate]) -> [TierTemplate] {
+        values.sorted {
+            if ($0.priority ?? 0) != ($1.priority ?? 0) { return ($0.priority ?? 0) > ($1.priority ?? 0) }
+            return $0.id < $1.id
+        }
+    }
+
+    /// Admin-only durable mutations. expected is the original opened version:
+    /// neither another admin's edit nor a deleted template is silently replaced.
+    func saveTemplate(_ template: TierTemplate, expected: TierTemplate?) async throws {
+        if let message = template.validationMessage {
+            throw NSError(domain: "sloosh.templates", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        try await writeTemplate(id: template.id, value: template, expected: expected)
+    }
+
+    func deleteTemplate(_ template: TierTemplate) async throws {
+        try await writeTemplate(id: template.id, value: nil, expected: template)
+    }
+
+    private func writeTemplate(id: String, value: TierTemplate?, expected: TierTemplate?) async throws {
+        guard AuthRepository.shared.isAdmin, let userId = accountId else { throw URLError(.userAuthenticationRequired) }
+        guard !id.isEmpty, id.rangeOfCharacter(from: CharacterSet(charactersIn: ".#$[]/")) == nil,
+              expected == nil || expected?.id == id else { throw URLError(.badURL) }
+        guard !isWritingTemplate else { throw URLError(.resourceUnavailable) }
+        isWritingTemplate = true
+        templatesGeneration += 1
+        inFlightTemplates?.cancel()
+        inFlightTemplates = nil
+        defer { isWritingTemplate = false }
+        guard let url = await makeURL(path: "tier_templates/\(id)") else { throw URLError(.badURL) }
+        var read = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+        read.setValue("true", forHTTPHeaderField: "X-Firebase-ETag")
+        let (data, response) = try await session.data(for: read)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let etag = http.value(forHTTPHeaderField: "ETag") else { throw URLError(.badServerResponse) }
+        let raw = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        let current = (raw as? [String: Any]).flatMap { TierTemplate.decode(id: id, document: $0) }
+        guard (expected == nil && raw is NSNull) || (expected != nil && current == expected) else {
+            throw NSError(domain: "sloosh.templates", code: 2, userInfo: [NSLocalizedDescriptionKey: "Шаблон уже изменён или удалён. Закройте редактор и обновите список; ваши правки пока остаются на экране."])
+        }
+        guard AuthRepository.shared.isAdmin, accountId == userId else { throw URLError(.userAuthenticationRequired) }
+        var request = URLRequest(url: url, timeoutInterval: 12)
+        request.httpMethod = value == nil ? "DELETE" : "PUT"
+        request.setValue(etag, forHTTPHeaderField: "if-match")
+        if let value {
+            request.httpBody = try JSONSerialization.data(withJSONObject: value.publishDocument)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (_, result) = try await session.data(for: request)
+        guard let status = (result as? HTTPURLResponse)?.statusCode else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(status) else {
+            let message = status == 412 ? "Шаблон изменён другим администратором. Обновите список перед сохранением." : "Изменения не сохранены. Проверьте подключение и права администратора."
+            throw NSError(domain: "sloosh.templates", code: status, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        templates.removeAll { $0.id == id }
+        if let value { templates.append(value) }
+        templates = Self.sortedTemplates(templates)
+        templatesFetchedAt = nil
+        templatesError = nil
     }
 
     /// Из шаблона — готовый черновик: все items в пуле «Не распределено».
