@@ -347,7 +347,7 @@ class MoviesRepository: ObservableObject {
         let query = CatalogSearchQuery.text(query)
         guard !query.isEmpty else { return [] }
         var response = try await searchMoviesResponse(query: query, page: page)
-        if page == 1, response.allItems.isEmpty {
+        if page == 1, response.allItems.isEmpty, response.effectiveTotalPages <= 1 {
             for alternative in CatalogSearchQuery.alternatives(query) {
                 try Task.checkCancellation()
                 response = try await searchMoviesResponse(query: alternative, page: page)

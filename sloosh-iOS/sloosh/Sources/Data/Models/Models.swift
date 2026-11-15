@@ -203,7 +203,8 @@ struct MediaDto: Codable, Identifiable {
     }
 
     var displayTitle: String {
-        title ?? name ?? originalTitle ?? "Unknown"
+        [title, name, originalTitle].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "Без названия"
     }
     
     private func matchesCachedArtwork(_ cached: MediaDetailsDto) -> Bool {

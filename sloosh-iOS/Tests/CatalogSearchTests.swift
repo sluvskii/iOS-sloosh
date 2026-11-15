@@ -43,8 +43,16 @@ struct CatalogSearchTests {
         check(!CatalogSearchPolicy.matches(film, filters: SearchFilters(type: "TV_SERIES")), "Wrong content type is never restored as a fallback")
         check(!CatalogSearchPolicy.matches(film, filters: SearchFilters(genres: "драма,комедия")), "All selected genres must match")
         check(CatalogSearchPolicy.matches(film, filters: SearchFilters(countries: "США,Россия")), "Any selected country may match")
+        let namedGenre = MediaDto(originalId: .string("movie_9"), title: "Комедия", type: "movie", genres: [GenreDto(id: "16", name: "Комедия")])
+        check(CatalogSearchPolicy.matches(namedGenre, filters: SearchFilters(type: "FILM", genres: "комедия")), "Named genre wins over a conflicting legacy numeric namespace")
+        let china = MediaDto(originalId: .string("movie_10"), title: "Фильм", countries: ["China"])
+        check(!CatalogSearchPolicy.matches(china, filters: SearchFilters(countries: "Индия")), "Country matching cannot confuse India IN with a substring of China")
         check(CatalogSearchPolicy.matches(anime, filters: SearchFilters(type: "ANIME", genres: "аниме")), "Japanese animation is recognized without an anime name tag")
         check(!CatalogSearchPolicy.matches(anime, filters: SearchFilters(type: "CARTOON")), "Animation and anime categories remain distinct")
+        let sparseAnimation = MediaDto(originalId: .string("movie_3"), title: "Без жанров", type: "movie")
+        check(CatalogSearchPolicy.matches(sparseAnimation, filters: SearchFilters(type: "CARTOON"), serverFiltered: true), "Base movie type cannot disprove server animation scope when genre metadata is omitted")
+        check(!CatalogSearchPolicy.matches(sparseAnimation, filters: SearchFilters(type: "CARTOON")), "Unfiltered title results still need animation evidence")
+        check(MediaDto(title: " ", originalTitle: "Original").displayTitle == "Original", "Blank translated title must not hide a valid original title in cards")
         let unknown = MediaDto(originalId: .string("kp_10"), title: "Нет метаданных")
         for filters in [SearchFilters(ratingFrom: 1), SearchFilters(yearFrom: 2020), SearchFilters(genres: "комедия"), SearchFilters(countries: "Россия"), SearchFilters(type: "TV_SERIES")] {
             check(!CatalogSearchPolicy.matches(unknown, filters: filters), "Missing search metadata cannot prove a selected constraint")
@@ -79,6 +87,28 @@ struct CatalogSearchTests {
         check(race.history == ["new"], "Opening/confirming explicitly records the query")
         race.searchQuery = ""
         check(race.results.isEmpty && !race.isLoading && !race.isAppending, "Clearing query invalidates results synchronously before debounce")
+
+        var filteredPending: [String: CheckedContinuation<MediaResponse, Error>] = [:]
+        let filterRace = SearchViewModel(defaults: defaults, historyScope: "filterRace", debounceNanoseconds: 0) { _, _, filters in
+            try await withCheckedThrowingContinuation { filteredPending[filters.type ?? "all"] = $0 }
+        }
+        filterRace.searchQuery = "same"
+        await waitUntil { filteredPending["all"] != nil }
+        filterRace.searchFilters = SearchFilters(type: "TV_SERIES")
+        await waitUntil { filteredPending["TV_SERIES"] != nil }
+        filteredPending.removeValue(forKey: "TV_SERIES")!.resume(returning: MediaResponse(results: [series], pages: 1))
+        await waitUntil { !filterRace.isLoading }
+        filteredPending.removeValue(forKey: "all")!.resume(throwing: URLError(.timedOut))
+        for _ in 0..<20 { await Task.yield() }
+        check(filterRace.results.first?.artworkIdentifier == series.artworkIdentifier && filterRace.error == nil,
+              "Late errors from old filters cannot erase filtered results or display a stale failure")
+        filterRace.searchQuery = "pending"
+        await waitUntil { filteredPending["TV_SERIES"] != nil }
+        filterRace.searchQuery = ""; filterRace.searchFilters = SearchFilters()
+        filteredPending.removeValue(forKey: "TV_SERIES")!.resume(returning: MediaResponse(results: [series], pages: 1))
+        for _ in 0..<20 { await Task.yield() }
+        check(filterRace.isDiscovery && filterRace.results.isEmpty && filterRace.error == nil,
+              "Clearing all inputs fences an in-flight completion and returns to discovery")
 
         var requestedPages: [Int] = []
         var failPageTwo = true

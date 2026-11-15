@@ -109,8 +109,8 @@ extension SearchFilters {
 
 enum CatalogSearchPolicy {
     private static let genreGroups: [[String]] = [
-        ["28", "10759", "боевик", "action"], ["35", "комедия", "comedy"],
-        ["18", "драма", "drama"], ["878", "фантастика", "science fiction", "sci-fi"],
+        ["28", "10759", "боевик", "action", "action & adventure"], ["35", "комедия", "comedy"],
+        ["18", "драма", "drama"], ["878", "фантастика", "science fiction", "sci-fi", "научная фантастика"],
         ["14", "фэнтези", "fantasy"], ["10765", "нф и фэнтези", "sci-fi & fantasy"],
         ["53", "триллер", "thriller"], ["27", "ужасы", "horror"],
         ["9648", "детектив", "mystery"], ["10749", "мелодрама", "romance"],
@@ -123,7 +123,7 @@ enum CatalogSearchPolicy {
         ["россия", "ru", "russia"], ["сша", "us", "usa", "united states", "united states of america"],
         ["великобритания", "gb", "uk", "united kingdom"], ["франция", "fr", "france"],
         ["южная корея", "kr", "south korea", "korea, republic of"], ["япония", "jp", "japan"],
-        ["ссср", "su", "soviet union"], ["германия", "de", "germany"], ["испания", "es", "spain"],
+        ["ссср", "su", "ussr", "soviet union"], ["германия", "de", "germany"], ["испания", "es", "spain"],
         ["италия", "it", "italy"], ["турция", "tr", "turkey", "türkiye"], ["канада", "ca", "canada"],
         ["индия", "in", "india"], ["китай", "cn", "china"]
     ]
@@ -141,24 +141,33 @@ enum CatalogSearchPolicy {
     /// Unknown metadata is not evidence of a match in title-search responses.
     static func matches(_ item: MediaDto, filters: SearchFilters, serverFiltered: Bool = false) -> Bool {
         let f = filters.normalized
-        let genres = Set((item.genres ?? []).flatMap { [$0.name, $0.id].compactMap { $0 } }
-            .map { canonical($0, groups: genreGroups) })
+        // A named genre wins over an ambiguous numeric namespace. A legacy
+        // numeric 16 paired with "Комедия" must not turn a film into animation.
+        let genres = Set((item.genres ?? []).compactMap { genre -> String? in
+            if let name = genre.name, !CatalogSearchQuery.text(name).isEmpty {
+                return canonical(name, groups: genreGroups)
+            }
+            return genre.id.map { canonical($0, groups: genreGroups) }
+        })
         let countries = Set((item.countries ?? []).map { canonical($0, groups: countryGroups) })
         let rawType = item.type?.lowercased() ?? ""
         let anime = rawType == "anime" || genres.contains("аниме") || (genres.contains("16") && countries.contains("япония"))
         let animation = rawType == "cartoon" || rawType == "animation" || genres.contains("16") || anime
         if let type = f.type {
-            let knownType = item.type != nil || item.originalId?.stringValue.hasPrefix("movie_") == true
-                || item.originalId?.stringValue.hasPrefix("tv_") == true
-            if !knownType && !serverFiltered && !(["CARTOON", "ANIME"].contains(type.uppercased()) && animation) { return false }
-            if knownType || !genres.isEmpty {
-                switch type.uppercased() {
-                case "FILM", "MOVIE": if !item.isMovieType || animation { return false }
-                case "TV_SERIES", "TV": if !item.isTvType || animation { return false }
-                case "CARTOON": if !animation || anime { return false }
-                case "ANIME": if !anime { return false }
-                default: break
-                }
+            let rawID = item.originalId?.stringValue ?? ""
+            let tv = ["tv", "tv_series", "series", "mini_series", "show", "serial", "tv-series", "tv_show"].contains(rawType) || rawID.hasPrefix("tv_")
+            let film = ["movie", "film", "cinema"].contains(rawType) || rawID.hasPrefix("movie_")
+            switch type.uppercased() {
+            case "FILM", "MOVIE":
+                if tv || animation || (!film && !serverFiltered) { return false }
+            case "TV_SERIES", "TV":
+                if film || animation || (!tv && !serverFiltered) { return false }
+            case "CARTOON":
+                if anime { return false }
+                if !animation && (!serverFiltered || !genres.isEmpty) { return false }
+            case "ANIME":
+                if !anime && (!serverFiltered || (!genres.isEmpty && !countries.isEmpty)) { return false }
+            default: break
             }
         }
         if f.ratingFrom != nil || f.ratingTo != nil {
