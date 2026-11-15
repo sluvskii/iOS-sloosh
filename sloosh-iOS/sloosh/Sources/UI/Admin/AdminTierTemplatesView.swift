@@ -56,6 +56,7 @@ struct AdminTierTemplatesView: View {
             }
         }
         .tint(.primary)
+        .scrollContentBackground(.hidden)
         .disabled(isDeleting)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .task { await reload() }
@@ -142,6 +143,7 @@ private struct AdminTierTemplateEditor: View {
                     }
                     .onDelete { value.items.remove(atOffsets: $0) }
                     .onMove { value.items.move(fromOffsets: $0, toOffset: $1) }
+                    .tint(.red)
                 } header: { Text("Фильмы: \(value.items.count)") }
                 footer: { Text("Не менее четырёх. Первые четыре постера формируют обложку; порядок меняется за ручку справа.") }
             }
