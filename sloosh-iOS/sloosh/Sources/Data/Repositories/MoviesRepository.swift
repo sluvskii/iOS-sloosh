@@ -343,182 +343,35 @@ class MoviesRepository: ObservableObject {
 
     // MARK: - Search
 
-    /// Нормализует строку для сравнения: нижний регистр + замена ё→е,
-    /// чтобы поиск "енола" находил "Ёнола" и наоборот.
-    private func normalizeForSearch(_ s: String) -> String {
-        return s.lowercased()
-            .replacingOccurrences(of: "ё", with: "е")
-    }
-
     func searchMovies(query: String, page: Int = 1) async throws -> [MediaDto] {
-        let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
-        let rawResults = response.data?.results ?? []
-
-        // Фильтруем результаты без плакатов или без названия, или с дефолтным "no-poster" (для невышедших допускаем отсутствие постера)
-        let filtered = rawResults.filter { item in
-            let poster = item.displayPosterUrl ?? item.posterUrl ?? item.poster_path ?? item.displayBackdropUrl ?? ""
-            let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
-            let title = (item.title ?? item.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let hasTitle = !title.isEmpty
-            return hasTitle && (hasPoster || item.isUnreleased)
-        }
-
-        // Выполняем точный/подстрочный поиск по названию (для умного фолбэка)
-        let normalizedQuery = normalizeForSearch(query)
-        let sorted = filtered.sorted { a, b in
-            let titleA = normalizeForSearch(a.title ?? a.name ?? "")
-            let titleB = normalizeForSearch(b.title ?? b.name ?? "")
-
-            let exactA = titleA == normalizedQuery
-            let exactB = titleB == normalizedQuery
-            if exactA != exactB { return exactA }
-
-            let prefixA = titleA.hasPrefix(normalizedQuery)
-            let prefixB = titleB.hasPrefix(normalizedQuery)
-            if prefixA != prefixB { return prefixA }
-
-            return false
-        }
-
-        return sorted
+        let response = try await searchMoviesResponse(query: query, page: page)
+        return CatalogSearchPolicy.merge([], response.allItems, order: nil)
     }
 
-    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters = SearchFilters()) async throws -> MediaResponse {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if !trimmedQuery.isEmpty {
-            // Режим 1: Поиск по названию (v1 Kinopoisk Fuzzy Search)
-            let response = try await MoviesApi.shared.searchMovies(query: trimmedQuery, page: page)
-            guard let data = response.data else {
-                return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
-            }
-            
-            // Если заданы фильтры, фильтруем результаты поиска на клиенте
-            guard !filters.isEmpty, let rawResults = data.results else {
-                return data
-            }
-            
-            var filteredResults = applyFilters(rawResults, filters: filters)
-            if filteredResults.isEmpty && !rawResults.isEmpty && (filters.genres != nil || filters.type != nil) {
-                filteredResults = rawResults
-            }
-
-            if filters.order == "YEAR" {
-                filteredResults.sort { a, b in
-                    let yearA = a.effectiveYear ?? 0
-                    let yearB = b.effectiveYear ?? 0
-                    if yearA != yearB { return yearA > yearB }
-                    let dateA = a.releaseDate ?? ""
-                    let dateB = b.releaseDate ?? ""
-                    if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
-                    return a.effectiveRating > b.effectiveRating
-                }
-            } else if filters.order == "RATING" {
-                filteredResults.sort { a, b in
-                    let ratingA = a.effectiveRating
-                    let ratingB = b.effectiveRating
-                    if ratingA != ratingB { return ratingA > ratingB }
-                    return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
-                }
-            }
-
-            return MediaResponse(
-                page: data.page,
-                results: filteredResults,
-                pages: data.pages,
-                total: filteredResults.count,
-                total_pages: data.total_pages,
-                total_results: data.total_results
-            )
-        } else if !filters.isEmpty {
-            // Режим 2: Просмотр каталога по фильтрам (v2 Discover/Filter Engine)
-            if let studioId = filters.studio, !studioId.isEmpty {
-                do {
-                    let collectionRes = try await getCollection(id: studioId, page: page)
-                    let studioItems = collectionRes.items
-                    if !studioItems.isEmpty {
-                        var filteredResults = applyFilters(studioItems, filters: filters)
-                        if filteredResults.isEmpty && (filters.genres != nil || filters.type != nil) {
-                            filteredResults = studioItems
-                        }
-
-                        if filters.order == "YEAR" {
-                            filteredResults.sort { a, b in
-                                let yearA = a.effectiveYear ?? 0
-                                let yearB = b.effectiveYear ?? 0
-                                if yearA != yearB { return yearA > yearB }
-                                let dateA = a.releaseDate ?? ""
-                                let dateB = b.releaseDate ?? ""
-                                if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
-                                return a.effectiveRating > b.effectiveRating
-                            }
-                        } else if filters.order == "RATING" {
-                            filteredResults.sort { a, b in
-                                let ratingA = a.effectiveRating
-                                let ratingB = b.effectiveRating
-                                if ratingA != ratingB { return ratingA > ratingB }
-                                return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
-                            }
-                        }
-
-                        return MediaResponse(
-                            page: page,
-                            results: filteredResults,
-                            pages: collectionRes.totalPages,
-                            total: filteredResults.count,
-                            total_pages: collectionRes.totalPages,
-                            total_results: filteredResults.count
-                        )
-                    }
-                } catch {
-                    // Fallback to discoverMovies on error
-                }
-            }
-
-            let response = try await MoviesApi.shared.discoverMovies(filters: filters, page: page)
-            guard let data = response.data else {
-                return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
-            }
-            
-            // Дополнительная клиентская фильтрация и точная сортировка
-            if let rawResults = data.results {
-                var filteredResults = applyFilters(rawResults, filters: filters)
-                if filteredResults.isEmpty && !rawResults.isEmpty && (filters.genres != nil || filters.type != nil) {
-                    filteredResults = rawResults
-                }
-
-                if filters.order == "YEAR" {
-                    filteredResults.sort { a, b in
-                        let yearA = a.effectiveYear ?? 0
-                        let yearB = b.effectiveYear ?? 0
-                        if yearA != yearB { return yearA > yearB }
-                        let dateA = a.releaseDate ?? ""
-                        let dateB = b.releaseDate ?? ""
-                        if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
-                        return a.effectiveRating > b.effectiveRating
-                    }
-                } else if filters.order == "RATING" {
-                    filteredResults.sort { a, b in
-                        let ratingA = a.effectiveRating
-                        let ratingB = b.effectiveRating
-                        if ratingA != ratingB { return ratingA > ratingB }
-                        return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
-                    }
-                }
-
-                return MediaResponse(
-                    page: data.page,
-                    results: filteredResults,
-                    pages: data.pages,
-                    total: data.total,
-                    total_pages: data.total_pages,
-                    total_results: data.total_results
-                )
-            }
-            return data
-        } else {
-            return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+    /// The versioned server owns filtering and correction. Legacy responses
+    /// without a contract marker retain their conservative metadata validation.
+    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters = SearchFilters(), cursor: String? = nil) async throws -> MediaResponse {
+        let query = CatalogSearchQuery.text(query)
+        let filters = filters.normalized
+        if !query.isEmpty, filters.studio != nil { throw CatalogSearchError.studioWithTitle }
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters, cursor: cursor)
+        guard response.success != false, response.status != "error", let data = response.data,
+              data.results != nil || data.items != nil else { throw CatalogSearchError.invalidResponse }
+        try Task.checkCancellation()
+        if data.meta?.contractVersion != nil { return data }
+        var legacyData = data
+        if query.isEmpty, let studio = filters.studio {
+            // During the rollout the old server only understands collection scopes.
+            // A missing contract marker, not an empty result, selects this adapter.
+            let collection = try await MoviesApi.shared.getCollection(id: studio, page: page)
+            guard collection.success != false, collection.status != "error", let value = collection.data,
+                  value.results != nil || value.items != nil else { throw CatalogSearchError.invalidResponse }
+            legacyData = value
         }
+        let items = legacyData.allItems.filter { CatalogSearchPolicy.matches($0, filters: filters, serverFiltered: query.isEmpty && filters.studio == nil) }
+        return MediaResponse(page: legacyData.page ?? page,
+                             results: CatalogSearchPolicy.merge([], items, order: filters.order),
+                             pages: legacyData.effectiveTotalPages)
     }
 
     // MARK: - Categories, Studios & Collections
@@ -673,96 +526,7 @@ class MoviesRepository: ObservableObject {
         }
     }
 
-    private func applyFilters(_ items: [MediaDto], filters: SearchFilters) -> [MediaDto] {
-        return items.filter { item in
-            // Фильтр по типу
-            if let type = filters.type {
-                switch type {
-                case "FILM", "movie":
-                    if !item.isMovieType || (isCartoon(item) && !isAnime(item)) { return false }
-                case "TV_SERIES", "tv":
-                    if !item.isTvType || (isCartoon(item) && !isAnime(item)) { return false }
-                case "CARTOON", "cartoon":
-                    if !isCartoon(item) || isAnime(item) { return false }
-                case "ANIME", "anime":
-                    if !isAnime(item) { return false }
-                default:
-                    break
-                }
-            }
-            
-            // Фильтр по рейтингу
-            let rating = item.effectiveRating
-            if let minRating = filters.ratingFrom {
-                if rating < minRating { return false }
-            }
-            if let maxRating = filters.ratingTo {
-                if rating > maxRating { return false }
-            }
-            
-            // Фильтр по году
-            if let minYear = filters.yearFrom {
-                if let year = item.effectiveYear {
-                    if year < minYear { return false }
-                } else {
-                    return false
-                }
-            }
-            if let maxYear = filters.yearTo {
-                if let year = item.effectiveYear {
-                    if year > maxYear { return false }
-                } else {
-                    return false
-                }
-            }
-            
-            // Фильтр по жанрам
-            if let genresStr = filters.genres?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !genresStr.isEmpty {
-                let targetGenres = genresStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                let itemGenres = item.genres?.compactMap { $0.name?.lowercased() ?? $0.id?.lowercased() } ?? []
 
-                for targetGenre in targetGenres {
-                    let isSciFiFantasy = targetGenre.contains("нф") || targetGenre.contains("фантастик") || targetGenre.contains("фэнтези") || targetGenre.contains("sci-fi")
-                    let isAnimeGenre = targetGenre.contains("аниме") || targetGenre.contains("anime")
-
-                    if isAnimeGenre {
-                        if !isAnime(item) {
-                            if !itemGenres.contains(where: { $0.contains("аниме") || $0.contains("anime") }) {
-                                return false
-                            }
-                        }
-                    } else if isSciFiFantasy {
-                        let matches = itemGenres.contains { g in
-                            g.contains("нф") || g.contains("фантастик") || g.contains("фэнтези") || g.contains("sci-fi") || g.contains("fantasy") || g == "10765" || g == "878" || g == "14"
-                        }
-                        if !matches && !itemGenres.isEmpty { return false }
-                    } else {
-                        if !itemGenres.isEmpty {
-                            let matches = itemGenres.contains { g in
-                                g.contains(targetGenre) || targetGenre.contains(g)
-                            }
-                            if !matches { return false }
-                        }
-                    }
-                }
-            }
-            
-            // Фильтр по странам
-            if let countriesStr = filters.countries?.trimmingCharacters(in: .whitespacesAndNewlines), !countriesStr.isEmpty {
-                let targetCountries = countriesStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
-                let itemCountries = (item.countries ?? []).map { $0.lowercased() }
-
-                if !itemCountries.isEmpty {
-                    let matches = targetCountries.contains { target in
-                        itemCountries.contains { ic in ic.contains(target) || target.contains(ic) }
-                    }
-                    if !matches { return false }
-                }
-            }
-            
-            return true
-        }
-    }
 }
 
 // MARK: - MediaDetailsDiskCache

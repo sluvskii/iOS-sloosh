@@ -1,0 +1,11 @@
+{
+  "name": "sloosh-server-search-audit",
+  "private": true,
+  "type": "module",
+  "scripts": { "audit": "node run.mjs" },
+  "dependencies": {
+    "hono": "4.7.1",
+    "lru-cache": "11.0.2",
+    "tsx": "4.20.6"
+  }
+}

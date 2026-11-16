@@ -99,6 +99,9 @@ jobs:
       - name: Test catalog logo sizing and resolution
         run: bash sloosh-iOS/Tests/run-catalog-logo-tests.sh
 
+      - name: Test catalog search policy and lifecycle
+        run: bash sloosh-iOS/Tests/run-catalog-search-tests.sh
+
       - name: Test tier list policy
         run: bash sloosh-iOS/Tests/run-tier-list-tests.sh
 

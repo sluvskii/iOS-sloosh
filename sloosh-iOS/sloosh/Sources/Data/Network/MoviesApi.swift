@@ -376,6 +376,8 @@ class MoviesApi {
         body: Data? = nil,
         allowSelfHealingRetry: Bool = true
     ) async throws -> T {
+        let isCatalogSearch = endpoint == "api/v1/search" || endpoint == "api/v2/search" || endpoint == "api/v1/search/suggestions"
+        if isCatalogSearch { try Task.checkCancellation() }
         let allCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
         // Сначала пробуем хосты, которые недавно работали. Если таких нет — пробуем все.
         let healthy = allCandidates.filter { MoviesApi.isHostHealthy($0) }
@@ -388,6 +390,7 @@ class MoviesApi {
             var components = URLComponents(string: "\(currentBase)/\(endpoint)")
             if !queryItems.isEmpty {
                 components?.queryItems = queryItems
+                if isCatalogSearch { components?.percentEncodedQuery = CatalogSearchRequest.encodedQuery(queryItems) }
             }
             guard let url = components?.url else { continue }
             
@@ -406,6 +409,7 @@ class MoviesApi {
             let maxRetries = baseCandidates.count > 1 ? 2 : 3
             
             for attempt in 0..<maxRetries {
+                if isCatalogSearch { try Task.checkCancellation() }
                 if attempt > 0 {
                     // Экспоненциальная задержка: 0.4с, 0.8с
                     let delay = UInt64(400_000_000) * UInt64(1 << (attempt - 1))
@@ -429,6 +433,10 @@ class MoviesApi {
                     
                     // 4xx — не ретраим, это клиентская ошибка
                     if (400...499).contains(httpResponse.statusCode) {
+                        if isCatalogSearch, httpResponse.statusCode == 400,
+                           let failure = try? self.decoder.decode(CatalogServerError.self, from: data) {
+                            throw failure
+                        }
                         throw NetworkError.serverError(httpResponse.statusCode)
                     }
                     
@@ -444,6 +452,8 @@ class MoviesApi {
                         MoviesApi.activeBaseURL = currentBase
                     }
                     return try self.decoder.decode(T.self, from: data)
+                } catch let error as CatalogServerError {
+                    throw error
                 } catch let error as NetworkError {
                     if case .unauthorized = error {
                         shouldTryRemoteConfigHealing = true
@@ -595,65 +605,21 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v2/person/\(id)")
     }
     
-    func searchMovies(query: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
-        var queryItems = [
-            URLQueryItem(name: "page", value: String(page))
-        ]
-        
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            queryItems.append(URLQueryItem(name: "query", value: trimmed))
-        }
-        
-        // v1/search использует Kinopoisk Full-Text Fuzzy Search:
-        // - правильно обрабатывает опечатки, е/ё, транслит
-        // - даёт корректный порядок результатов по релевантности
-        return try await performRequest(endpoint: "api/v1/search", queryItems: queryItems)
+    func searchMovies(query: String, page: Int = 1, filters: SearchFilters = SearchFilters(), cursor: String? = nil) async throws -> ApiEnvelope<MediaResponse> {
+        try await performRequest(endpoint: "api/v1/search",
+            queryItems: CatalogSearchRequest.items(query: query, filters: filters, page: page, cursor: cursor))
+    }
+
+    func searchSuggestions(query: String) async throws -> [String] {
+        let response: ApiEnvelope<SearchSuggestionsResponse> = try await performRequest(
+            endpoint: "api/v1/search/suggestions",
+            queryItems: [URLQueryItem(name: "query", value: CatalogSearchQuery.text(query)), URLQueryItem(name: "limit", value: "8")])
+        guard response.success != false, response.status != "error", let data = response.data else { throw CatalogSearchError.invalidResponse }
+        return (data.suggestions ?? []).map(\.displayTitle) + (data.query?.corrections ?? []).map(\.query)
     }
 
     func discoverMovies(filters: SearchFilters, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
-        var queryItems = [
-            URLQueryItem(name: "page", value: String(page))
-        ]
-        
-        if let type = filters.type, !type.isEmpty {
-            queryItems.append(URLQueryItem(name: "type", value: type))
-        }
-        
-        if let order = filters.order, !order.isEmpty {
-            queryItems.append(URLQueryItem(name: "order", value: order))
-        }
-        
-        if let genres = filters.genres, !genres.isEmpty {
-            queryItems.append(URLQueryItem(name: "genres", value: genres.lowercased()))
-        }
-        
-        if let countries = filters.countries, !countries.isEmpty {
-            queryItems.append(URLQueryItem(name: "countries", value: countries))
-        }
-
-        if let ratingFrom = filters.ratingFrom, ratingFrom > 0 {
-            queryItems.append(URLQueryItem(name: "ratingFrom", value: String(format: "%.1f", ratingFrom)))
-        }
-
-        if let ratingTo = filters.ratingTo, ratingTo > 0 {
-            queryItems.append(URLQueryItem(name: "ratingTo", value: String(format: "%.1f", ratingTo)))
-        }
-
-        if let yearFrom = filters.yearFrom, yearFrom >= 1880 {
-            queryItems.append(URLQueryItem(name: "yearFrom", value: String(yearFrom)))
-        }
-
-        if let yearTo = filters.yearTo, yearTo >= 1880 {
-            queryItems.append(URLQueryItem(name: "yearTo", value: String(yearTo)))
-        }
-
-        if let studio = filters.studio, !studio.isEmpty {
-            queryItems.append(URLQueryItem(name: "studio", value: studio))
-        }
-        
-        // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
-        return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
+        try await searchMovies(query: "", page: page, filters: filters)
     }
 
     // MARK: - Categories & Collections (feat/ts-migration)

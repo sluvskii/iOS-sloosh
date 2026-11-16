@@ -9,15 +9,22 @@ struct SearchFilterSheet: View {
     @Binding var filters: SearchFilters
     var context: FilterContext = .search
     @Environment(\.dismiss) private var dismiss
+    @State private var draft: SearchFilters
+
+    init(filters: Binding<SearchFilters>, context: FilterContext = .search) {
+        self._filters = filters
+        self.context = context
+        self._draft = State(initialValue: filters.wrappedValue.normalized)
+    }
 
     private let currentYear = Calendar.current.component(.year, from: Date())
 
     private var ratingOptions: [Double] {
-        stride(from: 1.0, through: 9.5, by: 0.5).map { round($0 * 10) / 10 }
+        stride(from: 0.5, through: 10.0, by: 0.5).map { round($0 * 10) / 10 }
     }
 
     private var yearOptions: [Int] {
-        Array(stride(from: currentYear, through: 1980, by: -1))
+        Array(stride(from: currentYear + 3, through: 1880, by: -1))
     }
 
     private let genresList = [
@@ -52,15 +59,36 @@ struct SearchFilterSheet: View {
                 // 2. Main Parameters Card (Сортировка, Студия, Жанр, Страна)
                 Section {
                     sortRow
-                    studioRow
+                    if context == .home { studioRow }
                     genreRow
                     countryRow
                 }
 
-                // 3. Dual Wheel Drum Picker (Рейтинг и Год выпуска)
+                // 3. Explicit inclusive ranges, including archive and future releases.
+                Section("Рейтинг") {
+                    Picker("От", selection: $draft.ratingFrom) {
+                        Text("Любой").tag(Double?.none)
+                        ForEach(ratingOptions, id: \.self) { Text(String(format: "%.1f", $0)).tag(Optional($0)) }
+                    }
+                    Picker("До", selection: $draft.ratingTo) {
+                        Text("Любой").tag(Double?.none)
+                        ForEach(ratingOptions, id: \.self) { Text(String(format: "%.1f", $0)).tag(Optional($0)) }
+                    }
+                }
+                Section("Год выпуска") {
+                    Picker("От", selection: $draft.yearFrom) {
+                        Text("Любой").tag(Int?.none)
+                        ForEach(yearOptions, id: \.self) { Text(String($0)).tag(Optional($0)) }
+                    }
+                    Picker("До", selection: $draft.yearTo) {
+                        Text("Любой").tag(Int?.none)
+                        ForEach(yearOptions, id: \.self) { Text(String($0)).tag(Optional($0)) }
+                    }
+                }
                 Section {
-                    ratingAndYearWheelCard
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                    Button("Отмена") { dismiss() }.foregroundStyle(.primary)
+                } footer: {
+                    Text("Жанры: все выбранные. Страны: любая из выбранных. Условия действуют вместе. Изменения применятся по кнопке ✓.")
                 }
             }
             .listStyle(.insetGrouped)
@@ -90,7 +118,19 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.height(568)] : [.height(484)])
+        .presentationDetents([.medium, .large])
+        .onChange(of: draft.yearFrom) { _, value in
+            if let value, let end = draft.yearTo, value > end { draft.yearTo = value }
+        }
+        .onChange(of: draft.yearTo) { _, value in
+            if let value, let start = draft.yearFrom, value < start { draft.yearFrom = value }
+        }
+        .onChange(of: draft.ratingFrom) { _, value in
+            if let value, let end = draft.ratingTo, value > end { draft.ratingTo = value }
+        }
+        .onChange(of: draft.ratingTo) { _, value in
+            if let value, let start = draft.ratingFrom, value < start { draft.ratingFrom = value }
+        }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
@@ -110,28 +150,29 @@ struct SearchFilterSheet: View {
                     generator.prepare()
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        filters = SearchFilters()
+                        draft = SearchFilters()
                     }
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(filters.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
-                        .glassForeground(isEnabled: !filters.isEmpty)
+                        .foregroundStyle(draft.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
+                        .glassForeground(isEnabled: !draft.isEmpty)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.glassPress)
                 .glassEffect(.regular.interactive(), in: .circle)
-                .disabled(filters.isEmpty)
+                .disabled(draft.isEmpty)
                 .accessibilityLabel("Сбросить")
 
                 Spacer()
 
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    filters = draft.normalized
                     dismiss()
                 } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: "checkmark")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.primary)
                         .glassForeground()
@@ -140,7 +181,7 @@ struct SearchFilterSheet: View {
                 }
                 .buttonStyle(.glassPress)
                 .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Закрыть")
+                .accessibilityLabel("Применить фильтры")
             }
         }
     }
@@ -159,7 +200,7 @@ struct SearchFilterSheet: View {
                     .font(.body)
             }
 
-            Picker("Тип контента", selection: $filters.type) {
+            Picker("Тип контента", selection: $draft.type) {
                 Text("Все").tag(String?.none)
                 Text("Фильмы").tag(Optional("FILM"))
                 Text("Сериалы").tag(Optional("TV_SERIES"))
@@ -192,11 +233,11 @@ struct SearchFilterSheet: View {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
-                        filters.order = nil
+                        draft.order = nil
                     } label: {
                         HStack {
                             Text("Релевантность")
-                            if filters.order == nil { Image(systemName: "checkmark") }
+                            if draft.order == nil { Image(systemName: "checkmark") }
                         }
                     }
                 } else {
@@ -204,11 +245,24 @@ struct SearchFilterSheet: View {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
-                        filters.order = nil
+                        draft.order = nil
                     } label: {
                         HStack {
                             Text("Смотрят сейчас")
-                            if filters.order == nil { Image(systemName: "checkmark") }
+                            if draft.order == nil { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+                if context == .home {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        draft.order = "NUM_VOTE"
+                    } label: {
+                        HStack {
+                            Text("По популярности")
+                            if draft.order == "NUM_VOTE" { Image(systemName: "checkmark") }
                         }
                     }
                 }
@@ -216,33 +270,22 @@ struct SearchFilterSheet: View {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
                     generator.impactOccurred()
-                    filters.order = "NUM_VOTE"
-                } label: {
-                    HStack {
-                        Text("По популярности")
-                        if filters.order == "NUM_VOTE" { Image(systemName: "checkmark") }
-                    }
-                }
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    filters.order = "RATING"
+                    draft.order = "RATING"
                 } label: {
                     HStack {
                         Text("По рейтингу")
-                        if filters.order == "RATING" { Image(systemName: "checkmark") }
+                        if draft.order == "RATING" { Image(systemName: "checkmark") }
                     }
                 }
                 Button {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
                     generator.impactOccurred()
-                    filters.order = "YEAR"
+                    draft.order = "YEAR"
                 } label: {
                     HStack {
                         Text("По году выпуска")
-                        if filters.order == "YEAR" { Image(systemName: "checkmark") }
+                        if draft.order == "YEAR" { Image(systemName: "checkmark") }
                     }
                 }
             } label: {
@@ -279,12 +322,12 @@ struct SearchFilterSheet: View {
                     generator.prepare()
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        filters.studio = nil
+                        draft.studio = nil
                     }
                 } label: {
                     HStack {
                         Text("Любая")
-                        if filters.studio == nil {
+                        if draft.studio == nil {
                             Image(systemName: "checkmark")
                         }
                     }
@@ -292,13 +335,13 @@ struct SearchFilterSheet: View {
 
                 Section("Студии") {
                     ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
-                        let isSelected = filters.studio == brand.id
+                        let isSelected = draft.studio == brand.id
                         Button {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                filters.studio = isSelected ? nil : brand.id
+                                draft.studio = isSelected ? nil : brand.id
                             }
                         } label: {
                             HStack {
@@ -313,13 +356,13 @@ struct SearchFilterSheet: View {
 
                 Section("Стриминги") {
                     ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
-                        let isSelected = filters.studio == brand.id
+                        let isSelected = draft.studio == brand.id
                         Button {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                filters.studio = isSelected ? nil : brand.id
+                                draft.studio = isSelected ? nil : brand.id
                             }
                         } label: {
                             HStack {
@@ -365,12 +408,12 @@ struct SearchFilterSheet: View {
                     generator.prepare()
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        filters.selectedGenres = []
+                        draft.selectedGenres = []
                     }
                 } label: {
                     HStack {
                         Text("Любой")
-                        if filters.selectedGenres.isEmpty {
+                        if draft.selectedGenres.isEmpty {
                             Image(systemName: "checkmark")
                         }
                     }
@@ -379,19 +422,19 @@ struct SearchFilterSheet: View {
                 Divider()
 
                 ForEach(genresList, id: \.self) { genre in
-                    let isSelected = filters.selectedGenres.contains(genre.lowercased())
+                    let isSelected = draft.selectedGenres.contains(genre.lowercased())
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            var current = filters.selectedGenres
+                            var current = draft.selectedGenres
                             if isSelected {
                                 current.remove(genre.lowercased())
                             } else {
                                 current.insert(genre.lowercased())
                             }
-                            filters.selectedGenres = current
+                            draft.selectedGenres = current
                         }
                     } label: {
                         HStack {
@@ -437,12 +480,12 @@ struct SearchFilterSheet: View {
                     generator.prepare()
                     generator.impactOccurred()
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        filters.selectedCountries = []
+                        draft.selectedCountries = []
                     }
                 } label: {
                     HStack {
                         Text("Любая")
-                        if filters.selectedCountries.isEmpty {
+                        if draft.selectedCountries.isEmpty {
                             Image(systemName: "checkmark")
                         }
                     }
@@ -451,19 +494,19 @@ struct SearchFilterSheet: View {
                 Divider()
 
                 ForEach(countriesList, id: \.self) { country in
-                    let isSelected = filters.selectedCountries.contains(country)
+                    let isSelected = draft.selectedCountries.contains(country)
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            var current = filters.selectedCountries
+                            var current = draft.selectedCountries
                             if isSelected {
                                 current.remove(country)
                             } else {
                                 current.insert(country)
                             }
-                            filters.selectedCountries = current
+                            draft.selectedCountries = current
                         }
                     } label: {
                         HStack {
@@ -490,81 +533,17 @@ struct SearchFilterSheet: View {
         }
     }
 
-    // MARK: - Dual Wheel Drum Picker (Рейтинг и Год выпуска)
-
-    private var ratingAndYearWheelCard: some View {
-        VStack(spacing: 2) {
-            // Header: Clean column titles above each wheel
-            HStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                    Text("Рейтинг")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: 1)
-
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                    Text("Год выпуска")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
-            .padding(.top, 10)
-
-            // Dual Wheel Drum
-            HStack(spacing: 0) {
-                Picker("Рейтинг", selection: $filters.ratingFrom) {
-                    Text("Любой").tag(Double?.none)
-                    ForEach(ratingOptions, id: \.self) { val in
-                        Text(String(format: "%.1f+", val)).tag(Optional(val))
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(maxWidth: .infinity)
-                .clipped()
-
-                Rectangle()
-                    .fill(Color(UIColor.separator).opacity(0.3))
-                    .frame(width: 1, height: 72)
-                    .padding(.horizontal, 4)
-
-                Picker("Год", selection: $filters.yearFrom) {
-                    Text("Любой").tag(Int?.none)
-                    ForEach(yearOptions, id: \.self) { year in
-                        Text(verbatim: "\(year)").tag(Optional(year))
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(maxWidth: .infinity)
-                .clipped()
-            }
-            .frame(height: 116)
-            .padding(.bottom, 6)
-        }
-    }
-
     // MARK: - Formatters & Titles
 
     private var currentStudioTitle: String {
-        guard let studioId = filters.studio, let brand = StudioBrand.find(by: studioId) else {
+        guard let studioId = draft.studio, let brand = StudioBrand.find(by: studioId) else {
             return "Любая"
         }
         return brand.name
     }
 
     private var currentGenreTitle: String {
-        let selected = filters.selectedGenres
+        let selected = draft.selectedGenres
         if selected.isEmpty {
             return "Любой"
         } else if selected.count == 1, let first = selected.first {
@@ -578,7 +557,7 @@ struct SearchFilterSheet: View {
     }
 
     private var currentCountryTitle: String {
-        let selected = filters.selectedCountries
+        let selected = draft.selectedCountries
         if selected.isEmpty {
             return "Любая"
         } else if selected.count == 1, let first = selected.first {
@@ -592,7 +571,7 @@ struct SearchFilterSheet: View {
     }
 
     private var currentSortTitle: String {
-        switch filters.order {
+        switch draft.order {
         case "NUM_VOTE":
             return "По популярности"
         case "RATING":
