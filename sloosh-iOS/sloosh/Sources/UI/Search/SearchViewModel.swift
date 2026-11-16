@@ -90,7 +90,7 @@ final class SearchViewModel: ObservableObject {
     var isDiscovery: Bool { CatalogSearchQuery.text(searchQuery).isEmpty && searchFilters.normalized.isEmpty }
     var hasMore: Bool { !isDiscovery && page > 0 && (nextCursor != nil || page < totalPages) }
     var catalogSuggestions: [CatalogSearchSuggestion] {
-        let local = (results + discoveryMovies + observedCards).map { CatalogSearchSuggestion(movie: $0) }
+        let local = (Array(results.prefix(60)) + discoveryMovies + observedCards).map { CatalogSearchSuggestion(movie: $0) }
         return CatalogSearchSuggestion.catalogHits(serverSuggestions + local, query: searchQuery)
     }
 
