@@ -8,6 +8,7 @@ struct SearchView: View {
             try await MoviesRepository.shared.searchMoviesResponse(query: query, page: page, filters: filters, cursor: cursor)
         },
         suggestionsLoader: { query in try await MoviesApi.shared.searchSuggestions(query: query) },
+        diagnostic: { AppDiagnostics.shared.log($0) },
         loadPage: { query, page, filters in
             try await MoviesRepository.shared.searchMoviesResponse(query: query, page: page, filters: filters)
         }
@@ -125,9 +126,27 @@ struct SearchView: View {
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .searchSuggestions {
-                ForEach(viewModel.suggestions, id: \.self) { suggestion in
-                    Label(suggestion, systemImage: "magnifyingglass")
-                        .searchCompletion(suggestion)
+                if !viewModel.serverSuggestions.isEmpty {
+                    ForEach(viewModel.serverSuggestions) { suggestion in
+                        if let movie = suggestion.movie {
+                            NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(movie.displayTitle)
+                                    Text([movie.year?.stringValue, movie.type == "tv" ? "Сериал" : "Фильм"].compactMap { $0 }.joined(separator: " · "))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .simultaneousGesture(TapGesture().onEnded { viewModel.rememberTitle(movie.displayTitle) })
+                        } else {
+                            Label(suggestion.title, systemImage: "magnifyingglass")
+                                .searchCompletion(suggestion.title)
+                        }
+                    }
+                } else {
+                    ForEach(viewModel.suggestions, id: \.self) { suggestion in
+                        Label(suggestion, systemImage: "magnifyingglass")
+                            .searchCompletion(suggestion)
+                    }
                 }
             }
             .onSubmit(of: .search) { Task { await viewModel.submit() } }
@@ -227,6 +246,9 @@ struct SearchView: View {
                             }
                         }
                     }
+                }
+                if viewModel.recoveredExactTitle {
+                    Text("Найдено по точному названию").font(.caption).foregroundStyle(.secondary)
                 }
                 if let query = viewModel.resolvedQuery {
                     Text("Результаты для «\(query)»")

@@ -227,7 +227,7 @@ struct CatalogSearchTests {
         invalidSearch.searchQuery = "Фильм"
         await invalidSearch.performSearch(reset: true)
         check(invalidSearch.isInvalidRequest && invalidSearch.error?.contains("страну") == true, "Invalid parameter is an actionable error, not empty results or leaked diagnostics")
-        var pendingSuggestions: [String: CheckedContinuation<[String], Error>] = [:]
+        var pendingSuggestions: [String: CheckedContinuation<[CatalogSearchSuggestion], Error>] = [:]
         let suggested = SearchViewModel(defaults: defaults, historyScope: "suggestions", debounceNanoseconds: 0,
             suggestionsLoader: { query in
                 try await withCheckedThrowingContinuation { pendingSuggestions[query] = $0 }
@@ -238,13 +238,100 @@ struct CatalogSearchTests {
         suggested.searchQuery = "new suggestion"
         try await Task.sleep(nanoseconds: 350_000_000)
         await waitUntil { pendingSuggestions["new suggestion"] != nil }
-        pendingSuggestions.removeValue(forKey: "new suggestion")!.resume(returning: ["Новая подсказка", "Новая подсказка"])
+        pendingSuggestions.removeValue(forKey: "new suggestion")!.resume(returning: [CatalogSearchSuggestion(completion: "Новая подсказка"), CatalogSearchSuggestion(completion: "Новая подсказка")])
         await waitUntil { !suggested.serverSuggestions.isEmpty }
-        pendingSuggestions.removeValue(forKey: "old suggestion")!.resume(returning: ["Устаревшая подсказка"])
+        pendingSuggestions.removeValue(forKey: "old suggestion")!.resume(returning: [CatalogSearchSuggestion(completion: "Устаревшая подсказка")])
         for _ in 0..<20 { await Task.yield() }
         check(suggested.suggestions == ["Новая подсказка"], "Server suggestions deduplicate and fence stale completions")
         suggested.searchQuery = ""
         check(suggested.serverSuggestions.isEmpty, "Clearing input synchronously clears server suggestions")
+        // Reported device regression: full offered title gives no text hit,
+        // while a franchise query returns the same typed project.
+        // IDs here are synthetic, not a claim of live-catalog acceptance.
+        let spider = MediaDto(originalId: .string("999001"), title: "Человек-паук: Новый день", originalTitle: "Spider-Man: Brand New Day", year: .int(2026), type: "movie")
+        let spiderTv = MediaDto(originalId: .string("999001"), title: spider.title, year: .int(2026), type: "tv")
+        let spiderRemake = MediaDto(originalId: .string("999002"), title: spider.title, year: .int(2030), type: "movie")
+        let typedSuggestions = CatalogSearchSuggestion.unique([.init(movie: spider), .init(movie: spiderTv), .init(movie: spiderRemake), .init(movie: spider), .init(completion: "матирца"), .init(completion: "матирца")])
+        check(typedSuggestions.count == 4 && typedSuggestions.prefix(3).allSatisfy { $0.movie != nil }, "Suggestions retain typed identity, remakes and text corrections separately")
+        let invalidSuggestion = CatalogSearchSuggestion(movie: MediaDto(title: "Без ID"))
+        check(invalidSuggestion.movie == nil, "A title without a verified typed ID is only a completion, never a details link")
+        check(CatalogExactTitleRecovery.matches("Человек паук: Новый день", in: [spider]).count == 1, "Full-title equality tolerates punctuation without removing any words")
+        check(CatalogExactTitleRecovery.matches("Spider-Man: Brand New Day", in: [spider]).count == 1, "Original-title equality can recover the same typed project")
+        check(CatalogExactTitleRecovery.matches("Человек-паук", in: [spider]).isEmpty, "A franchise prefix is not an exact full-title recovery")
+        check(CatalogExactTitleRecovery.matches("Челвоек-паук: Новый день", in: [spider]).isEmpty, "Recovery is not a second fuzzy correction")
+        check(CatalogExactTitleRecovery.matches(spider.displayTitle, in: [spider, spiderTv, spiderRemake]).count == 3, "Same-name matches are not collapsed by title or numeric ID")
+        var exactLookupCount = 0
+        var exactDiagnostics: [String] = []
+        let exactLookup = SearchViewModel(defaults: defaults, historyScope: "exactLookup", debounceNanoseconds: 0,
+            suggestionsLoader: { _ in
+                exactLookupCount += 1
+                return [.init(movie: spider), .init(movie: spiderTv), .init(completion: spider.displayTitle)]
+            }, diagnostic: { exactDiagnostics.append($0) },
+            loadPage: { _, _, _ in MediaResponse(results: [], pages: 1, meta: modern.meta) })
+        exactLookup.searchQuery = spider.displayTitle
+        await exactLookup.performSearch(reset: true)
+        check(exactLookup.results.count == 2 && exactLookup.recoveredExactTitle && !exactLookup.hasMore, "A manually entered full title recovers exact typed server suggestions after terminal empty success")
+        check(exactLookupCount == 1 && exactLookup.resolvedQuery == nil && exactLookup.error == nil, "Exact reconciliation does not rewrite the user's query or paginate another spelling")
+        check(!exactDiagnostics.isEmpty && exactDiagnostics.allSatisfy { !$0.contains(spider.displayTitle) && !$0.contains("999001") }, "Diagnostic events contain counts/flags, not query text or title identities")
+        exactLookup.searchQuery = ""
+        var shortThenFullRequests: [String] = []
+        let shortThenFull = SearchViewModel(defaults: defaults, historyScope: "shortThenFull", debounceNanoseconds: 0) { query, _, _ in
+            shortThenFullRequests.append(query)
+            return MediaResponse(results: query == "Человек-паук" ? [spider] : [], pages: 1, meta: modern.meta)
+        }
+        shortThenFull.searchQuery = "Человек-паук"
+        await shortThenFull.performSearch(reset: true)
+        shortThenFull.searchQuery = spider.displayTitle
+        await shortThenFull.performSearch(reset: true)
+        check(shortThenFull.results.first?.artworkIdentifier == spider.artworkIdentifier && shortThenFull.recoveredExactTitle, "A previously observed full title survives a later empty full-title query")
+        check(shortThenFullRequests == ["Человек-паук", spider.displayTitle], "Recovery never retries a truncated franchise query")
+        var protectedLookups = 0
+        let protectedRecovery = SearchViewModel(defaults: defaults, historyScope: "protectedRecovery", debounceNanoseconds: 0,
+            suggestionsLoader: { _ in protectedLookups += 1; return [.init(movie: spider)] },
+            loadPage: { _, _, _ in MediaResponse(results: [], pages: 1, meta: modern.meta) })
+        protectedRecovery.searchFilters = SearchFilters(countries: "Россия")
+        protectedRecovery.searchQuery = spider.displayTitle
+        await protectedRecovery.performSearch(reset: true)
+        check(protectedRecovery.results.isEmpty && !protectedRecovery.recoveredExactTitle && protectedLookups == 0, "Unknown-country suggestions never bypass an active country filter")
+        protectedRecovery.searchQuery = ""
+        var failedLookups = 0
+        let failedRecovery = SearchViewModel(defaults: defaults, historyScope: "failedRecovery", debounceNanoseconds: 0,
+            suggestionsLoader: { _ in failedLookups += 1; return [.init(movie: spider)] },
+            loadPage: { _, _, _ in throw URLError(.timedOut) })
+        failedRecovery.searchQuery = spider.displayTitle
+        await failedRecovery.performSearch(reset: true)
+        check(failedRecovery.error != nil && failedRecovery.results.isEmpty && failedLookups == 0, "A primary transport failure is never hidden by a suggestion hit")
+        failedRecovery.searchQuery = ""
+        var paginationLookups = 0
+        let pagedEmpty = SearchViewModel(defaults: defaults, historyScope: "pagedEmpty", debounceNanoseconds: 0,
+            suggestionsLoader: { _ in paginationLookups += 1; return [.init(movie: spider)] },
+            loadPage: { _, _, _ in MediaResponse(results: [], pages: 2, meta: modern.meta) })
+        pagedEmpty.searchQuery = spider.displayTitle
+        await pagedEmpty.performSearch(reset: true)
+        check(pagedEmpty.results.isEmpty && pagedEmpty.page == 2 && paginationLookups == 0, "Known later pages are scanned normally, not replaced with first-page suggestions")
+        pagedEmpty.searchQuery = ""
+        var suggestionFailureCount = 0
+        let brokenSuggestions = SearchViewModel(defaults: defaults, historyScope: "brokenSuggestions", debounceNanoseconds: 0,
+            suggestionsLoader: { _ in suggestionFailureCount += 1; throw URLError(.notConnectedToInternet) },
+            loadPage: { _, _, _ in MediaResponse(results: [], pages: 1, meta: modern.meta) })
+        brokenSuggestions.searchQuery = spider.displayTitle
+        await brokenSuggestions.performSearch(reset: true)
+        check(brokenSuggestions.results.isEmpty && brokenSuggestions.error == nil && suggestionFailureCount == 1, "Optional suggestion failure preserves the successful primary empty answer")
+        brokenSuggestions.searchQuery = ""
+        var recoveryContinuation: CheckedContinuation<[CatalogSearchSuggestion], Error>?
+        let recoveryRace = SearchViewModel(defaults: defaults, historyScope: "recoveryRace", debounceNanoseconds: 0,
+            suggestionsLoader: { _ in try await withCheckedThrowingContinuation { recoveryContinuation = $0 } },
+            loadPage: { query, _, _ in MediaResponse(results: query == "Новый запрос" ? [series] : [], pages: 1, meta: modern.meta) })
+        recoveryRace.searchQuery = spider.displayTitle
+        await waitUntil { recoveryContinuation != nil }
+        recoveryRace.searchQuery = "Новый запрос"
+        await recoveryRace.performSearch(reset: true)
+        recoveryContinuation!.resume(returning: [.init(movie: spider)])
+        for _ in 0..<30 { await Task.yield() }
+        check(recoveryRace.results.first?.artworkIdentifier == series.artworkIdentifier && !recoveryRace.recoveredExactTitle, "Late full-title recovery cannot overwrite a new query")
+        recoveryRace.searchQuery = ""
+        let searchViewSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchView.swift", encoding: .utf8)
+        check(searchViewSource.contains("if let movie = suggestion.movie") && searchViewSource.contains("DetailsView(movieId: movie.id, mediaType: movie.type"), "Typed suggestion UI opens details by ID/type rather than completing the title and searching again")
         let source = try String(contentsOfFile: "sloosh/Sources/Data/Repositories/MoviesRepository.swift", encoding: .utf8)
         check(!source.contains("filteredResults = rawResults") && !source.contains("filteredResults = studioItems"), "Repository never restores unfiltered data when filters eliminate a page")
         let homeSource = try String(contentsOfFile: "sloosh/Sources/UI/Home/HomeView.swift", encoding: .utf8)

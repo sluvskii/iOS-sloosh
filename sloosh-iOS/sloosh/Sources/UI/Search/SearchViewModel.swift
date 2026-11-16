@@ -24,7 +24,7 @@ final class SearchViewModel: ObservableObject {
     @Published private(set) var correctionReason: String?
     @Published private(set) var originalQuery: String?
     @Published private(set) var insufficientMetadata = 0
-    @Published private(set) var serverSuggestions: [String] = []
+    @Published private(set) var serverSuggestions: [CatalogSearchSuggestion] = []
     @Published var directPlaybackMovie: MediaDto?
     @Published var playerConfig: PlayerConfig?
 
@@ -33,10 +33,17 @@ final class SearchViewModel: ObservableObject {
         let filters: SearchFilters
     }
     typealias CursorLoader = (String, Int, SearchFilters, String?) async throws -> MediaResponse
-    typealias SuggestionsLoader = (String) async throws -> [String]
+    typealias SuggestionsLoader = (String) async throws -> [CatalogSearchSuggestion]
+    private let diagnostic: (String) -> Void
+    private var observedCards: [MediaDto] = []
+    @Published private(set) var recoveredExactTitle = false
     private let cursorLoader: CursorLoader?
     private let suggestionsLoader: SuggestionsLoader?
     private var suggestionsTask: Task<Void, Never>?
+    private var suggestionFetchTask: Task<[CatalogSearchSuggestion], Error>?
+    private var suggestionFetchQuery = ""
+    private var suggestionFetchGeneration = 0
+    private var suggestionFetchDate = Date.distantPast
     private var suggestionGeneration = 0
     private let loader: Loader
     private let defaults: UserDefaults
@@ -49,7 +56,9 @@ final class SearchViewModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard, historyScope: String, debounceNanoseconds: UInt64 = 300_000_000,
          cursorLoader: CursorLoader? = nil, suggestionsLoader: SuggestionsLoader? = nil,
+         diagnostic: @escaping (String) -> Void = { _ in },
          loadPage: @escaping Loader) {
+        self.diagnostic = diagnostic
         self.cursorLoader = cursorLoader
         self.suggestionsLoader = suggestionsLoader
         self.loader = loadPage
@@ -75,12 +84,12 @@ final class SearchViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    deinit { task?.cancel(); suggestionsTask?.cancel() }
+    deinit { task?.cancel(); suggestionsTask?.cancel(); suggestionFetchTask?.cancel() }
 
     var isDiscovery: Bool { CatalogSearchQuery.text(searchQuery).isEmpty && searchFilters.normalized.isEmpty }
     var hasMore: Bool { !isDiscovery && page > 0 && (nextCursor != nil || page < totalPages) }
     var suggestions: [String] {
-        if !serverSuggestions.isEmpty { return serverSuggestions }
+        if !serverSuggestions.isEmpty { return serverSuggestions.map(\.title) }
         return CatalogSearchQuery.suggestions(for: searchQuery,
                                        candidates: history + results.prefix(60).flatMap { [$0.title, $0.name, $0.originalTitle].compactMap { $0 } } + discoveryTitles)
     }
@@ -92,8 +101,10 @@ final class SearchViewModel: ObservableObject {
 
     func selectHistory(_ query: String) { searchQuery = query }
 
-    func rememberCurrentQuery() {
-        let query = CatalogSearchQuery.text(searchQuery)
+    func rememberCurrentQuery() { rememberTitle(searchQuery) }
+
+    func rememberTitle(_ title: String) {
+        let query = CatalogSearchQuery.text(title)
         guard !query.isEmpty else { return }
         let key = CatalogSearchQuery.key(query)
         history = Array(([query] + history.filter { CatalogSearchQuery.key($0) != key }).prefix(20))
@@ -136,6 +147,7 @@ final class SearchViewModel: ObservableObject {
             generation += 1
             task?.cancel()
             results = []; page = 0; totalPages = 1; resolvedQuery = nil
+            recoveredExactTitle = false
             nextCursor = nil; sortScope = nil; correctionReason = nil; originalQuery = nil; insufficientMetadata = 0
             isAppending = false
         } else if isLoading || isAppending { return task }
@@ -154,6 +166,10 @@ final class SearchViewModel: ObservableObject {
         let legacyLoader = self.loader
         let cursorLoader = self.cursorLoader
         let initialCursor = reset ? nil : nextCursor
+        let diagnostic = self.diagnostic
+        let suggestionsLoader = self.suggestionsLoader
+        let knownCards = observedCards
+        diagnostic("[CatalogSearch] start generation=\(token) chars=\(request.query.count) filters=\(request.filters.activeCount) page=\(firstPage) cursor=\(initialCursor != nil)")
         let loader: CursorLoader = { query, page, filters, cursor in
             if let cursorLoader { return try await cursorLoader(query, page, filters, cursor) }
             return try await legacyLoader(query, page, filters)
@@ -180,6 +196,33 @@ final class SearchViewModel: ObservableObject {
                         }
                     }
                 }
+                // A suggestion dictionary can know a real typed title which the
+                // upstream text endpoint fails to return for its full spelling.
+                // Reconcile ONLY exact identities, after a terminal successful
+                // empty answer, without filters, correction, or extra pages.
+                var recovered = false
+                if reset, !request.query.isEmpty, request.filters.isEmpty,
+                   response.query?.corrected != true, response.allItems.isEmpty,
+                   response.nextCursor == nil, response.effectiveTotalPages <= 1 {
+                    var exact = CatalogExactTitleRecovery.matches(request.query, in: knownCards)
+                    if exact.isEmpty, let suggestionsLoader {
+                        do {
+                            guard let self else { return }
+                            let suggestions = try await self.fetchSuggestions(request.query, using: suggestionsLoader)
+                            try Task.checkCancellation()
+                            exact = CatalogExactTitleRecovery.matches(request.query, in: suggestions.compactMap(\.movie))
+                        } catch {
+                            try Task.checkCancellation()
+                            // Suggestion failure cannot change a successful empty
+                            // title answer into an invented match or a spelling retry.
+                            diagnostic("[CatalogSearch] exact_recovery suggestions_unavailable generation=\(token)")
+                        }
+                    }
+                    if !exact.isEmpty {
+                        response = MediaResponse(page: 1, results: exact, pages: 1)
+                        recovered = true
+                    }
+                }
                 // Server post-filtering can leave empty pages with later matches.
                 // Scan a bounded window, then expose an explicit Continue action.
                 var scanned = 1
@@ -192,6 +235,9 @@ final class SearchViewModel: ObservableObject {
                 }
                 guard let self, self.generation == token else { return }
                 self.results = CatalogSearchPolicy.merge(reset ? [] : self.results, response.allItems, order: request.query.isEmpty ? nil : request.filters.order)
+                self.rememberCards(response.allItems)
+                if reset { self.recoveredExactTitle = recovered }
+                diagnostic("[CatalogSearch] applied generation=\(token) received=\(response.allItems.count) displayed=\(self.results.count) page=\(nextPage) exact_recovery=\(recovered) corrected=\(queryInfo?.corrected == true)")
                 self.nextCursor = response.nextCursor
                 self.sortScope = response.meta?.sortScope
                 if reset || queryInfo?.corrected == true {
@@ -207,6 +253,7 @@ final class SearchViewModel: ObservableObject {
                 guard !Task.isCancelled, let self, self.generation == token else { return }
                 // Cursor advances ONLY on success. Retry repeats the failed page,
                 // retaining all already displayed items and selected filters.
+                diagnostic("[CatalogSearch] failure generation=\(token) invalid_request=\(error is CatalogServerError)")
                 self.isInvalidRequest = error is CatalogServerError
                 self.error = (error as? LocalizedError)?.errorDescription
                     ?? "Не удалось загрузить результаты. Проверьте подключение и повторите попытку."
@@ -220,25 +267,56 @@ final class SearchViewModel: ObservableObject {
         suggestionGeneration += 1
         let token = suggestionGeneration
         suggestionsTask?.cancel()
+        if query != suggestionFetchQuery {
+            suggestionFetchTask?.cancel()
+            suggestionFetchGeneration += 1
+            suggestionFetchTask = nil
+            suggestionFetchQuery = query
+        }
         serverSuggestions = []
         guard !query.isEmpty, let suggestionsLoader else { return }
         suggestionsTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 300_000_000)
                 try Task.checkCancellation()
-                let titles = try await suggestionsLoader(query)
+                guard let self else { return }
+                let suggestions = try await self.fetchSuggestions(query, using: suggestionsLoader)
                 try Task.checkCancellation()
-                guard let self, self.suggestionGeneration == token else { return }
-                var seen = Set<String>()
-                self.serverSuggestions = Array(titles.map(CatalogSearchQuery.text).filter {
-                    !$0.isEmpty && seen.insert(CatalogSearchQuery.key($0)).inserted
-                }.prefix(8))
+                guard self.suggestionGeneration == token else { return }
+                self.serverSuggestions = Array(CatalogSearchSuggestion.unique(suggestions).prefix(8))
+                self.rememberCards(self.serverSuggestions.compactMap(\.movie))
+                self.diagnostic("[CatalogSearch] suggestions generation=\(token) chars=\(query.count) count=\(self.serverSuggestions.count) typed=\(self.serverSuggestions.filter { $0.movie != nil }.count)")
             } catch {
                 // Suggestions never block typing/search. Local history remains available.
                 guard !Task.isCancelled, let self, self.suggestionGeneration == token else { return }
                 self.serverSuggestions = []
             }
         }
+    }
+
+    private func fetchSuggestions(_ query: String, using loader: @escaping SuggestionsLoader) async throws -> [CatalogSearchSuggestion] {
+        try Task.checkCancellation()
+        if query == suggestionFetchQuery, let pending = suggestionFetchTask,
+           Date().timeIntervalSince(suggestionFetchDate) < 30 {
+            return try await pending.value
+        }
+        suggestionFetchQuery = query
+        suggestionFetchDate = Date()
+        suggestionFetchGeneration += 1
+        let token = suggestionFetchGeneration
+        let pending = Task { try await loader(query) }
+        suggestionFetchTask = pending
+        do { return try await pending.value }
+        catch {
+            if suggestionFetchGeneration == token { suggestionFetchTask = nil }
+            throw error
+        }
+    }
+
+    private func rememberCards(_ cards: [MediaDto]) {
+        // Session/account-local and bounded. A new search can match an observed
+        // full title without depending on which server isolate receives it next.
+        observedCards = Array(CatalogSearchPolicy.merge(cards, observedCards, order: nil).prefix(120))
     }
 
     private func persistHistory() { defaults.set(history, forKey: historyKey) }

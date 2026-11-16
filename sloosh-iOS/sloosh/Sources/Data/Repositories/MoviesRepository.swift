@@ -358,7 +358,10 @@ class MoviesRepository: ObservableObject {
         guard response.success != false, response.status != "error", let data = response.data,
               data.results != nil || data.items != nil else { throw CatalogSearchError.invalidResponse }
         try Task.checkCancellation()
-        if data.meta?.contractVersion != nil { return data }
+        if data.meta?.contractVersion != nil {
+            AppDiagnostics.shared.log("[CatalogSearch] repository versioned=true received=\(data.allItems.count) retained=\(data.allItems.count)")
+            return data
+        }
         var legacyData = data
         if query.isEmpty, let studio = filters.studio {
             // During the rollout the old server only understands collection scopes.
@@ -369,6 +372,7 @@ class MoviesRepository: ObservableObject {
             legacyData = value
         }
         let items = legacyData.allItems.filter { CatalogSearchPolicy.matches($0, filters: filters, serverFiltered: query.isEmpty && filters.studio == nil) }
+        AppDiagnostics.shared.log("[CatalogSearch] repository versioned=false received=\(legacyData.allItems.count) retained=\(items.count)")
         return MediaResponse(page: legacyData.page ?? page,
                              results: CatalogSearchPolicy.merge([], items, order: filters.order),
                              pages: legacyData.effectiveTotalPages)

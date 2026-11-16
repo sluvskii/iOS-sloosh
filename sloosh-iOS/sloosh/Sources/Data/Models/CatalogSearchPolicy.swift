@@ -308,3 +308,41 @@ enum CatalogSearchFilter: String, CaseIterable, Identifiable {
         return f.normalized
     }
 }
+
+/// A catalog hit is an identity, not a string completion. Keep movie/TV and
+/// same-name remakes separate; only spelling/history entries complete text.
+struct CatalogSearchSuggestion: Identifiable {
+    let title: String
+    let movie: MediaDto?
+    var id: String { movie.map { "media:\($0.artworkIdentifier)" } ?? "text:\(CatalogSearchQuery.key(title))" }
+
+    init(completion: String) {
+        title = CatalogSearchQuery.text(completion)
+        movie = nil
+    }
+
+    init(movie: MediaDto) {
+        title = movie.displayTitle
+        self.movie = CatalogArtworkIdentity(id: movie.originalId?.stringValue, type: movie.type) == nil ? nil : movie
+    }
+
+    static func unique(_ items: [CatalogSearchSuggestion]) -> [CatalogSearchSuggestion] {
+        var seen = Set<String>()
+        return items.filter { !CatalogSearchQuery.key($0.title).isEmpty && seen.insert($0.id).inserted }
+    }
+}
+
+enum CatalogExactTitleRecovery {
+    /// Equality only, never a prefix/franchise/typo guess or a relaxed filter.
+    /// Punctuation/ё/case normalization changes no words of the requested title.
+    static func matches(_ query: String, in cards: [MediaDto]) -> [MediaDto] {
+        let key = CatalogSearchQuery.key(query)
+        guard !key.isEmpty else { return [] }
+        return CatalogSearchPolicy.merge([], cards.filter { card in
+            guard CatalogArtworkIdentity(id: card.originalId?.stringValue, type: card.type) != nil else { return false }
+            return [card.title, card.name, card.originalTitle].compactMap { $0 }.contains {
+                CatalogSearchQuery.key($0) == key
+            }
+        }, order: nil)
+    }
+}
