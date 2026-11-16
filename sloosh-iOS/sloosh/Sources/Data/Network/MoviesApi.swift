@@ -376,7 +376,7 @@ class MoviesApi {
         body: Data? = nil,
         allowSelfHealingRetry: Bool = true
     ) async throws -> T {
-        let isCatalogSearch = endpoint == "api/v1/search" || endpoint == "api/v2/search"
+        let isCatalogSearch = endpoint == "api/v1/search" || endpoint == "api/v2/search" || endpoint == "api/v1/search/suggestions"
         if isCatalogSearch { try Task.checkCancellation() }
         let allCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
         // Сначала пробуем хосты, которые недавно работали. Если таких нет — пробуем все.
@@ -433,6 +433,10 @@ class MoviesApi {
                     
                     // 4xx — не ретраим, это клиентская ошибка
                     if (400...499).contains(httpResponse.statusCode) {
+                        if isCatalogSearch, httpResponse.statusCode == 400,
+                           let failure = try? self.decoder.decode(CatalogServerError.self, from: data) {
+                            throw failure
+                        }
                         throw NetworkError.serverError(httpResponse.statusCode)
                     }
                     
@@ -448,6 +452,8 @@ class MoviesApi {
                         MoviesApi.activeBaseURL = currentBase
                     }
                     return try self.decoder.decode(T.self, from: data)
+                } catch let error as CatalogServerError {
+                    throw error
                 } catch let error as NetworkError {
                     if case .unauthorized = error {
                         shouldTryRemoteConfigHealing = true
@@ -599,24 +605,21 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v2/person/\(id)")
     }
     
-    func searchMovies(query: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
-        var queryItems = [
-            URLQueryItem(name: "page", value: String(max(1, min(500, page))))
-        ]
-        
-        let trimmed = CatalogSearchQuery.text(query)
-        if !trimmed.isEmpty {
-            queryItems.append(URLQueryItem(name: "query", value: trimmed))
-        }
-        
-        // Keep the original title query; client fallbacks are explicit, bounded
-        // and used only after a successful empty title-search response.
-        return try await performRequest(endpoint: "api/v1/search", queryItems: queryItems)
+    func searchMovies(query: String, page: Int = 1, filters: SearchFilters = SearchFilters(), cursor: String? = nil) async throws -> ApiEnvelope<MediaResponse> {
+        try await performRequest(endpoint: "api/v1/search",
+            queryItems: CatalogSearchRequest.items(query: query, filters: filters, page: page, cursor: cursor))
+    }
+
+    func searchSuggestions(query: String) async throws -> [String] {
+        let response: ApiEnvelope<SearchSuggestionsResponse> = try await performRequest(
+            endpoint: "api/v1/search/suggestions",
+            queryItems: [URLQueryItem(name: "query", value: CatalogSearchQuery.text(query)), URLQueryItem(name: "limit", value: "8")])
+        guard response.success != false, response.status != "error", let data = response.data else { throw CatalogSearchError.invalidResponse }
+        return (data.suggestions ?? []).map(\.displayTitle) + (data.query?.corrections ?? []).map(\.query)
     }
 
     func discoverMovies(filters: SearchFilters, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
-        return try await performRequest(endpoint: "api/v2/search",
-                                        queryItems: CatalogSearchRequest.discoveryItems(filters: filters, page: page))
+        try await searchMovies(query: "", page: page, filters: filters)
     }
 
     // MARK: - Categories & Collections (feat/ts-migration)

@@ -179,6 +179,72 @@ struct CatalogSearchTests {
         debounced.clearHistory()
         check(defaults.stringArray(forKey: "catalog_search_history_v2_history") == [], "History deletion is durable")
         check(CatalogSearchPolicy.merge([film], [series], order: "RATING").first?.artworkIdentifier == series.artworkIdentifier, "Rating sorting is stable over all loaded pages")
+        let titleItems = CatalogSearchRequest.items(query: "Матрица", filters: SearchFilters(type: "FILM", order: "RATING", yearTo: 2026, countries: "Россия", studio: "company:1"), page: 1)
+        check(!titleItems.contains { $0.name == "order" || $0.name == "studio" }, "Title request never sends unsupported order or studio")
+        check(titleItems.contains { $0.name == "countries" } && titleItems.contains { $0.name == "yearTo" }, "Title request sends structural filters to server")
+        let cursorItems = CatalogSearchRequest.items(query: "", filters: SearchFilters(type: "ANIME"), page: 9, cursor: "a+b=/")
+        check(cursorItems.contains { $0.name == "cursor" && $0.value == "a+b=/" } && !cursorItems.contains { $0.name == "page" }, "Cursor replaces page without dropping filters")
+        let modern = try JSONDecoder().decode(MediaResponse.self, from: Data(#"{"results":[],"nextCursor":"next+1","query":{"raw":"матирца","resolved":"матрица","corrected":true,"correction":{"reason":"Опечатка"}},"meta":{"contractVersion":"2026-11-16","sortScope":"window","globalSort":false,"insufficientMetadata":2},"futureField":true}"#.utf8))
+        check(modern.nextCursor == "next+1" && modern.meta?.sortScope == "window" && modern.query?.correction?.reason == "Опечатка", "Additive server search metadata decodes alongside unknown future fields")
+        var cursorRequests: [String?] = []
+        var failCursor = true
+        let modernPaging = SearchViewModel(defaults: defaults, historyScope: "modernPaging", debounceNanoseconds: 0,
+            cursorLoader: { _, _, _, cursor in
+                cursorRequests.append(cursor)
+                if cursor != nil && failCursor { throw URLError(.timedOut) }
+                return MediaResponse(results: cursor == nil ? [film] : [series], pages: 2,
+                    nextCursor: cursor == nil ? "next+1" : nil, meta: modern.meta)
+            }, loadPage: { _, _, _ in throw CatalogSearchError.invalidResponse })
+        modernPaging.searchFilters = SearchFilters(type: "ANIME", order: "RATING")
+        await modernPaging.performSearch(reset: true)
+        check(modernPaging.usesLocalSorting && modernPaging.nextCursor == "next+1", "Window scope disclosure comes from server metadata")
+        await modernPaging.loadNextPage()
+        check(modernPaging.page == 1 && modernPaging.nextCursor == "next+1", "Failed append retains opaque cursor")
+        failCursor = false
+        await modernPaging.retry()
+        check(cursorRequests.count == 3 && cursorRequests[0] == nil && cursorRequests[1] == "next+1" && cursorRequests[2] == "next+1", "Cursor retry repeats exact continuation")
+        check(modernPaging.results.map(\.artworkIdentifier) == [film.artworkIdentifier, series.artworkIdentifier], "Discovery keeps server order rather than reranking by client rating")
+        var modernQueries: [String] = []
+        let correctedSearch = SearchViewModel(defaults: defaults, historyScope: "modernCorrection", debounceNanoseconds: 0) { query, page, _ in
+            modernQueries.append(query)
+            return MediaResponse(results: page == 1 ? [film] : [series], pages: 2, query: page == 1 ? modern.query : nil, meta: modern.meta)
+        }
+        correctedSearch.searchQuery = "матирца"
+        await correctedSearch.performSearch(reset: true)
+        await correctedSearch.loadNextPage()
+        check(modernQueries == ["матирца", "матрица"] && correctedSearch.originalQuery == "матирца" && correctedSearch.correctionReason == "Опечатка", "Server correction freezes resolved paging and retains original/reason on append")
+        var noDoubleCorrectionCalls = 0
+        let noDoubleCorrection = SearchViewModel(defaults: defaults, historyScope: "noDoubleCorrection", debounceNanoseconds: 0) { _, _, _ in
+            noDoubleCorrectionCalls += 1
+            return MediaResponse(results: [], pages: 1, query: modern.query, meta: modern.meta)
+        }
+        noDoubleCorrection.searchQuery = "ghbdtn"
+        await noDoubleCorrection.performSearch(reset: true)
+        check(noDoubleCorrectionCalls == 1, "Modern server responses never trigger a second local correction")
+        let invalidSearch = SearchViewModel(defaults: defaults, historyScope: "invalidSearch", debounceNanoseconds: 0) { _, _, _ in
+            throw CatalogServerError(code: "unknown_country", message: "technical internal details")
+        }
+        invalidSearch.searchQuery = "Фильм"
+        await invalidSearch.performSearch(reset: true)
+        check(invalidSearch.isInvalidRequest && invalidSearch.error?.contains("страну") == true, "Invalid parameter is an actionable error, not empty results or leaked diagnostics")
+        var pendingSuggestions: [String: CheckedContinuation<[String], Error>] = [:]
+        let suggested = SearchViewModel(defaults: defaults, historyScope: "suggestions", debounceNanoseconds: 0,
+            suggestionsLoader: { query in
+                try await withCheckedThrowingContinuation { pendingSuggestions[query] = $0 }
+            }, loadPage: { _, _, _ in MediaResponse(results: [], pages: 1, meta: modern.meta) })
+        suggested.searchQuery = "old suggestion"
+        try await Task.sleep(nanoseconds: 350_000_000)
+        await waitUntil { pendingSuggestions["old suggestion"] != nil }
+        suggested.searchQuery = "new suggestion"
+        try await Task.sleep(nanoseconds: 350_000_000)
+        await waitUntil { pendingSuggestions["new suggestion"] != nil }
+        pendingSuggestions.removeValue(forKey: "new suggestion")!.resume(returning: ["Новая подсказка", "Новая подсказка"])
+        await waitUntil { !suggested.serverSuggestions.isEmpty }
+        pendingSuggestions.removeValue(forKey: "old suggestion")!.resume(returning: ["Устаревшая подсказка"])
+        for _ in 0..<20 { await Task.yield() }
+        check(suggested.suggestions == ["Новая подсказка"], "Server suggestions deduplicate and fence stale completions")
+        suggested.searchQuery = ""
+        check(suggested.serverSuggestions.isEmpty, "Clearing input synchronously clears server suggestions")
         let source = try String(contentsOfFile: "sloosh/Sources/Data/Repositories/MoviesRepository.swift", encoding: .utf8)
         check(!source.contains("filteredResults = rawResults") && !source.contains("filteredResults = studioItems"), "Repository never restores unfiltered data when filters eliminate a page")
         let homeSource = try String(contentsOfFile: "sloosh/Sources/UI/Home/HomeView.swift", encoding: .utf8)

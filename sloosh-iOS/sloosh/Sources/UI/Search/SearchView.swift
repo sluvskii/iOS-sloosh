@@ -4,6 +4,10 @@ import Combine
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel(
         historyScope: AuthRepository.shared.currentUser?.id ?? "guest",
+        cursorLoader: { query, page, filters, cursor in
+            try await MoviesRepository.shared.searchMoviesResponse(query: query, page: page, filters: filters, cursor: cursor)
+        },
+        suggestionsLoader: { query in try await MoviesApi.shared.searchSuggestions(query: query) },
         loadPage: { query, page, filters in
             try await MoviesRepository.shared.searchMoviesResponse(query: query, page: page, filters: filters)
         }
@@ -36,6 +40,9 @@ struct SearchView: View {
                         Text(error)
                             .multilineTextAlignment(.center)
                             .foregroundColor(.secondary)
+                        if viewModel.isInvalidRequest {
+                            Button("Изменить фильтры") { showFilters = true }
+                        } else {
                         Button("Повторить") {
                             Task {
                                 await viewModel.retry()
@@ -43,6 +50,7 @@ struct SearchView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(Color.slooshAccent)
+                        }
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -225,6 +233,16 @@ struct SearchView: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                         .accessibilityLabel("Уточнённый запрос: \(query)")
                 }
+                if let raw = viewModel.originalQuery, viewModel.resolvedQuery != nil {
+                    Text("Исходный запрос: «\(raw)»").font(.caption).foregroundStyle(.secondary)
+                }
+                if let reason = viewModel.correctionReason {
+                    Text(reason).font(.caption).foregroundStyle(.secondary)
+                }
+                if viewModel.insufficientMetadata > 0 {
+                    Text("Часть карточек скрыта: недостаточно данных для проверки фильтров")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if viewModel.usesLocalSorting {
                     Text("Сортировка по загруженным результатам")
                         .font(.caption).foregroundStyle(.secondary)
@@ -239,7 +257,11 @@ struct SearchView: View {
         if let error = viewModel.error {
             VStack(spacing: 10) {
                 Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Button("Повторить загрузку") { Task { await viewModel.retry() } }
+                if viewModel.isInvalidRequest {
+                    Button("Обновить поиск") { Task { await viewModel.performSearch(reset: true) } }
+                } else {
+                    Button("Повторить загрузку") { Task { await viewModel.retry() } }
+                }
             }
         } else if viewModel.hasMore && !viewModel.isAppending {
             Button("Показать ещё") { Task { await viewModel.loadNextPage() } }

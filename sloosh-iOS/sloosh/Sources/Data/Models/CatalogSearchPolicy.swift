@@ -227,6 +227,19 @@ enum CatalogSearchError: LocalizedError {
 
 /// Shared by transport and tests: stable sets and locale-independent decimals.
 enum CatalogSearchRequest {
+    static func items(query: String, filters: SearchFilters, page: Int, cursor: String? = nil) -> [URLQueryItem] {
+        let text = CatalogSearchQuery.text(query)
+        var items = discoveryItems(filters: filters, page: page)
+        if !text.isEmpty {
+            items.removeAll { $0.name == "order" || $0.name == "studio" }
+            items.append(URLQueryItem(name: "query", value: text))
+        } else if let cursor {
+            items.removeAll { $0.name == "page" }
+            items.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return items
+    }
+
     static func encodedQuery(_ items: [URLQueryItem]) -> String? {
         var components = URLComponents()
         components.queryItems = items

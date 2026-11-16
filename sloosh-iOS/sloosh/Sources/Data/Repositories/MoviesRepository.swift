@@ -344,50 +344,22 @@ class MoviesRepository: ObservableObject {
     // MARK: - Search
 
     func searchMovies(query: String, page: Int = 1) async throws -> [MediaDto] {
-        let query = CatalogSearchQuery.text(query)
-        guard !query.isEmpty else { return [] }
-        var response = try await searchMoviesResponse(query: query, page: page)
-        if page == 1, response.allItems.isEmpty, response.effectiveTotalPages <= 1 {
-            for alternative in CatalogSearchQuery.alternatives(query) {
-                try Task.checkCancellation()
-                response = try await searchMoviesResponse(query: alternative, page: page)
-                if !response.allItems.isEmpty { break }
-            }
-        }
+        let response = try await searchMoviesResponse(query: query, page: page)
         return CatalogSearchPolicy.merge([], response.allItems, order: nil)
     }
 
-    /// Keep server pagination intact even when this page is empty after local
-    /// filtering. Never silently relax selected filters or hide posterless titles.
-    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters = SearchFilters()) async throws -> MediaResponse {
+    /// The versioned server owns filtering and correction. Legacy responses
+    /// without a contract marker retain their conservative metadata validation.
+    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters = SearchFilters(), cursor: String? = nil) async throws -> MediaResponse {
         let query = CatalogSearchQuery.text(query)
         let filters = filters.normalized
-        let data: MediaResponse
-        let serverFiltered: Bool
-        if !query.isEmpty {
-            guard filters.studio == nil else { throw CatalogSearchError.studioWithTitle }
-            let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
-            guard response.success != false, let value = response.data else { throw CatalogSearchError.invalidResponse }
-            data = value
-            serverFiltered = false
-        } else if let studio = filters.studio {
-            // A collection is an authoritative studio scope, not an excuse to
-            // fall back to an unrelated catalog when its page is empty or fails.
-            let response = try await MoviesApi.shared.getCollection(id: studio, page: page)
-            guard response.success != false, let value = response.data else { throw CatalogSearchError.invalidResponse }
-            data = value
-            serverFiltered = false
-        } else if !filters.isEmpty {
-            let response = try await MoviesApi.shared.discoverMovies(filters: filters, page: page)
-            guard response.success != false, let value = response.data else { throw CatalogSearchError.invalidResponse }
-            data = value
-            serverFiltered = true
-        } else {
-            return MediaResponse(page: page, results: [], pages: 1)
-        }
+        if !query.isEmpty, filters.studio != nil { throw CatalogSearchError.studioWithTitle }
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters, cursor: cursor)
+        guard response.success != false, response.status != "error", let data = response.data,
+              data.results != nil || data.items != nil else { throw CatalogSearchError.invalidResponse }
         try Task.checkCancellation()
-        guard data.results != nil || data.items != nil else { throw CatalogSearchError.invalidResponse }
-        let items = data.allItems.filter { CatalogSearchPolicy.matches($0, filters: filters, serverFiltered: serverFiltered) }
+        if data.meta?.contractVersion != nil { return data }
+        let items = data.allItems.filter { CatalogSearchPolicy.matches($0, filters: filters, serverFiltered: query.isEmpty) }
         return MediaResponse(page: data.page ?? page,
                              results: CatalogSearchPolicy.merge([], items, order: filters.order),
                              pages: data.effectiveTotalPages)

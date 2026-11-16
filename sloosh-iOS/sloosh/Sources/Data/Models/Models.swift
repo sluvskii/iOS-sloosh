@@ -7,6 +7,52 @@ struct ApiEnvelope<T: Codable>: Codable {
     let data: T?
 }
 
+struct SearchCorrection: Codable {
+    let from: String?
+    let to: String?
+    let kind: String?
+    let confidence: String?
+    let reason: String?
+}
+struct SearchQueryInfo: Codable {
+    let raw: String?
+    let resolved: String?
+    let corrected: Bool?
+    let correction: SearchCorrection?
+}
+struct SearchResponseMeta: Codable {
+    let contractVersion: String?
+    let globalSort: Bool?
+    let sortScope: String?
+    let insufficientMetadata: Int?
+    let disclosures: [String]?
+}
+struct SearchSuggestionCorrection: Codable {
+    let query: String
+}
+struct SearchSuggestionQuery: Codable {
+    let corrections: [SearchSuggestionCorrection]?
+}
+struct SearchSuggestionsResponse: Codable {
+    let suggestions: [MediaDto]?
+    let query: SearchSuggestionQuery?
+}
+struct CatalogServerError: Codable, LocalizedError {
+    let code: String?
+    let message: String?
+    var errorDescription: String? {
+        // Never expose internal provider names/diagnostics in user-facing copy.
+        switch code {
+        case "unknown_country": return "Не удалось распознать страну. Измените фильтр."
+        case "unknown_genre", "genre_scope_empty": return "Не удалось применить жанры. Измените фильтры."
+        case "unknown_studio": return "Не удалось распознать студию. Измените фильтр."
+        case "unsupported_filter_combination", "empty_scope": return "Эти условия нельзя сочетать. Измените фильтры."
+        case "cursor_invalid", "cursor_mismatch", "cursor_not_supported": return "Продолжение поиска устарело. Обновите поиск."
+        default: return "Не удалось применить запрос. Проверьте условия поиска."
+        }
+    }
+}
+
 struct MediaResponse: Codable {
     let page: Int?
     let results: [MediaDto]?
@@ -17,6 +63,9 @@ struct MediaResponse: Codable {
     let total_results: Int?
     let totalPages: Int?
     let totalResults: Int?
+    let nextCursor: String?
+    let query: SearchQueryInfo?
+    let meta: SearchResponseMeta?
 
     init(
         page: Int? = nil,
@@ -27,7 +76,10 @@ struct MediaResponse: Codable {
         total_pages: Int? = nil,
         total_results: Int? = nil,
         totalPages: Int? = nil,
-        totalResults: Int? = nil
+        totalResults: Int? = nil,
+        nextCursor: String? = nil,
+        query: SearchQueryInfo? = nil,
+        meta: SearchResponseMeta? = nil
     ) {
         self.page = page
         self.results = results
@@ -38,6 +90,9 @@ struct MediaResponse: Codable {
         self.total_results = total_results
         self.totalPages = totalPages
         self.totalResults = totalResults
+        self.nextCursor = nextCursor
+        self.query = query
+        self.meta = meta
     }
     
     var allItems: [MediaDto] {
