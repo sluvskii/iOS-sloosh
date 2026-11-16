@@ -629,8 +629,7 @@ class MoviesApi {
             endpoint: "api/v1/search/suggestions",
             queryItems: [URLQueryItem(name: "query", value: CatalogSearchQuery.text(query)), URLQueryItem(name: "limit", value: "8")])
         guard response.success != false, response.status != "error", let data = response.data else { throw CatalogSearchError.invalidResponse }
-        return CatalogSearchSuggestion.unique((data.suggestions ?? []).map { CatalogSearchSuggestion(movie: $0) }
-            + (data.query?.corrections ?? []).map { CatalogSearchSuggestion(completion: $0.query) })
+        return CatalogSearchSuggestion.fromServer(data)
     }
 
     func discoverMovies(filters: SearchFilters, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
