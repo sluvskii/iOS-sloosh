@@ -6,13 +6,15 @@ The client keeps the existing authenticated `api/v1/search?query&page` title end
 and `api/v2/search` discovery endpoint. No guessed server endpoints, bundled
 credentials, provider requests, server deployments or production-rule changes.
 
-The separate private `sluvskii/sloosh-api` repository returned HTTP 403 (resource
-not accessible by integration) during this session. Vercel's available connector
-cannot read/edit that repository or execute authenticated catalog acceptance
-queries. Server search indexing, full-catalog recall, metadata completeness and
-fresh-release ingestion are NOT verified by client unit tests or an IPA build.
-This work must not be described as universal typo correction or finding every
-project. It is a substantive client stage, not the completed server redesign.
+The separate `sluvskii/sloosh-api` repository initially returned HTTP 403. The
+owner has since made it public: source access is now confirmed. A read-only audit
+at commit `77665388051de9685632db41c5222e01dbfcacc7` reproduced 15 current
+behaviors/defects with the actual search route/service and mocked catalog calls.
+See `catalog-search-server-audit.md` and `tools/search-audit/`. No server changes or
+deployments have been made. This source audit does not establish production
+revision, live full-catalog recall, metadata completeness or fresh-release lag.
+Client unit tests/IPA builds also cannot establish those facts. This work must
+not be described as universal typo correction or finding every project.
 
 ## Client behavior
 
@@ -91,10 +93,12 @@ All existing playback, artwork, auth, messenger and tier tests remain enabled.
 - Verify search result posters/logos/Details and direct Play still target the same
   typed title. Check cards with no artwork, rating, Russian title or release date.
 
-## Server stage (blocked pending repository access)
+## Server stage (source audited; implementation and live acceptance still pending)
 
-1. Review current search/index source and documented v1/v2 capabilities, metadata
-   provenance, paging limits, cache headers/TTLs, fuzzy ranking and ingestion lag.
+1. Source review is complete at the pinned revision. Both route versions alias
+   the same handler; title search ignores structured filters, upper-only filters
+   and cache keys are incomplete, and several hidden gates lose new titles.
+   See the detailed audit. Verify the deployed revision and live ingestion lag next.
 2. Create an authenticated acceptance set: exact/original/alternate titles,
    sequels/numbers, Cyrillic/Latin, ё/е, punctuation, common typos, same-name works,
    film/TV same numeric ID, anime, obscure/older films and freshest announced and
