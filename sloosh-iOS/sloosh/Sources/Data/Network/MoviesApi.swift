@@ -378,6 +378,7 @@ class MoviesApi {
     ) async throws -> T {
         let isCatalogSearch = endpoint == "api/v1/search" || endpoint == "api/v2/search" || endpoint == "api/v1/search/suggestions"
         if isCatalogSearch { try Task.checkCancellation() }
+        let searchTrace = String(UUID().uuidString.prefix(8))
         let allCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
         // Сначала пробуем хосты, которые недавно работали. Если таких нет — пробуем все.
         let healthy = allCandidates.filter { MoviesApi.isHostHealthy($0) }
@@ -417,6 +418,7 @@ class MoviesApi {
                 }
                 
                 do {
+                    let searchStarted = Date()
                     let (data, response) = try await session.data(for: request)
                     
                     guard let httpResponse = response as? HTTPURLResponse else {
@@ -424,6 +426,14 @@ class MoviesApi {
                         continue
                     }
                     
+                    if isCatalogSearch {
+                        // Deliberately omit query, URL, headers, UID, cursor and
+                        // bodies: exported logs must not contain viewing history
+                        // or any credentials. The trace links retries only.
+                        let elapsed = Int(Date().timeIntervalSince(searchStarted) * 1000)
+                        let hasContract = httpResponse.value(forHTTPHeaderField: "X-Search-Contract") != nil
+                        AppDiagnostics.shared.log("[CatalogSearch] http trace=\(searchTrace) endpoint=\(endpoint) attempt=\(attempt + 1) status=\(httpResponse.statusCode) ms=\(elapsed) bytes=\(data.count) versioned=\(hasContract)")
+                    }
                     // 401 / 403 — ошибка авторизации. Истёкший/отозванный токен либо смена хоста
                     if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                         shouldTryRemoteConfigHealing = true
@@ -451,7 +461,11 @@ class MoviesApi {
                     if currentBase != MoviesApi.activeBaseURL {
                         MoviesApi.activeBaseURL = currentBase
                     }
-                    return try self.decoder.decode(T.self, from: data)
+                    let decoded = try self.decoder.decode(T.self, from: data)
+                    if isCatalogSearch, let envelope = decoded as? ApiEnvelope<MediaResponse>, let page = envelope.data {
+                        AppDiagnostics.shared.log("[CatalogSearch] decoded trace=\(searchTrace) items=\(page.allItems.count) page=\(page.page ?? 1) pages=\(page.effectiveTotalPages) cursor=\(page.nextCursor != nil) corrected=\(page.query?.corrected == true)")
+                    }
+                    return decoded
                 } catch let error as CatalogServerError {
                     throw error
                 } catch let error as NetworkError {
@@ -610,12 +624,13 @@ class MoviesApi {
             queryItems: CatalogSearchRequest.items(query: query, filters: filters, page: page, cursor: cursor))
     }
 
-    func searchSuggestions(query: String) async throws -> [String] {
+    func searchSuggestions(query: String) async throws -> [CatalogSearchSuggestion] {
         let response: ApiEnvelope<SearchSuggestionsResponse> = try await performRequest(
             endpoint: "api/v1/search/suggestions",
             queryItems: [URLQueryItem(name: "query", value: CatalogSearchQuery.text(query)), URLQueryItem(name: "limit", value: "8")])
         guard response.success != false, response.status != "error", let data = response.data else { throw CatalogSearchError.invalidResponse }
-        return (data.suggestions ?? []).map(\.displayTitle) + (data.query?.corrections ?? []).map(\.query)
+        return CatalogSearchSuggestion.unique((data.suggestions ?? []).map { CatalogSearchSuggestion(movie: $0) }
+            + (data.query?.corrections ?? []).map { CatalogSearchSuggestion(completion: $0.query) })
     }
 
     func discoverMovies(filters: SearchFilters, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {

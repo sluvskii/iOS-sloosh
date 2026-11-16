@@ -30,3 +30,18 @@ particular they do not establish which commit currently runs in production or
 how the real upstream handles a typo. See
 [`docs/catalog-search-server-audit.md`](../../docs/catalog-search-server-audit.md)
 for findings and the server implementation/acceptance plan.
+
+## Full-title vs suggestion regression on the merged server
+
+```bash
+node tools/search-audit/run.mjs --full-title
+```
+
+This mode pins the merged server `d6a0b1fb428aff4977ea78dedfa3b995521ddcba`,
+uses the real search/suggestion service and a controlled upstream fixture where
+a franchise query returns a title but its full spelling returns no text hits.
+It demonstrates that the dictionary can offer an exact typed title while title
+search still returns empty (exact keys are excluded from typo candidates).
+It is a reproduction of that gap, NOT proof of live upstream behavior or a
+correctness gate. See `docs/search-full-title-regression.md` for client fixes,
+limits and required device checks. The original audit mode remains unchanged.
