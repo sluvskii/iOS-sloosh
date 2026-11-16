@@ -359,10 +359,19 @@ class MoviesRepository: ObservableObject {
               data.results != nil || data.items != nil else { throw CatalogSearchError.invalidResponse }
         try Task.checkCancellation()
         if data.meta?.contractVersion != nil { return data }
-        let items = data.allItems.filter { CatalogSearchPolicy.matches($0, filters: filters, serverFiltered: query.isEmpty) }
-        return MediaResponse(page: data.page ?? page,
+        var legacyData = data
+        if query.isEmpty, let studio = filters.studio {
+            // During the rollout the old server only understands collection scopes.
+            // A missing contract marker, not an empty result, selects this adapter.
+            let collection = try await MoviesApi.shared.getCollection(id: studio, page: page)
+            guard collection.success != false, collection.status != "error", let value = collection.data,
+                  value.results != nil || value.items != nil else { throw CatalogSearchError.invalidResponse }
+            legacyData = value
+        }
+        let items = legacyData.allItems.filter { CatalogSearchPolicy.matches($0, filters: filters, serverFiltered: query.isEmpty && filters.studio == nil) }
+        return MediaResponse(page: legacyData.page ?? page,
                              results: CatalogSearchPolicy.merge([], items, order: filters.order),
-                             pages: data.effectiveTotalPages)
+                             pages: legacyData.effectiveTotalPages)
     }
 
     // MARK: - Categories, Studios & Collections
