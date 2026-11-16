@@ -11,7 +11,7 @@ final class SearchViewModel: ObservableObject {
     @Published var searchFilters = SearchFilters()
     @Published private(set) var results: [MediaDto] = []
     @Published private(set) var history: [String] = []
-    @Published private(set) var discoveryTitles: [String] = []
+    @Published private(set) var discoveryMovies: [MediaDto] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isAppending = false
     @Published private(set) var error: String?
@@ -25,6 +25,7 @@ final class SearchViewModel: ObservableObject {
     @Published private(set) var originalQuery: String?
     @Published private(set) var insufficientMetadata = 0
     @Published private(set) var serverSuggestions: [CatalogSearchSuggestion] = []
+    @Published var suggestionDestination: CatalogSearchDestination?
     @Published var directPlaybackMovie: MediaDto?
     @Published var playerConfig: PlayerConfig?
 
@@ -88,15 +89,29 @@ final class SearchViewModel: ObservableObject {
 
     var isDiscovery: Bool { CatalogSearchQuery.text(searchQuery).isEmpty && searchFilters.normalized.isEmpty }
     var hasMore: Bool { !isDiscovery && page > 0 && (nextCursor != nil || page < totalPages) }
-    var suggestions: [String] {
-        if !serverSuggestions.isEmpty { return serverSuggestions.map(\.title) }
-        return CatalogSearchQuery.suggestions(for: searchQuery,
-                                       candidates: history + results.prefix(60).flatMap { [$0.title, $0.name, $0.originalTitle].compactMap { $0 } } + discoveryTitles)
+    var catalogSuggestions: [CatalogSearchSuggestion] {
+        let local = (results + discoveryMovies + observedCards).map { CatalogSearchSuggestion(movie: $0) }
+        return CatalogSearchSuggestion.catalogHits(serverSuggestions + local, query: searchQuery)
+    }
+
+    /// Text completions are explicitly labeled as history, never film matches.
+    var historySuggestions: [String] {
+        CatalogSearchQuery.suggestions(for: searchQuery, candidates: history)
     }
     var usesLocalSorting: Bool { !CatalogSearchQuery.text(searchQuery).isEmpty && searchFilters.order != nil || sortScope == "window" }
 
-    func setDiscoveryTitles(_ titles: [String]) {
-        discoveryTitles = Array(titles.prefix(30))
+    func setDiscoveryMovies(_ movies: [MediaDto]) {
+        discoveryMovies = Array(CatalogSearchPolicy.merge([], movies, order: nil).filter { CatalogSearchDestination($0) != nil }.prefix(30))
+        rememberCards(discoveryMovies)
+    }
+
+    func openSuggestion(_ movie: MediaDto) {
+        guard let destination = CatalogSearchDestination(movie) else { return }
+        rememberTitle(movie.displayTitle)
+        // Opening a known project is navigation, NOT query completion. Do not
+        // mutate searchQuery, start a search or replace an existing result page.
+        suggestionDestination = destination
+        diagnostic("[CatalogSearch] open_suggestion typed=true")
     }
 
     func selectHistory(_ query: String) { searchQuery = query }
@@ -283,7 +298,9 @@ final class SearchViewModel: ObservableObject {
                 let suggestions = try await self.fetchSuggestions(query, using: suggestionsLoader)
                 try Task.checkCancellation()
                 guard self.suggestionGeneration == token else { return }
-                self.serverSuggestions = Array(CatalogSearchSuggestion.unique(suggestions).prefix(8))
+                self.serverSuggestions = Array(CatalogSearchSuggestion.unique(suggestions).filter {
+                    $0.movie.flatMap(CatalogSearchDestination.init) != nil
+                }.prefix(8))
                 self.rememberCards(self.serverSuggestions.compactMap(\.movie))
                 self.diagnostic("[CatalogSearch] suggestions generation=\(token) chars=\(query.count) count=\(self.serverSuggestions.count) typed=\(self.serverSuggestions.filter { $0.movie != nil }.count)")
             } catch {

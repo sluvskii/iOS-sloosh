@@ -232,17 +232,17 @@ struct CatalogSearchTests {
             suggestionsLoader: { query in
                 try await withCheckedThrowingContinuation { pendingSuggestions[query] = $0 }
             }, loadPage: { _, _, _ in MediaResponse(results: [], pages: 1, meta: modern.meta) })
-        suggested.searchQuery = "old suggestion"
+        suggested.searchQuery = "старая"
         try await Task.sleep(nanoseconds: 350_000_000)
-        await waitUntil { pendingSuggestions["old suggestion"] != nil }
-        suggested.searchQuery = "new suggestion"
+        await waitUntil { pendingSuggestions["старая"] != nil }
+        suggested.searchQuery = "новая"
         try await Task.sleep(nanoseconds: 350_000_000)
-        await waitUntil { pendingSuggestions["new suggestion"] != nil }
-        pendingSuggestions.removeValue(forKey: "new suggestion")!.resume(returning: [CatalogSearchSuggestion(completion: "Новая подсказка"), CatalogSearchSuggestion(completion: "Новая подсказка")])
+        await waitUntil { pendingSuggestions["новая"] != nil }
+        pendingSuggestions.removeValue(forKey: "новая")!.resume(returning: [CatalogSearchSuggestion(movie: MediaDto(originalId: .string("70001"), title: "Новая подсказка", type: "movie")), CatalogSearchSuggestion(movie: MediaDto(originalId: .string("70001"), title: "Новая подсказка", type: "movie"))])
         await waitUntil { !suggested.serverSuggestions.isEmpty }
-        pendingSuggestions.removeValue(forKey: "old suggestion")!.resume(returning: [CatalogSearchSuggestion(completion: "Устаревшая подсказка")])
+        pendingSuggestions.removeValue(forKey: "старая")!.resume(returning: [CatalogSearchSuggestion(movie: MediaDto(originalId: .string("70002"), title: "Старая подсказка", type: "movie"))])
         for _ in 0..<20 { await Task.yield() }
-        check(suggested.suggestions == ["Новая подсказка"], "Server suggestions deduplicate and fence stale completions")
+        check(suggested.catalogSuggestions.map(\.title) == ["Новая подсказка"], "Server suggestions deduplicate and fence stale completions")
         suggested.searchQuery = ""
         check(suggested.serverSuggestions.isEmpty, "Clearing input synchronously clears server suggestions")
         // Reported device regression: full offered title gives no text hit,
@@ -330,8 +330,48 @@ struct CatalogSearchTests {
         for _ in 0..<30 { await Task.yield() }
         check(recoveryRace.results.first?.artworkIdentifier == series.artworkIdentifier && !recoveryRace.recoveredExactTitle, "Late full-title recovery cannot overwrite a new query")
         recoveryRace.searchQuery = ""
+        // User's actual entry point: film proposals while the field is EMPTY.
+        var discoverySearchCalls = 0
+        let emptyField = SearchViewModel(defaults: defaults, historyScope: "emptyField", debounceNanoseconds: 0) { _, _, _ in
+            discoverySearchCalls += 1
+            return MediaResponse(results: [], pages: 1, meta: modern.meta)
+        }
+        emptyField.setDiscoveryMovies([spider, spiderTv, spiderRemake, spider, MediaDto(title: "Без ID")])
+        check(emptyField.discoveryMovies.count == 3 && emptyField.catalogSuggestions.count == 3, "Empty-field popular film proposals retain typed IDs and separate remakes/movie/TV")
+        check(emptyField.catalogSuggestions.allSatisfy { $0.movie != nil }, "Every empty-field film proposal is a real typed card, not a completion")
+        let emptyDestination = CatalogSearchDestination(spider)!
+        emptyField.openSuggestion(spider)
+        for _ in 0..<20 { await Task.yield() }
+        check(emptyField.suggestionDestination == emptyDestination && emptyField.searchQuery.isEmpty && discoverySearchCalls == 0, "Tapping an empty-field movie navigates immediately without changing query or starting text search")
+        check(emptyField.history == [spider.displayTitle], "Opening a film explicitly remembers its title without completing the search field")
+        emptyField.suggestionDestination = nil
+        emptyField.openSuggestion(spiderTv)
+        check(emptyField.suggestionDestination?.mediaType == "tv" && emptyField.suggestionDestination?.movieId == spiderTv.id, "Same numeric TV ID opens the TV namespace, not the movie")
+        emptyField.suggestionDestination = nil
+        emptyField.searchQuery = spider.displayTitle
+        await emptyField.submit()
+        check(emptyField.results.first?.artworkIdentifier == spider.artworkIdentifier && emptyField.recoveredExactTitle, "Manually submitting a popular full title recovers from typed discovery data even when text search is empty")
+        check(discoverySearchCalls == 1, "Submitting the full title performs one original query and no truncated retries")
+        emptyField.openSuggestion(spiderRemake)
+        check(emptyField.searchQuery == spider.displayTitle && emptyField.results.count == 3 && emptyField.suggestionDestination?.movieId == spiderRemake.id, "Navigation neither overwrites active text/results nor confuses a same-name remake")
+        let noiseResponse = try JSONDecoder().decode(SearchSuggestionsResponse.self, from: Data(#"{"suggestions":[],"query":{"corrections":[{"query":"chelovek-pauk: novyi den"},{"query":"xtkjdtr-gfer: yjdsb ltym"}]}}"#.utf8))
+        check(CatalogSearchSuggestion.fromServer(noiseResponse).isEmpty, "Unverified transliteration and wrong-layout transformations are not user-facing movie suggestions")
+        let validResponse = SearchSuggestionsResponse(suggestions: [spider, spiderTv], query: noiseResponse.query)
+        check(CatalogSearchSuggestion.fromServer(validResponse).count == 2, "Filtering speculative transforms does not hide real typed movie/TV hits")
+        check(CatalogSearchSuggestion.catalogHits([.init(completion: "xtkjdtr-gfer: yjdsb ltym"), .init(movie: spider)], query: "").count == 1, "The UI policy rejects speculative completions even from an injected/legacy adapter")
+        check(CatalogSearchSuggestion.catalogHits([.init(movie: spider)], query: spider.displayTitle).count == 1, "An exact full title remains offered as a typed project, not excluded like a history completion")
+        check(CatalogSearchSuggestion.catalogHits([.init(movie: spider)], query: "Spider-Man: Brand New").count == 1, "Original title prefixes retain their associated typed destination")
+        check(CatalogSearchSuggestion.catalogHits([.init(movie: spider)], query: "Матрица").isEmpty, "Unrelated local popular projects do not leak into typed-query suggestions")
+        check(emptyField.historySuggestions.allSatisfy { !$0.contains("xtkjdtr") && !$0.contains("chelovek") }, "History suggestions contain only actual explicit user actions, never generated transforms")
+        let independent = SearchViewModel(defaults: defaults, historyScope: "independentDiscovery", loadPage: { _, _, _ in MediaResponse() })
+        check(independent.catalogSuggestions.isEmpty && independent.suggestionDestination == nil, "Typed discovery cards and navigation are isolated to the current account VM")
+        let noIdentity = MediaDto(title: "Без ID")
+        independent.openSuggestion(noIdentity)
+        check(independent.suggestionDestination == nil && independent.history.isEmpty, "Invalid catalog identity cannot open guessed details or create history")
         let searchViewSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchView.swift", encoding: .utf8)
-        check(searchViewSource.contains("if let movie = suggestion.movie") && searchViewSource.contains("DetailsView(movieId: movie.id, mediaType: movie.type"), "Typed suggestion UI opens details by ID/type rather than completing the title and searching again")
+        check(searchViewSource.contains("ForEach(viewModel.catalogSuggestions)") && searchViewSource.contains("Button { openMovieSuggestion(movie) }") && searchViewSource.contains(".navigationDestination(item: $viewModel.suggestionDestination)"), "All catalog suggestions use explicit typed navigation, not a nested link or text completion")
+        check(searchViewSource.contains("viewModel.setDiscoveryMovies(items)") && !searchViewSource.contains("setDiscoveryTitles"), "Popular empty-field cards preserve identity and use the same opening action")
+        check(searchViewSource.contains("isPresented: $isSearchPresented") && searchViewSource.contains("isSearchPresented = false"), "Explicit submission and film selection dismiss native suggestion presentation")
         let source = try String(contentsOfFile: "sloosh/Sources/Data/Repositories/MoviesRepository.swift", encoding: .utf8)
         check(!source.contains("filteredResults = rawResults") && !source.contains("filteredResults = studioItems"), "Repository never restores unfiltered data when filters eliminate a page")
         let homeSource = try String(contentsOfFile: "sloosh/Sources/UI/Home/HomeView.swift", encoding: .utf8)

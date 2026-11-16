@@ -346,3 +346,50 @@ enum CatalogExactTitleRecovery {
         }, order: nil)
     }
 }
+
+/// The same destination/action is used by empty-field, local and remote hits.
+/// Raw API ID is preserved; canonical media type prevents numeric namespace loss.
+struct CatalogSearchDestination: Hashable {
+    let movieId: String
+    let mediaType: String
+
+    init?(_ movie: MediaDto) {
+        guard let identity = CatalogArtworkIdentity(id: movie.originalId?.stringValue, type: movie.type),
+              !identity.isKinopoisk, let type = identity.mediaType else { return nil }
+        movieId = movie.id
+        mediaType = type
+    }
+}
+
+extension CatalogSearchSuggestion {
+    /// Only real, typed catalog cards may be presented as film suggestions.
+    /// A transliteration/layout candidate is not evidence that a project exists.
+    static func catalogHits(_ items: [CatalogSearchSuggestion], query: String, limit: Int = 8) -> [CatalogSearchSuggestion] {
+        let needle = CatalogSearchQuery.key(query)
+        func rank(_ value: String) -> Int? {
+            let key = CatalogSearchQuery.key(value)
+            guard !key.isEmpty else { return nil }
+            if needle.isEmpty || key == needle { return 0 }
+            if key.hasPrefix(needle) { return 1 }
+            if key.contains(needle) { return 2 }
+            guard needle.count >= 4, needle.count <= 80 else { return nil }
+            let candidate = key.count > needle.count + 2 ? String(key.prefix(needle.count + 1)) : key
+            let distance = CatalogSearchQuery.editDistance(needle, candidate)
+            return distance <= (needle.count >= 6 ? 2 : 1) ? 3 + distance : nil
+        }
+        return Array(unique(items).enumerated().compactMap { index, item -> (CatalogSearchSuggestion, Int, Int)? in
+            guard let movie = item.movie, CatalogSearchDestination(movie) != nil else { return nil }
+            let ranks = [movie.title, movie.name, movie.originalTitle].compactMap { $0 }.compactMap(rank)
+            guard let best = ranks.min() else { return nil }
+            return (item, best, index)
+        }.sorted { $0.1 == $1.1 ? $0.2 < $1.2 : $0.1 < $1.1 }
+            .prefix(max(0, limit)).map { $0.0 })
+    }
+
+    static func fromServer(_ response: SearchSuggestionsResponse) -> [CatalogSearchSuggestion] {
+        // Do not surface query.corrections: those are unverified transforms,
+        // not catalog hits. Actual server-corrected searches remain disclosed.
+        unique((response.suggestions ?? []).map { CatalogSearchSuggestion(movie: $0) })
+            .filter { $0.movie.flatMap(CatalogSearchDestination.init) != nil }
+    }
+}

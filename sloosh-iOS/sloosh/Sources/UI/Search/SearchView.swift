@@ -16,6 +16,7 @@ struct SearchView: View {
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var showFilters = false
+    @State private var isSearchPresented = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
 
@@ -122,38 +123,46 @@ struct SearchView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $viewModel.searchQuery, prompt: "Название, оригинальное название…")
+            .searchable(text: $viewModel.searchQuery, isPresented: $isSearchPresented, prompt: "Название, оригинальное название…")
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .searchSuggestions {
-                if !viewModel.serverSuggestions.isEmpty {
-                    ForEach(viewModel.serverSuggestions) { suggestion in
-                        if let movie = suggestion.movie {
-                            NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                ForEach(viewModel.catalogSuggestions) { suggestion in
+                    if let movie = suggestion.movie {
+                        Button { openMovieSuggestion(movie) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: movie.type == "tv" ? "tv" : "film")
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(movie.displayTitle)
                                     Text([movie.year?.stringValue, movie.type == "tv" ? "Сериал" : "Фильм"].compactMap { $0 }.joined(separator: " · "))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
-                            .simultaneousGesture(TapGesture().onEnded { viewModel.rememberTitle(movie.displayTitle) })
-                        } else {
-                            Label(suggestion.title, systemImage: "magnifyingglass")
-                                .searchCompletion(suggestion.title)
                         }
+                        .buttonStyle(.plain)
                     }
-                } else {
-                    ForEach(viewModel.suggestions, id: \.self) { suggestion in
-                        Label(suggestion, systemImage: "magnifyingglass")
-                            .searchCompletion(suggestion)
+                }
+                if !viewModel.historySuggestions.isEmpty {
+                    Section("Недавние запросы") {
+                        ForEach(viewModel.historySuggestions, id: \.self) { query in
+                            Label(query, systemImage: "clock")
+                                .searchCompletion(query)
+                        }
                     }
                 }
             }
-            .onSubmit(of: .search) { Task { await viewModel.submit() } }
+            .onSubmit(of: .search) {
+                isSearchPresented = false
+                Task { await viewModel.submit() }
+            }
+            .navigationDestination(item: $viewModel.suggestionDestination) { destination in
+                DetailsView(movieId: destination.movieId, mediaType: destination.mediaType, navigationTransitionID: nil, navigationTransitionNamespace: nil)
+                    .navigationBarBackButtonHidden(true)
+            }
             .safeAreaInset(edge: .top, spacing: 0) { searchContext }
             .task {
                 if let items = try? await MoviesRepository.shared.getPopularMovies(page: 1) {
-                    viewModel.setDiscoveryTitles(items.map(\.displayTitle))
+                    viewModel.setDiscoveryMovies(items)
                 }
             }
             .toolbar {
@@ -203,6 +212,11 @@ struct SearchView: View {
             }
         }
     }
+    private func openMovieSuggestion(_ movie: MediaDto) {
+        isSearchPresented = false
+        viewModel.openSuggestion(movie)
+    }
+
     @ViewBuilder
     private var searchContext: some View {
         if !viewModel.isDiscovery {
