@@ -26,8 +26,17 @@ struct SearchView: View {
     @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var showFilters = false
     @State private var isSearchPresented = false
+    @State private var scrollOffset: CGFloat = 0
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
+
+    private var hasSearchContextChrome: Bool {
+        !viewModel.isDiscovery && (!viewModel.searchFilters.isEmpty || viewModel.resolvedQuery != nil)
+    }
+
+    private var topBlurOpacity: Double {
+        min(1.0, Double(max(0, scrollOffset) / 28.0))
+    }
 
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -48,8 +57,12 @@ struct SearchView: View {
             ZStack {
                 switch screenState {
                 case .discovery:
-                    SearchDiscoveryView(viewModel: viewModel, navigationTransition: navigationTransition)
-                        .transition(.opacity.combined(with: .scale(scale: 0.99)))
+                    SearchDiscoveryView(
+                        viewModel: viewModel,
+                        navigationTransition: navigationTransition,
+                        scrollOffset: $scrollOffset
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.99)))
 
                 case .skeleton:
                     skeletonGrid
@@ -68,11 +81,28 @@ struct SearchView: View {
                         .transition(.opacity)
                 }
             }
+            .overlay(alignment: .top) {
+                if !hasSearchContextChrome {
+                    Color.clear
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 24)
+                        .background(
+                            VariableBlurView(tintColor: Color(UIColor.systemBackground), tintOpacity: 0.92)
+                                .ignoresSafeArea(edges: .top)
+                        )
+                        .opacity(topBlurOpacity)
+                        .animation(.easeInOut(duration: 0.2), value: topBlurOpacity)
+                        .allowsHitTesting(false)
+                }
+            }
             .animation(.spring(response: 0.34, dampingFraction: 0.88), value: screenState)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: viewModel.searchFilters)
+            .onChange(of: screenState) { _, _ in
+                scrollOffset = 0
+            }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $viewModel.searchQuery, isPresented: $isSearchPresented, prompt: "Фильмы, сериалы, мультфильмы…")
+            .searchable(text: $viewModel.searchQuery, isPresented: $isSearchPresented, prompt: "Фильмы и сериалы")
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .onSubmit(of: .search) {
@@ -170,6 +200,7 @@ struct SearchView: View {
             .padding(padding)
         }
         .scrollDisabled(true)
+        .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
     private var resultsGrid: some View {
@@ -219,7 +250,12 @@ struct SearchView: View {
                 .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
         .refreshable {
             await viewModel.performSearch(reset: true)
         }
@@ -286,7 +322,7 @@ struct SearchView: View {
         let hasFilters = !viewModel.searchFilters.isEmpty
         let hasCorrection = viewModel.resolvedQuery != nil
         if !viewModel.isDiscovery && (hasFilters || hasCorrection) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 if hasFilters {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -310,9 +346,10 @@ struct SearchView: View {
                                         .glassForeground()
                                         .padding(.horizontal, 11)
                                         .padding(.vertical, 6)
+                                        .contentShape(.capsule)
                                         .glassEffect(.regular.interactive(), in: .capsule)
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.glassPress)
                                     .accessibilityLabel("Убрать фильтр: \(label)")
                                     .transition(.scale(scale: 0.9).combined(with: .opacity))
                                 }
@@ -329,12 +366,15 @@ struct SearchView: View {
                                     .foregroundStyle(Color.slooshAccent)
                                     .padding(.horizontal, 11)
                                     .padding(.vertical, 6)
+                                    .contentShape(.capsule)
                                     .glassEffect(.regular.interactive(), in: .capsule)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.glassPress)
                         }
                         .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
                     }
+                    .scrollClipDisabled()
                 }
 
                 if let resolved = viewModel.resolvedQuery {
@@ -342,11 +382,12 @@ struct SearchView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
+                        .padding(.top, hasFilters ? 0 : 4)
                         .accessibilityLabel("Уточнённый запрос: \(resolved)")
                 }
             }
-            .padding(.top, 4)
-            .padding(.bottom, 8)
+            .padding(.top, 0)
+            .padding(.bottom, 6)
             .background(
                 VariableBlurView(tintColor: Color(UIColor.systemBackground), tintOpacity: 0.95)
                     .padding(.bottom, -24)
@@ -395,6 +436,7 @@ struct SearchView: View {
 struct SearchDiscoveryView: View {
     @ObservedObject var viewModel: SearchViewModel
     let navigationTransition: Namespace.ID
+    @Binding var scrollOffset: CGFloat
 
     private struct GenreTile: Identifiable {
         let name: String
@@ -426,10 +468,10 @@ struct SearchDiscoveryView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 18) {
                 // 1. Recent queries (single horizontal row, never a wall of pills)
                 if !viewModel.history.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text("Недавние")
                                 .font(.system(size: 18, weight: .bold))
@@ -464,7 +506,7 @@ struct SearchDiscoveryView: View {
                                                     .lineLimit(1)
                                             }
                                         }
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.glassPress)
 
                                         Button {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -477,24 +519,27 @@ struct SearchDiscoveryView: View {
                                                 .foregroundStyle(.secondary)
                                                 .padding(2)
                                         }
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.glassPress)
                                         .accessibilityLabel("Удалить запрос «\(query)» из истории")
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
+                                    .contentShape(Capsule())
                                     .glassEffect(.regular.interactive(), in: Capsule())
                                     .transition(.scale(scale: 0.9).combined(with: .opacity))
                                 }
                             }
                             .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                         }
+                        .scrollClipDisabled()
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 // 2. Trending Cinema Carousel
                 if viewModel.isDiscoveryLoading || !viewModel.discoveryMovies.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Сейчас в тренде")
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(.primary)
@@ -529,12 +574,14 @@ struct SearchDiscoveryView: View {
                                 }
                             }
                             .padding(.horizontal, 16)
+                            .padding(.vertical, 4)
                         }
+                        .scrollClipDisabled()
                     }
                 }
 
                 // 3. Genres 2-Column Cinema Tiles
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Жанры")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
@@ -543,33 +590,37 @@ struct SearchDiscoveryView: View {
                     LazyVGrid(columns: tileColumns, spacing: 10) {
                         ForEach(genreTiles) { tile in
                             NavigationLink(destination: GenreCatalogView(genre: tile.name)) {
-                                HStack(spacing: 10) {
+                                HStack(spacing: 8) {
                                     Image(systemName: tile.icon)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(.system(size: 13.5, weight: .semibold))
                                         .foregroundStyle(Color.slooshAccent)
-                                        .frame(width: 30, height: 30)
+                                        .frame(width: 28, height: 28)
                                         .background(Color.slooshAccent.opacity(0.14), in: Circle())
 
                                     Text(tile.name)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(.primary)
                                         .lineLimit(1)
+                                        .minimumScaleFactor(0.84)
+                                        .allowsTightening(true)
 
                                     Spacer(minLength: 0)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 11)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
-                            .buttonStyle(.cardPress)
+                            .buttonStyle(.glassPress)
                         }
                     }
                     .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
                 }
 
                 // 4. Studios and Streaming Services Horizontal Rail
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Студии и стриминги")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
@@ -597,20 +648,28 @@ struct SearchDiscoveryView: View {
                                     }
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 11)
+                                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
-                                .buttonStyle(.cardPress)
+                                .buttonStyle(.glassPress)
                             }
                         }
                         .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
+                    .scrollClipDisabled()
                 }
             }
             .padding(.top, 12)
-            .padding(.bottom, 32)
+            .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
     }
 }
 

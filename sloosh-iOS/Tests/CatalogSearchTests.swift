@@ -397,6 +397,8 @@ struct CatalogSearchTests {
         check(!searchViewSource.contains(".searchSuggestions {") && searchViewSource.contains("GenreCatalogView") && searchViewSource.contains("StudioCatalogView") && searchViewSource.contains(".navigationDestination(item: $viewModel.suggestionDestination)"), "Discovery uses clean typed navigation without jarring suggestion overlays")
         check(!searchViewSource.contains("insufficientMetadata") && searchViewSource.contains("MoviePosterCardPlaceholder()"), "Search uses poster skeletons and omits internal metadata diagnostics")
         check(!searchViewSource.contains(".ultraThinMaterial") && !searchViewSource.contains("design: .rounded"), "Search UI complies with design system rules")
+        check(searchViewSource.contains(".scrollClipDisabled()") && searchViewSource.contains(".scrollEdgeEffectStyle(.soft, for: .all)") && !searchViewSource.contains(".scrollEdgeEffectStyle(.soft, for: .bottom)"), "Search glass rails disable scroll clipping and use soft edges on all sides")
+        check(!searchViewSource.contains(".buttonStyle(.cardPress)") && searchViewSource.contains(".minimumScaleFactor(0.84)"), "Interactive glass tiles avoid conflicting cardPress scaling and keep genre titles legible")
         let filterSheetSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchFilterSheet.swift", encoding: .utf8)
         check(!filterSheetSource.contains("Button(\"Отмена\")") && !filterSheetSource.contains("pickerStyle(.segmented)"), "Filter sheet uses custom non-truncating type selector and avoids redundant cancel footer")
         let source = try String(contentsOfFile: "sloosh/Sources/Data/Repositories/MoviesRepository.swift", encoding: .utf8)
