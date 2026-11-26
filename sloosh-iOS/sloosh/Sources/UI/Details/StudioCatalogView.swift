@@ -142,19 +142,16 @@ struct StudioCatalogView: View {
                 }
             }
         }
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            SlooshTopBar(
-                title: studioName,
-                scrollOffset: $scrollOffset,
-                leadingAction: { dismiss() }
-            )
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(studioName)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
         }
         .fullWidthSwipeBack()
         .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {

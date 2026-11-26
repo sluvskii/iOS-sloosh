@@ -39,59 +39,37 @@ struct QualitySelectionSheet: View {
             .contentMargins(.horizontal, 20, for: .scrollContent)
             .contentMargins(.top, 16, for: .scrollContent)
             .contentMargins(.bottom, 28, for: .scrollContent)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .safeAreaInset(edge: .bottom) {
                 bottomActionButton
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                headerBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
-                    .background(
-                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                    )
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Закрыть")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("Качество видео")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
             }
             .background(Color.clear)
         }
         .presentationDetents([.fraction(0.48)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
-    }
-    
-    private var headerBar: some View {
-        ZStack {
-            Text("Качество видео")
-                .font(.system(size: 18, weight: .semibold))
-                .backdropForeground()
-                .lineLimit(1)
-                .frame(maxWidth: 220)
-            
-            HStack {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .glassForeground()
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Закрыть")
-                
-                Spacer()
-                
-                Color.clear
-                    .frame(width: 44, height: 44)
-            }
-        }
     }
     
     private var qualitySection: some View {

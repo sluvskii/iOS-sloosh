@@ -75,9 +75,6 @@ public struct UserProfileDetailView: View {
             // Main Scrollable Content
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
-                    // Spacer for top safe area bar
-                    Color.clear.frame(height: 52)
-
                     // 1. Clean Hero Header (Direct on background, no artificial glass podlozhka, no glows)
                     heroHeaderView
 
@@ -90,11 +87,12 @@ public struct UserProfileDetailView: View {
                     // 4. Тир-листы автора
                     authorTierListsSection
                 }
+                .padding(.top, 8)
                 .padding(.horizontal, contentPadding)
                 .padding(.bottom, 100)
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y
+                geometry.contentOffset.y + geometry.contentInsets.top
             } action: { _, newOffset in
                 scrollOffsetY = newOffset
             }
@@ -111,14 +109,20 @@ public struct UserProfileDetailView: View {
                 self.livePresence = freshPresence
                 self.authorClips = freshClips
             }
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .scrollEdgeEffectStyle(.soft, for: .all)
         }
-        .ignoresSafeArea(edges: .top)
-        .hideNavigationBarWithRestore()
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(user.displayTitle)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .opacity(navBarBlurOpacity)
+            }
+        }
         .fullWidthSwipeBack()
-        .safeAreaInset(edge: .top, spacing: 0) {
-            topNavBarView
-        }
         .task {
             // 1. Fetch fresh user profile
             if let fresh = await repo.fetchUser(userId: user.id) {
@@ -208,28 +212,6 @@ public struct UserProfileDetailView: View {
         }
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
-    }
-
-    // MARK: - Top Navigation Bar (Clean Back Button Only, No Share)
-
-    private var topNavBarView: some View {
-        HStack {
-            TelegramGlassIconButton(systemName: "chevron.left") {
-                dismiss()
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .background(
-            VariableBlurView(tintColor: .black, tintOpacity: 0.88)
-                .padding(.bottom, -30)
-                .ignoresSafeArea(edges: .top)
-                .opacity(navBarBlurOpacity)
-                .animation(.easeInOut(duration: 0.2), value: navBarBlurOpacity)
-                .allowsHitTesting(false)
-        )
     }
 
     // MARK: - Hero Header View (Clean, Direct on Dark Background)

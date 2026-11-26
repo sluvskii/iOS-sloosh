@@ -90,9 +90,56 @@ public struct AdminDashboardView: View {
                     }
                 }
             ))
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                customTopHeader
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task {
+                            if selectedTab == .tierTemplates {
+                                _ = await TierListsRepository.shared.fetchTemplates(force: true)
+                            } else {
+                                await repo.fetchOverviewStats()
+                                await commentsRepo.fetchReports()
+                            }
+                        }
+                    } label: {
+                        if repo.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundStyle(.primary)
+                                .glassForeground()
+                        }
+                    }
+                    .accessibilityLabel("Обновить")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("Панель управления")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Закрыть")
+                }
+            }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                tabSelector
+                    .padding(.top, 2)
+                    .padding(.bottom, 4)
             }
             .sheet(item: $selectedUserForDetails) { user in
                 AdminUserDetailSheet(user: user)
@@ -146,57 +193,6 @@ public struct AdminDashboardView: View {
         case .diagnostics:
             diagnosticsTab
         }
-    }
-
-    // MARK: - Custom Top Header (Liquid Glass & Progressive Variable Blur)
-
-    private var customTopHeader: some View {
-        VStack(spacing: 12) {
-            // Header Bar (Title & Actions)
-            ZStack {
-                Text("Панель управления")
-                    .font(.system(size: 18, weight: .semibold))
-                    .backdropForeground()
-                    .allowsHitTesting(false)
-
-                HStack {
-                    // Refresh Button (44x44 TelegramGlassIconButton)
-                    AdminRefreshButton(repo: repo) {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Task {
-                            if selectedTab == .tierTemplates {
-                                _ = await TierListsRepository.shared.fetchTemplates(force: true)
-                            } else {
-                                await repo.fetchOverviewStats()
-                                await commentsRepo.fetchReports()
-                            }
-                        }
-                    }
-
-                    Spacer()
-
-                    // Close Button (44x44 TelegramGlassIconButton)
-                    TelegramGlassIconButton(systemName: "xmark", iconSize: 17, buttonSize: 44) {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        dismiss()
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-
-            // Category Text Tabs
-            tabSelector
-                .padding(.bottom, 4)
-        }
-        .padding(.bottom, 2)
-        .background(
-            VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                .padding(.bottom, -30)
-                .ignoresSafeArea(edges: .top)
-                .opacity(blurOpacity)
-                .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-        )
     }
 
     // MARK: - Native Liquid Glass Text Tab Selector (Matching HomeView)
@@ -292,7 +288,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -794,7 +790,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -997,7 +993,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -1361,7 +1357,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -1600,6 +1596,8 @@ public struct AdminDashboardView: View {
             .padding(.top, 12)
             .padding(.bottom, 24)
         }
+        .scrollContentBackground(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
     private func artworkSearchResultRow(_ media: MediaDto) -> some View {
@@ -1925,7 +1923,7 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { _, newOffset in
@@ -2051,11 +2049,7 @@ private struct AdminUserDetailSheet: View {
                 .padding(.bottom, 32)
             }
             .scrollContentBackground(.hidden)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationTitle("Профиль пользователя")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

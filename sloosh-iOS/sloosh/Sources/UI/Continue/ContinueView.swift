@@ -61,24 +61,21 @@ struct ContinueView: View {
                         .padding(.vertical, 12)
                     }
                     .scrollIndicators(.hidden)
-                    .scrollEdgeEffectStyle(.soft, for: .bottom)
+                    .scrollEdgeEffectStyle(.soft, for: .all)
                     .refreshable {
                         await CloudSyncService.shared.syncAllDataAsync(force: true)
                         await viewModel.reload(forceMetadataRefresh: true)
                     }
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { _, newOffset in
-                        scrollOffset = newOffset
-                    }
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                SlooshTopBar(
-                    title: "Продолжить",
-                    scrollOffset: $scrollOffset
-                )
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Продолжить")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
             }
             .overlay {
                 if viewModel.isLoading && viewModel.items.isEmpty {

@@ -34,21 +34,24 @@ struct ProfileView: View {
     @State private var showMyProfile = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
-    @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
     @State private var directPlaybackMovie: MediaDto?
     @State private var pendingPlayerConfig: PlayerConfig?
     @State private var playerConfig: PlayerConfig?
-    
+
+    private var profileHeaderTitle: String {
+        if authRepo.isAuthenticated {
+            if let tag = authRepo.currentUser?.displayTag, !tag.isEmpty {
+                return tag
+            }
+            return authRepo.currentUser?.displayTitle ?? "Профиль"
+        }
+        return "Профиль"
+    }
+
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
         let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
         return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
-    }
-
-    private var blurOpacity: Double {
-        let offset = scrollOffsets[selectedCategory] ?? 0
-        let progress = max(0, offset) / 30.0
-        return min(1.0, Double(progress))
     }
 
     private func favorites(for category: FavoriteCategory) -> [FavoriteDto] {
@@ -94,11 +97,7 @@ struct ProfileView: View {
                             navigationTransition: navigationTransition,
                             columns: columns,
                             cardDensity: cardDensity,
-                            directPlaybackMovie: $directPlaybackMovie,
-                            scrollOffset: Binding(
-                                get: { scrollOffsets[category] ?? 0 },
-                                set: { scrollOffsets[category] = $0 }
-                            )
+                            directPlaybackMovie: $directPlaybackMovie
                         )
                         .containerRelativeFrame(.horizontal)
                     }
@@ -114,88 +113,72 @@ struct ProfileView: View {
                     }
                 }
             ))
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 8) {
-                    // Header Bar
-                    ZStack {
-                        Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTag.isEmpty == false ? authRepo.currentUser!.displayTag : authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
-                            .font(.system(size: 18, weight: .semibold))
-                            .backdropForeground()
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .padding(.horizontal, 108)
-
-                        HStack {
-                            // Left Avatar / Sign-In Button
-                            HStack(spacing: 8) {
-                                avatarHeaderButton
-                                TelegramGlassIconButton(systemName: "list.star", iconSize: 19) {
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    showsTierLists = true
-                                }
-                                .accessibilityLabel("Тир-листы")
-                            }
-
-                            Spacer()
-
-                            // Двойная капсула: Загрузки + Настройки
-                            HStack(spacing: 0) {
-
-                                Button {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    showsDownloads = true
-                                } label: {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .font(.system(size: 21, weight: .medium))
-                                        .foregroundStyle(.primary)
-                                        .glassForeground()
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Загрузки")
-
-                                Button {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    showsSettings = true
-                                } label: {
-                                    Image(systemName: "gearshape.fill")
-                                        .font(.system(size: 20, weight: .medium))
-                                        .foregroundStyle(.primary)
-                                        .glassForeground()
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Настройки")
-                            }
-                            .padding(.horizontal, 2)
-                            .frame(height: 44)
-                            .clipShape(Capsule())
-                            .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-
-                    // Category Tabs
-                    ProfileCategoryTextTabs(
-                        selectedCategory: $selectedCategory,
-                        categoryCounts: categoryCounts
-                    )
-                    .padding(.bottom, 2)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    avatarHeaderButton
                 }
-                .background(
-                    VariableBlurView(tintOpacity: 1.0)
-                        .padding(.bottom, -60)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(blurOpacity)
-                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                .sharedBackgroundVisibility(authRepo.isAuthenticated ? .hidden : .automatic)
+
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showsTierLists = true
+                    } label: {
+                        Image(systemName: "list.star")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Тир-листы")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text(profileHeaderTitle)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        showsDownloads = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Загрузки")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        showsSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Настройки")
+                }
+            }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                ProfileCategoryTextTabs(
+                    selectedCategory: $selectedCategory,
+                    categoryCounts: categoryCounts
                 )
+                .padding(.top, 2)
+                .padding(.bottom, 4)
             }
             .navigationDestination(isPresented: $showsDownloads) {
                 DownloadsView()
@@ -365,12 +348,10 @@ private struct ProfileAvatarButton: View {
 
     var body: some View {
         if isAuthenticated {
-            SlooshAvatarView(userProfile: user, size: 38)
-                .frame(width: 38, height: 38)
-                .glassEffect(.regular.interactive(), in: Circle())
+            SlooshAvatarView(userProfile: user, size: 36)
+                .frame(width: 36, height: 36)
                 .clipShape(Circle())
                 .contentShape(Circle())
-                .contentShape(.contextMenuPreview, Circle())
         } else {
             signInButton
         }
@@ -380,9 +361,6 @@ private struct ProfileAvatarButton: View {
         Text("Войти")
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color.slooshAccent)
-            .padding(.horizontal, 18)
-            .frame(height: 44)
-            .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 
@@ -394,7 +372,6 @@ struct ProfileCategoryContentView: View {
     let columns: [GridItem]
     let cardDensity: CardDensity
     @Binding var directPlaybackMovie: MediaDto?
-    @Binding var scrollOffset: CGFloat
 
     var body: some View {
         ScrollView {
@@ -450,15 +427,10 @@ struct ProfileCategoryContentView: View {
             }
             .padding(.bottom, 16)
         }
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .vertical)
         .refreshable {
             await CloudSyncService.shared.syncAllDataAsync(force: true)
             favoritesRepo.reloadFromDb()
-        }
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
         }
     }
 }

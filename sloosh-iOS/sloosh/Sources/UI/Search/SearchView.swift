@@ -81,25 +81,8 @@ struct SearchView: View {
                         .transition(.opacity)
                 }
             }
-            .overlay(alignment: .top) {
-                if !hasSearchContextChrome {
-                    Color.clear
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 24)
-                        .background(
-                            VariableBlurView(tintColor: Color(UIColor.systemBackground), tintOpacity: 0.92)
-                                .ignoresSafeArea(edges: .top)
-                        )
-                        .opacity(topBlurOpacity)
-                        .animation(.easeInOut(duration: 0.2), value: topBlurOpacity)
-                        .allowsHitTesting(false)
-                }
-            }
             .animation(.spring(response: 0.34, dampingFraction: 0.88), value: screenState)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: viewModel.searchFilters)
-            .onChange(of: screenState) { _, _ in
-                scrollOffset = 0
-            }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $viewModel.searchQuery, isPresented: $isSearchPresented, prompt: "Фильмы и сериалы")
@@ -114,7 +97,7 @@ struct SearchView: View {
                 DetailsView(movieId: destination.movieId, mediaType: destination.mediaType, navigationTransitionID: nil, navigationTransitionNamespace: nil)
                     .navigationBarBackButtonHidden(true)
             }
-            .safeAreaInset(edge: .top, spacing: 0) { searchContext }
+            .safeAreaBar(edge: .top, spacing: 0) { searchContext }
             .task {
                 guard viewModel.discoveryMovies.isEmpty else { return }
                 viewModel.setDiscoveryLoading(true)
@@ -386,14 +369,8 @@ struct SearchView: View {
                         .accessibilityLabel("Уточнённый запрос: \(resolved)")
                 }
             }
-            .padding(.top, 0)
+            .padding(.top, 2)
             .padding(.bottom, 6)
-            .background(
-                VariableBlurView(tintColor: Color(UIColor.systemBackground), tintOpacity: 0.95)
-                    .padding(.bottom, -24)
-                    .ignoresSafeArea(edges: .top)
-                    .allowsHitTesting(false)
-            )
             .transition(.move(edge: .top).combined(with: .opacity))
         }
     }

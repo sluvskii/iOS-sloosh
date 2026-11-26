@@ -179,29 +179,25 @@ public struct ChannelInfoView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            SlooshTopBar(
-                title: "Информация",
-                scrollOffset: $scrollOffset,
-                leadingAction: { dismiss() },
-                tintColor: Color(UIColor.systemGroupedBackground),
-                topPadding: 8,
-                bottomPadding: 4,
-                trailing: {
-                    if isOwner {
-                        SlooshGlassTextButton(title: "Изм.") {
-                            showEditSheet = true
-                        }
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Информация")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            if isOwner {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Изм.") {
+                        showEditSheet = true
                     }
+                    .foregroundStyle(.primary)
+                    .glassForeground()
                 }
-            )
+            }
         }
         .sheet(isPresented: $showEditSheet) {
             EditChannelSheet(channel: currentChannel) { updated in
@@ -351,11 +347,7 @@ public struct EditChannelSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationTitle("Настройки канала")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

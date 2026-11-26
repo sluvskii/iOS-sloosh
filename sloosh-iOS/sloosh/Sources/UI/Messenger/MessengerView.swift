@@ -44,29 +44,30 @@ public struct MessengerView: View {
                 )
             } else {
                 conversationList
+                    .searchable(text: $searchQuery, prompt: "Имя, @тег или сообщение")
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            SlooshTopBar(
-                title: "Чаты",
-                scrollOffset: $scrollOffset,
-                leadingAction: { dismiss() },
-                showsBottom: authRepo.isAuthenticated,
-                trailing: {
-                    if authRepo.isAuthenticated {
-                        TelegramGlassIconButton(systemName: "square.and.pencil") {
-                            showNewChatSheet = true
-                        }
-                        .accessibilityLabel("Новое сообщение")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Чаты")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            if authRepo.isAuthenticated {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showNewChatSheet = true
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
                     }
-                },
-                bottom: {
-                    SlooshSearchField(text: $searchQuery, prompt: "Имя, @тег или сообщение")
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
+                    .accessibilityLabel("Новое сообщение")
                 }
-            )
+            }
         }
         .navigationDestination(item: $selectedPeerUser) { peer in
             ChatDetailView(peerUser: peer)
@@ -175,10 +176,7 @@ public struct MessengerView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
-            scrollOffset = offset
-        }
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .refreshable { await repo.fetchConversations() }
     }
 
@@ -373,55 +371,62 @@ private struct NewChatSheet: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.clear.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    if isSearching { ProgressView().padding(16) }
-                    if query.isEmpty && !displayedUsers.isEmpty {
-                        Text("Недавние собеседники")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
+        NavigationStack {
+            ZStack {
+                Color.clear.ignoresSafeArea()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if isSearching { ProgressView().padding(16) }
+                        if query.isEmpty && !displayedUsers.isEmpty {
+                            Text("Недавние собеседники")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                        }
+                        ForEach(displayedUsers) { user in
+                            Button {
+                                onSelectUser(user)
+                                dismiss()
+                            } label: { MessengerUserRow(user: user) }
+                                .buttonStyle(PeakPressButtonStyle())
+                            PeakDivider().padding(.leading, 86)
+                        }
                     }
-                    ForEach(displayedUsers) { user in
-                        Button {
-                            onSelectUser(user)
-                            dismiss()
-                        } label: { MessengerUserRow(user: user) }
-                            .buttonStyle(PeakPressButtonStyle())
-                        PeakDivider().padding(.leading, 86)
+                }
+                .overlay {
+                    if displayedUsers.isEmpty && !isSearching {
+                        AppEmptyStateView(
+                            icon: query.isEmpty ? "square.and.pencil" : "magnifyingglass",
+                            title: query.isEmpty ? "Кому напишем?" : "Пользователь не найден",
+                            description: query.isEmpty ? "Введите имя или @тег в поиске." : "Проверьте имя или @тег и попробуйте ещё раз."
+                        )
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .all)
             }
-            .overlay {
-                if displayedUsers.isEmpty && !isSearching {
-                    AppEmptyStateView(
-                        icon: query.isEmpty ? "square.and.pencil" : "magnifyingglass",
-                        title: query.isEmpty ? "Кому напишем?" : "Пользователь не найден",
-                        description: query.isEmpty ? "Введите имя или @тег в поиске." : "Проверьте имя или @тег и попробуйте ещё раз."
-                    )
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Имя или @тег")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Закрыть")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("Новое сообщение")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
                 }
             }
-            .scrollDismissesKeyboard(.interactively)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
-                scrollOffset = offset
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            SlooshTopBar(
-                title: "Новое сообщение", scrollOffset: $scrollOffset,
-                leadingIcon: "xmark", leadingAction: { dismiss() },
-                tintColor: .clear, topPadding: 8, bottomPadding: 4, blurOverflow: -30,
-                trailing: { EmptyView() },
-                bottom: {
-                    SlooshSearchField(text: $searchText, prompt: "Имя или @тег")
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                }
-            )
         }
         .task(id: query.text) { await searchPeople() }
         .presentationDetents([.large])

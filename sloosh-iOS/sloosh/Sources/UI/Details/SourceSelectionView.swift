@@ -184,17 +184,47 @@ struct SourceSelectionView: View {
                     .allowsHitTesting(isSelectingQuality)
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isSelectingQuality)
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                headerBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
-                    .background(
-                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                    )
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if isSelectingQuality {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                isSelectingQuality = false
+                            }
+                        } else {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: isSelectingQuality ? "chevron.left" : "xmark")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .accessibilityLabel(isSelectingQuality ? "Назад" : "Закрыть")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    if isSelectingQuality {
+                        Text("Качество видео")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .transition(.opacity)
+                    } else {
+                        headerTitleOrLogoView
+                            .transition(.opacity)
+                    }
+                }
+
+                if !isSelectingQuality {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        sourceCornerButton
+                            .transition(.opacity)
+                    }
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
@@ -202,57 +232,6 @@ struct SourceSelectionView: View {
         .presentationDetents([.fraction(0.62)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
-    }
-
-    private var headerBar: some View {
-        ZStack {
-            if isSelectingQuality {
-                Text("Качество видео")
-                    .font(.system(size: 18, weight: .semibold))
-                    .backdropForeground()
-                    .lineLimit(1)
-                    .frame(maxWidth: 220)
-                    .transition(.opacity)
-            } else {
-                headerTitleOrLogoView
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            }
-
-            HStack {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if isSelectingQuality {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            isSelectingQuality = false
-                        }
-                    } else {
-                        dismiss()
-                    }
-                } label: {
-                    Image(systemName: isSelectingQuality ? "chevron.left" : "xmark")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .glassForeground()
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel(isSelectingQuality ? "Назад" : "Закрыть")
-
-                Spacer()
-
-                if isSelectingQuality {
-                    Color.clear
-                        .frame(width: 44, height: 44)
-                } else {
-                    sourceCornerButton
-                        .transition(.opacity)
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -304,15 +283,11 @@ struct SourceSelectionView: View {
         } label: {
             Image(systemName: "server.rack")
                 .renderingMode(.template)
-                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Color.primary)
                 .glassForeground()
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
         }
         .tint(Color.primary)
         .foregroundStyle(Color.primary)
-        .glassEffect(.regular.interactive(), in: .circle)
         .disabled(isLoading)
         .opacity(isLoading ? 0.45 : 1.0)
     }
@@ -340,7 +315,7 @@ struct SourceSelectionView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
@@ -479,7 +454,7 @@ struct SourceSelectionView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
@@ -1107,7 +1082,7 @@ struct SingleSourceContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)

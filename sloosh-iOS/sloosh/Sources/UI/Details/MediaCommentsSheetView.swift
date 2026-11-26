@@ -84,52 +84,85 @@ struct MediaCommentsSheetView: View {
     }
 
     var body: some View {
-        ZStack {
-            if isLoading && comments.isEmpty {
-                ProgressView()
-                    .tint(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if comments.isEmpty {
-                statusStateView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 18) {
-                        ForEach(sortedComments) { comment in
-                            commentRow(comment)
+        NavigationStack {
+            ZStack {
+                if isLoading && comments.isEmpty {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if comments.isEmpty {
+                    statusStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 18) {
+                            ForEach(sortedComments) { comment in
+                                commentRow(comment)
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 16)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 16)
+                    .scrollDismissesKeyboard(.interactively)
+                    .scrollEdgeEffectStyle(.soft, for: .all)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newOffset in
-                    scrollOffset = newOffset
+            }
+            .safeAreaInset(edge: .bottom) {
+                composerBar
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Закрыть")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text(comments.isEmpty ? "Комментарии" : "Комментарии (\(comments.count))")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .contentTransition(.numericText())
+                }
+
+                if comments.count > 1 {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            ForEach(MediaCommentSort.allCases) { option in
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        sort = option
+                                    }
+                                } label: {
+                                    if sort == option {
+                                        Label(option.title, systemImage: "checkmark")
+                                    } else {
+                                        Text(option.title)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .foregroundStyle(.primary)
+                                .glassForeground()
+                        }
+                        .accessibilityLabel("Сортировка")
+                    }
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            headerBar
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-                .background(
-                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                        .padding(.bottom, -30)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(blurOpacity)
-                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                )
-        }
-        .safeAreaInset(edge: .bottom) {
-            composerBar
-        }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
         .presentationDetents([.fraction(0.65), .large], selection: $sheetDetent)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
@@ -195,68 +228,6 @@ struct MediaCommentsSheetView: View {
     }
 
     @State private var sheetDetent: PresentationDetent = .fraction(0.65)
-
-    // MARK: - Header Bar
-
-    @ViewBuilder
-    private var headerBar: some View {
-        ZStack {
-            Text(comments.isEmpty ? "Комментарии" : "Комментарии (\(comments.count))")
-                .font(.system(size: 18, weight: .semibold))
-                .backdropForeground()
-                .lineLimit(1)
-                .frame(maxWidth: 240)
-                .contentTransition(.numericText())
-
-            HStack {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .glassForeground()
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Закрыть")
-
-                Spacer()
-
-                if comments.count > 1 {
-                    Menu {
-                        ForEach(MediaCommentSort.allCases) { option in
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    sort = option
-                                }
-                            } label: {
-                                if sort == option {
-                                    Label(option.title, systemImage: "checkmark")
-                                } else {
-                                    Text(option.title)
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .glassForeground()
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.glassPress)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .accessibilityLabel("Сортировка")
-                }
-            }
-        }
-    }
 
     // MARK: - Empty / Error State
 

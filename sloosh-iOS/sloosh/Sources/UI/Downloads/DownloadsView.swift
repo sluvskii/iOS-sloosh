@@ -59,15 +59,9 @@ struct DownloadsView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
-    @State private var scrollOffset: CGFloat = 0
     @State private var isExporting: Bool = false
     @State private var exportingTitle: String = ""
     @Environment(\.dismiss) private var dismiss
-    
-    private var blurOpacity: Double {
-        let progress = max(0, scrollOffset) / 30.0
-        return min(1.0, Double(progress))
-    }
     
     private var listItems: [DownloadItem] {
         downloadManager.downloads.filter { item in
@@ -109,40 +103,13 @@ struct DownloadsView: View {
                     }
                     .listStyle(.plain)
                     .scrollIndicators(.hidden)
-                    .scrollEdgeEffectStyle(.soft, for: .bottom)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { oldOffset, newOffset in
-                        scrollOffset = newOffset
-                    }
+                    .scrollEdgeEffectStyle(.soft, for: .all)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 8) {
-                    ZStack {
-                        Text("Загрузки")
-                            .font(.system(size: 18, weight: .semibold))
-                            .backdropForeground()
-
-                        HStack {
-                            TelegramGlassIconButton(systemName: "chevron.left") {
-                                dismiss()
-                            }
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal, 16)
-
-                    DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
-                        .padding(.bottom, 2)
-                }
-                .background(
-                    VariableBlurView(tintOpacity: 1.0)
-                        .padding(.bottom, -60)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(blurOpacity)
-                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                )
+            .safeAreaBar(edge: .top, spacing: 0) {
+                DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
+                    .padding(.top, 2)
+                    .padding(.bottom, 4)
             }
             
             if isExporting {
@@ -178,8 +145,15 @@ struct DownloadsView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isExporting)
-        .navigationTitle("Загрузки")
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Загрузки")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+        }
         .background(Color(UIColor.systemBackground))
         .onAppear {
             downloadManager.recalculateDiskSizesInBackground()

@@ -356,36 +356,13 @@ struct SettingsView: View {
             }
         }
         .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            ZStack {
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
                 Text("Настройки")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.primary)
-                
-                HStack {
-                    TelegramGlassIconButton(systemName: "chevron.left") {
-                        dismiss()
-                    }
-                    
-                    Spacer()
-                }
-            }
-            .padding(.horizontal, 16)
-            .background(
-                VariableBlurView(tintOpacity: 1.0)
-                    .padding(.bottom, -60)
-                    .ignoresSafeArea(edges: .top)
-                    .opacity(blurOpacity)
-                    .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-            )
-        }
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { oldOffset, newOffset in
-            let shouldUpdate = (newOffset >= 0 && newOffset <= 35) || (oldOffset >= 0 && oldOffset <= 35) || (oldOffset < 0 && newOffset >= 0) || (oldOffset > 35 && newOffset <= 35)
-            if shouldUpdate {
-                scrollOffset = newOffset
             }
         }
         .scrollEdgeEffectStyle(.soft, for: .all)

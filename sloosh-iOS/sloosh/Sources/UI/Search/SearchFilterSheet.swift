@@ -86,24 +86,46 @@ struct SearchFilterSheet: View {
             .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
             .scrollBounceBehavior(.basedOnSize)
             .scrollEdgeEffectStyle(.soft, for: .all)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, newOffset in
-                scrollOffset = newOffset
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                headerBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 6)
-                    .background(
-                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                            .opacity(blurOpacity)
-                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                    )
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                            draft = SearchFilters()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .foregroundStyle(draft.isEmpty ? Color.secondary.opacity(0.45) : Color.primary)
+                            .glassForeground(isEnabled: !draft.isEmpty)
+                    }
+                    .disabled(draft.isEmpty)
+                    .accessibilityLabel("Сбросить фильтры")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text("Фильтры")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        filters = draft.normalized
+                        dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(hasPendingChanges ? Color.slooshAccent : Color.primary)
+                            .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: hasPendingChanges ? Color.slooshAccent : .primary))
+                    }
+                    .tint(hasPendingChanges ? Color.slooshAccent : .primary)
+                    .accessibilityLabel("Применить фильтры")
+                }
             }
             .background(Color.clear)
         }
@@ -111,58 +133,6 @@ struct SearchFilterSheet: View {
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
         .sensoryFeedback(.selection, trigger: draft.type)
-    }
-
-    // MARK: - Header Bar
-
-    private var headerBar: some View {
-        ZStack {
-            Text("Фильтры")
-                .font(.system(size: 18, weight: .semibold))
-                .backdropForeground()
-                .lineLimit(1)
-                .frame(maxWidth: 200)
-
-            HStack {
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                        draft = SearchFilters()
-                    }
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(draft.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
-                        .glassForeground(isEnabled: !draft.isEmpty)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .disabled(draft.isEmpty)
-                .accessibilityLabel("Сбросить фильтры")
-
-                Spacer()
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    filters = draft.normalized
-                    dismiss()
-                } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(hasPendingChanges ? Color.slooshAccent : Color.primary)
-                        .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: hasPendingChanges ? Color.slooshAccent : .primary))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Применить фильтры")
-            }
-        }
     }
 
     // MARK: - Content Type Sliding Pill Bar (Zero Truncation)

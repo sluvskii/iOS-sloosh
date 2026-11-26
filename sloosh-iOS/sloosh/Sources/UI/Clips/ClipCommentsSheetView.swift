@@ -57,55 +57,61 @@ public struct ClipCommentsSheetView: View {
     }
 
     public var body: some View {
-        ZStack {
-            if isLoading {
-                ProgressView()
-                    .tint(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if comments.isEmpty {
-                emptyStateView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        ForEach(comments) { comment in
-                            commentRow(comment)
+        NavigationStack {
+            ZStack {
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if comments.isEmpty {
+                    emptyStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 16) {
+                            ForEach(comments) { comment in
+                                commentRow(comment)
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 16)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 16)
+                    .scrollDismissesKeyboard(.interactively)
+                    .scrollEdgeEffectStyle(.soft, for: .all)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newOffset in
-                    scrollOffset = newOffset
+            }
+            .safeAreaInset(edge: .bottom) {
+                inputBar
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .accessibilityLabel("Закрыть")
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Text(comments.isEmpty ? "Комментарии" : "Комментарии (\(comments.count))")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .contentTransition(.numericText())
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            headerBar
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
-                .background(
-                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                        .padding(.bottom, -30)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(blurOpacity)
-                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                )
-        }
-        .safeAreaInset(edge: .bottom) {
-            inputBar
-        }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
         .presentationDetents([.fraction(0.65)], selection: $sheetDetent)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
@@ -123,38 +129,6 @@ public struct ClipCommentsSheetView: View {
                 authRepo.signOut()
             }
             Button("Отмена", role: .cancel) {}
-        }
-    }
-
-    // MARK: - Header Bar (Styled like SourceSelectionView)
-
-    private var headerBar: some View {
-        ZStack {
-            Text(comments.isEmpty ? "Комментарии" : "Комментарии (\(comments.count))")
-                .font(.system(size: 18, weight: .semibold))
-                .backdropForeground()
-                .lineLimit(1)
-                .frame(maxWidth: 240)
-                .contentTransition(.numericText())
-
-            HStack {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .glassForeground()
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Закрыть")
-
-                Spacer()
-            }
         }
     }
 

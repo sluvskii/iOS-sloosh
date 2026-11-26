@@ -45,9 +45,56 @@ public struct ChatDetailView: View {
                     inputBar
                 }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            headerBar
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button {
+                    isShowingInfo = true
+                } label: {
+                    VStack(spacing: 1) {
+                        Text(peerUser.displayTitle)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        if isPeerTyping {
+                            Text("печатает…")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .transition(.opacity)
+                        } else {
+                            let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                            let lastSeen = livePresence.lastSeenMs ?? peerUser.lastSeenMs
+                            Text(PresenceFormatter.formatLastSeen(isOnlineFlag: online, lastSeenMs: lastSeen))
+                                .font(.system(size: 12, weight: online ? .medium : .regular))
+                                .foregroundStyle(online ? .primary : .secondary)
+                                .lineLimit(1)
+                                .transition(.opacity)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Открыть профиль собеседника")
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingInfo = true
+                } label: {
+                    let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                    SlooshAvatarView(
+                        avatarSource: peerUser.avatarUrl,
+                        fallbackText: peerUser.displayTitle,
+                        size: 34,
+                        showOnline: true,
+                        isOnline: online
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Профиль: \(peerUser.displayTitle)")
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
         .toolbarVisibility(.hidden, for: .tabBar)
         .navigationDestination(isPresented: $isShowingInfo) {
@@ -127,63 +174,6 @@ public struct ChatDetailView: View {
         .tint(Color.primary)
     }
 
-    // MARK: - Custom Header
-
-    private var headerBar: some View {
-        SlooshTopBar(
-            scrollOffset: $scrollOffset,
-            leadingAction: { dismiss() },
-            titleView: AnyView(
-                Button {
-                    isShowingInfo = true
-                } label: {
-                    VStack(spacing: 1) {
-                        Text(peerUser.displayTitle)
-                            .font(.system(size: 16, weight: .semibold))
-                            .backdropForeground()
-                            .lineLimit(1)
-
-                        if isPeerTyping {
-                            Text("печатает…")
-                                .font(.system(size: 12, weight: .medium))
-                                .backdropForeground(opacity: 0.65)
-                                .transition(.opacity)
-                        } else {
-                            let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
-                            let lastSeen = livePresence.lastSeenMs ?? peerUser.lastSeenMs
-                            Text(PresenceFormatter.formatLastSeen(isOnlineFlag: online, lastSeenMs: lastSeen))
-                                .font(.system(size: 12, weight: online ? .medium : .regular))
-                                .backdropForeground(opacity: online ? 0.9 : 0.65)
-                                .lineLimit(1)
-                                .transition(.opacity)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Открыть профиль собеседника")
-            ),
-            tintColor: Color(UIColor.systemGroupedBackground),
-            titleMaxWidth: 180,
-            showsBottom: false,
-            trailing: {
-                Button { isShowingInfo = true } label: {
-                    let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
-                    SlooshAvatarView(
-                        avatarSource: peerUser.avatarUrl,
-                        fallbackText: peerUser.displayTitle,
-                        size: 36, showOnline: true, isOnline: online
-                    )
-                    .frame(width: 44, height: 44)
-                    .contentShape(Circle())
-                }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Профиль: \(peerUser.displayTitle)")
-            },
-            bottom: { EmptyView() }
-        )
-    }
-
     // MARK: - Message List (Minute-Grouping Enabled)
 
     private var messageList: some View {
@@ -249,7 +239,7 @@ public struct ChatDetailView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.interactively)
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .scrollEdgeEffectStyle(.soft, for: .all)
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
                     scrollOffset = offset
                 }

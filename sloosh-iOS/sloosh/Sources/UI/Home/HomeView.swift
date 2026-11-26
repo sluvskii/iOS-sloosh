@@ -55,15 +55,7 @@ struct HomeView: View {
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-    @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
     @State private var pendingPlayerConfig: PlayerConfig? = nil
-
-    private var blurOpacity: Double {
-        let offset = scrollOffsets[viewModel.selectedCategory] ?? 0
-        // При использовании onScrollGeometryChange offset положителен при скролле вниз
-        let progress = max(0, offset) / 30.0
-        return min(1.0, Double(progress))
-    }
 
     var body: some View {
         NavigationStack {
@@ -74,11 +66,7 @@ struct HomeView: View {
                             viewModel: viewModel,
                             category: category,
                             navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed,
-                            scrollOffset: Binding(
-                                get: { scrollOffsets[category] ?? 0 },
-                                set: { scrollOffsets[category] = $0 }
-                            )
+                            isFilterCollapsed: $isFilterCollapsed
                         )
                         .containerRelativeFrame(.horizontal)
                     }
@@ -95,7 +83,7 @@ struct HomeView: View {
                 }
             ))
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
@@ -103,17 +91,7 @@ struct HomeView: View {
                     showFilters: $viewModel.showFilters
                 )
                 .padding(.top, 4)
-                .padding(.bottom, 2) // Уменьшенный отступ до контента
-                // Уменьшен tintOpacity, чтобы через блюр пробивались цвета постеров.
-                // Это необходимо, чтобы наш Vibrant-текст мог их впитывать!
-                .background(
-                    VariableBlurView(tintOpacity: 1.0)
-                        .padding(.bottom, -30) // Увеличиваем длину размытия вниз, но не так сильно
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(blurOpacity) // Плавно появляемся при скролле
-                        // Анимация делает смену блюра при переключении табов плавной
-                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                )
+                .padding(.bottom, 4)
             }
             .task {
                 await viewModel.applyCurrentSelection()
@@ -185,7 +163,6 @@ struct HomeCategoryContentView: View {
     let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
-    @Binding var scrollOffset: CGFloat
 
     @State private var debouncer = ScrollDebouncer()
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
@@ -262,11 +239,6 @@ struct HomeCategoryContentView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { oldOffset, newOffset in
-                let shouldUpdateBlur = (newOffset >= 0 && newOffset <= 35) || (oldOffset >= 0 && oldOffset <= 35) || (oldOffset < 0 && newOffset >= 0) || (oldOffset > 35 && newOffset <= 35)
-                if shouldUpdateBlur {
-                    scrollOffset = newOffset
-                }
-                
                 let now = Date()
                 guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else { return }
                 let delta = newOffset - oldOffset
@@ -288,7 +260,7 @@ struct HomeCategoryContentView: View {
                 }
             }
             .scrollIndicators(.hidden)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .scrollEdgeEffectStyle(.soft, for: .vertical)
             .refreshable {
                 await viewModel.refresh(category: category)
             }

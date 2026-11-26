@@ -62,8 +62,6 @@ struct MediaCommentsSection: View {
         )) {
             if let user = selectedAuthor {
                 UserProfileDetailView(user: user, chatContext: false)
-                    .navigationBarBackButtonHidden(true)
-                    .toolbar(.hidden, for: .navigationBar)
             }
         }
     }
