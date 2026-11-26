@@ -83,33 +83,43 @@ struct DownloadsView: View {
                     emptyView
                 } else {
                     List {
-                        ForEach(listItems) { item in
-                            Button {
-                                if item.status == .completed {
-                                    playerItem = item
-                                }
-                            } label: {
-                                DownloadRowView(item: item, onShare: { shareItem in
-                                    shareDownloadedItem(shareItem)
-                                }, onSaveToPhotos: { photoItem in
-                                    saveToPhotosAction(photoItem)
-                                })
-                            }
-                            .buttonStyle(DownloadCardScaleButtonStyle())
+                        DownloadsCategoryPillStrip(selectedFilter: $selectedFilter)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 6, trailing: 0))
+
+                        if listItems.isEmpty {
+                            Text("В этой категории пока нет загрузок")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.vertical, 48)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        } else {
+                            ForEach(listItems) { item in
+                                Button {
+                                    if item.status == .completed {
+                                        playerItem = item
+                                    }
+                                } label: {
+                                    DownloadRowView(item: item, onShare: { shareItem in
+                                        shareDownloadedItem(shareItem)
+                                    }, onSaveToPhotos: { photoItem in
+                                        saveToPhotosAction(photoItem)
+                                    })
+                                }
+                                .buttonStyle(DownloadCardScaleButtonStyle())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            }
                         }
                     }
                     .listStyle(.plain)
                     .scrollIndicators(.hidden)
                     .scrollEdgeEffectStyle(.soft, for: .all)
                 }
-            }
-            .safeAreaBar(edge: .top, spacing: 0) {
-                DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
-                    .padding(.top, 2)
-                    .padding(.bottom, 4)
             }
             
             if isExporting {
@@ -441,101 +451,45 @@ private struct DownloadProgressBar: View {
     }
 }
 
-private struct DownloadsTabScaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
-    }
-}
-
-private struct DownloadsCategoryTextTabs: View {
+private struct DownloadsCategoryPillStrip: View {
     @Binding var selectedFilter: Int
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.colorScheme) private var colorScheme
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28
-
-    private let titleHeight: CGFloat = 36
     private let titles = ["Все", "Фильмы", "Сериалы", "Мульты"]
 
-    private var tabSpacing: CGFloat {
-        horizontalSizeClass == .regular ? 16 : 12
-    }
-
-    private var edgeContentInset: CGFloat {
-        horizontalSizeClass == .regular ? 18 : 16
-    }
-
-    private var tabScrollAnimation: Animation {
-        .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
-    }
-
-    private func layeredText(
-        _ text: String,
-        size: CGFloat,
-        weight: Font.Weight,
-        isSelected: Bool
-    ) -> some View {
-        let isDark = colorScheme == .dark
-        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.4)
-        
-        return Text(text)
-            .font(.system(size: size, weight: weight))
-            .tracking(-0.8)
-            .backdropForeground(opacity: opacity)
-    }
-
     var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: tabSpacing) {
-                    ForEach(Array(titles.enumerated()), id: \.offset) { index, title in
-                        let isSelected = selectedFilter == index
-                        let isFirst = index == 0
-                        let isLast = index == titles.count - 1
-
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            withAnimation(tabScrollAnimation) {
-                                selectedFilter = index
-                            }
-                        } label: {
-                            layeredText(
-                                title,
-                                size: titleSize,
-                                weight: isSelected ? .bold : .semibold,
-                                isSelected: isSelected
-                            )
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(height: titleHeight, alignment: .center)
-                            .contentShape(Rectangle())
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(titles.enumerated()), id: \.offset) { index, title in
+                    let isSelected = selectedFilter == index
+                    Button {
+                        guard !isSelected else { return }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            selectedFilter = index
                         }
-                        .buttonStyle(DownloadsTabScaleButtonStyle())
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .id(index)
-                        .padding(.leading, isFirst ? edgeContentInset : 0)
-                        .padding(.trailing, isLast ? edgeContentInset : 0)
+                    } label: {
+                        Text(title)
+                            .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background {
+                                if isSelected {
+                                    Capsule()
+                                        .fill(Color.primary.opacity(0.14))
+                                }
+                            }
+                            .contentShape(.capsule)
+                            .glassEffect(.regular.interactive(), in: .capsule)
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .scrollTargetLayout()
-            }
-            .frame(height: titleHeight + 4, alignment: .topLeading)
-            .scrollClipDisabled()
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .animation(tabScrollAnimation, value: selectedFilter)
-            .onAppear {
-                scrollProxy.scrollTo(selectedFilter, anchor: .center)
-            }
-            .onChange(of: selectedFilter) { _, newFilter in
-                withAnimation(tabScrollAnimation) {
-                    scrollProxy.scrollTo(newFilter, anchor: .center)
+                    .buttonStyle(.glassPress)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
         }
+        .scrollClipDisabled()
+        .sensoryFeedback(.selection, trigger: selectedFilter)
     }
 }

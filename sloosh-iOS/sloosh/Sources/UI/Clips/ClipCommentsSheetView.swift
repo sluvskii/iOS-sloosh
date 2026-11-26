@@ -98,6 +98,7 @@ public struct ClipCommentsSheetView: View {
                             .foregroundStyle(.primary)
                             .glassForeground()
                     }
+                    .tint(.primary)
                     .accessibilityLabel("Закрыть")
                 }
 

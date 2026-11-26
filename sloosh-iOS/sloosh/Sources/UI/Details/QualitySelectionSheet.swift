@@ -55,6 +55,7 @@ struct QualitySelectionSheet: View {
                             .foregroundStyle(.primary)
                             .glassForeground()
                     }
+                    .tint(.primary)
                     .accessibilityLabel("Закрыть")
                 }
 

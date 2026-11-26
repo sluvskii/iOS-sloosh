@@ -196,6 +196,7 @@ public struct ChannelInfoView: View {
                     }
                     .foregroundStyle(.primary)
                     .glassForeground()
+                    .tint(.primary)
                 }
             }
         }
@@ -356,6 +357,7 @@ public struct EditChannelSheet: View {
                         dismiss()
                     }
                     .foregroundColor(.secondary)
+                    .tint(.primary)
                 }
             }
         }

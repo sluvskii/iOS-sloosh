@@ -2666,6 +2666,7 @@ struct EpisodeDetailsSheet: View {
                                 .font(.system(size: 17, weight: .medium))
                                 .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
                         }
+                        .tint(isWatched ? Color.slooshAccent : .primary)
                         .accessibilityLabel(isWatched ? "Отметить непросмотренной" : "Отметить просмотренной")
                     }
                 }

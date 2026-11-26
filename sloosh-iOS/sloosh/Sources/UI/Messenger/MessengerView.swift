@@ -65,6 +65,7 @@ public struct MessengerView: View {
                             .foregroundStyle(.primary)
                             .glassForeground()
                     }
+                    .tint(.primary)
                     .accessibilityLabel("Новое сообщение")
                 }
             }
@@ -418,6 +419,7 @@ private struct NewChatSheet: View {
                             .foregroundStyle(.primary)
                             .glassForeground()
                     }
+                    .tint(.primary)
                     .accessibilityLabel("Закрыть")
                 }
 

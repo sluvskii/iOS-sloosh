@@ -134,6 +134,7 @@ struct SearchView: View {
                                 .foregroundStyle(hasFilters ? Color.slooshAccent : Color.primary)
                                 .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: hasFilters ? Color.slooshAccent : .primary))
                         }
+                        .tint(!viewModel.searchFilters.isEmpty ? Color.slooshAccent : .primary)
                         .accessibilityLabel("Фильтры")
                     }
                     .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)

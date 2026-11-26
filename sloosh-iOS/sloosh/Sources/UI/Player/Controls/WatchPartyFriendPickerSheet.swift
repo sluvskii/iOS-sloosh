@@ -51,6 +51,7 @@ struct WatchPartyFriendPickerSheet: View {
                         dismiss()
                     }
                     .foregroundColor(.secondary)
+                    .tint(.primary)
                 }
             }
         }

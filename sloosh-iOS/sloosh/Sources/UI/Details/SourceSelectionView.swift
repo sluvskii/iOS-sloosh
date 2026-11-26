@@ -203,6 +203,7 @@ struct SourceSelectionView: View {
                             .glassForeground()
                             .contentTransition(.symbolEffect(.replace))
                     }
+                    .tint(.primary)
                     .accessibilityLabel(isSelectingQuality ? "Назад" : "Закрыть")
                 }
 

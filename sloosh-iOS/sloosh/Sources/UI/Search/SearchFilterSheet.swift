@@ -103,6 +103,7 @@ struct SearchFilterSheet: View {
                             .glassForeground(isEnabled: !draft.isEmpty)
                     }
                     .disabled(draft.isEmpty)
+                    .tint(.primary)
                     .accessibilityLabel("Сбросить фильтры")
                 }
 

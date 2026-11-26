@@ -69,79 +69,85 @@ public struct AdminDashboardView: View {
 
     public var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(AdminTab.allCases, id: \.self) { tab in
-                        tabContentView(for: tab)
-                            .containerRelativeFrame(.horizontal)
-                            .id(tab)
-                    }
-                }
-                .scrollTargetLayout()
-            }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: Binding(
-                get: { selectedTab },
-                set: { newValue in
-                    if let newValue = newValue, selectedTab != newValue {
-                        withAnimation(tabScrollAnimation) {
-                            selectedTab = newValue
-                        }
-                    }
-                }
-            ))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Task {
-                            if selectedTab == .tierTemplates {
-                                _ = await TierListsRepository.shared.fetchTemplates(force: true)
+            tabContentView(for: selectedTab)
+                .id(selectedTab)
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: selectedTab)
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            Task {
+                                if selectedTab == .tierTemplates {
+                                    _ = await TierListsRepository.shared.fetchTemplates(force: true)
+                                } else {
+                                    await repo.fetchOverviewStats()
+                                    await commentsRepo.fetchReports()
+                                }
+                            }
+                        } label: {
+                            if repo.isLoading {
+                                ProgressView()
+                                    .controlSize(.small)
                             } else {
-                                await repo.fetchOverviewStats()
-                                await commentsRepo.fetchReports()
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundStyle(.primary)
+                                    .glassForeground()
                             }
                         }
-                    } label: {
-                        if repo.isLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
+                        .tint(.primary)
+                        .accessibilityLabel("Обновить")
+                    }
+
+                    ToolbarItem(placement: .principal) {
+                        Menu {
+                            ForEach(AdminTab.allCases) { tab in
+                                Button {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        selectedTab = tab
+                                    }
+                                } label: {
+                                    if selectedTab == tab {
+                                        Label(tab.rawValue, systemImage: "checkmark")
+                                    } else {
+                                        Label(tab.rawValue, systemImage: tab.icon)
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: selectedTab.icon)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(selectedTab.rawValue)
+                                    .font(.system(size: 16, weight: .semibold))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                            .lineLimit(1)
+                        }
+                        .tint(.primary)
+                        .accessibilityLabel("Раздел админки: \(selectedTab.rawValue)")
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
                                 .foregroundStyle(.primary)
                                 .glassForeground()
                         }
+                        .tint(.primary)
+                        .accessibilityLabel("Закрыть")
                     }
-                    .accessibilityLabel("Обновить")
                 }
-
-                ToolbarItem(placement: .principal) {
-                    Text("Панель управления")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                            .glassForeground()
-                    }
-                    .accessibilityLabel("Закрыть")
-                }
-            }
-            .safeAreaBar(edge: .top, spacing: 0) {
-                tabSelector
-                    .padding(.top, 2)
-                    .padding(.bottom, 4)
-            }
-            .sheet(item: $selectedUserForDetails) { user in
+                .sheet(item: $selectedUserForDetails) { user in
                 AdminUserDetailSheet(user: user)
             }
             .sheet(isPresented: $showArtworkPickerForAdmin) {
@@ -193,77 +199,6 @@ public struct AdminDashboardView: View {
         case .diagnostics:
             diagnosticsTab
         }
-    }
-
-    // MARK: - Native Liquid Glass Text Tab Selector (Matching HomeView)
-
-    private func layeredTabTitle(
-        _ text: String,
-        size: CGFloat,
-        weight: Font.Weight,
-        isSelected: Bool
-    ) -> some View {
-        let isDark = colorScheme == .dark
-        let opacity = isSelected ? (isDark ? 0.95 : 0.9) : (isDark ? 0.45 : 0.4)
-
-        return Text(text)
-            .font(.system(size: size, weight: weight))
-            .tracking(-0.6)
-            .backdropForeground(opacity: opacity)
-    }
-
-    private var tabSelector: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .center, spacing: tabSpacing) {
-                    ForEach(Array(AdminTab.allCases.enumerated()), id: \.element) { index, tab in
-                        let isSelected = selectedTab == tab
-                        let isFirst = index == 0
-                        let isLast = index == AdminTab.allCases.count - 1
-
-                        Button {
-                            withAnimation(tabScrollAnimation) {
-                                guard !isSelected else { return }
-                                selectedTab = tab
-                            }
-                        } label: {
-                            layeredTabTitle(
-                                tab.rawValue,
-                                size: tabTitleSize,
-                                weight: isSelected ? .bold : .semibold,
-                                isSelected: isSelected
-                            )
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(height: tabTitleHeight, alignment: .center)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(AdminTabScaleButtonStyle())
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .id(tab)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
-                        .padding(.leading, isFirst ? tabEdgeContentInset : 0)
-                        .padding(.trailing, isLast ? tabEdgeContentInset : 0)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .scrollTargetLayout()
-            }
-            .frame(height: tabTitleHeight + 4, alignment: .topLeading)
-            .scrollClipDisabled()
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .animation(tabScrollAnimation, value: selectedTab)
-            .onAppear {
-                scrollProxy.scrollTo(selectedTab, anchor: .center)
-            }
-            .onChange(of: selectedTab) { _, newTab in
-                withAnimation(tabScrollAnimation) {
-                    scrollProxy.scrollTo(newTab, anchor: .center)
-                }
-            }
-        }
-        .sensoryFeedback(.selection, trigger: selectedTab)
     }
 
     // MARK: - Tab 1: Analytics & Live Activity

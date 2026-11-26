@@ -71,6 +71,7 @@ public struct EditProfileSheet: View {
                         dismiss()
                     }
                     .foregroundColor(.secondary)
+                    .tint(.primary)
                 }
             }
         }

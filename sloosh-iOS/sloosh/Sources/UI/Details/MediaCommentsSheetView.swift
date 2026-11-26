@@ -125,6 +125,7 @@ struct MediaCommentsSheetView: View {
                             .foregroundStyle(.primary)
                             .glassForeground()
                     }
+                    .tint(.primary)
                     .accessibilityLabel("Закрыть")
                 }
 
@@ -158,6 +159,7 @@ struct MediaCommentsSheetView: View {
                                 .foregroundStyle(.primary)
                                 .glassForeground()
                         }
+                        .tint(.primary)
                         .accessibilityLabel("Сортировка")
                     }
                 }
