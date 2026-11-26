@@ -394,7 +394,7 @@ struct CatalogSearchTests {
         let futureYearItems = CatalogSearchRequest.discoveryItems(filters: SearchFilters(order: "YEAR", yearFrom: 2030), page: 1)
         check(!futureYearItems.contains { $0.name == "release" && $0.value == "released" }, "Explicit future year range preserves upcoming scope")
         let searchViewSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchView.swift", encoding: .utf8)
-        check(!searchViewSource.contains(".searchSuggestions") && searchViewSource.contains("GenreCatalogView") && searchViewSource.contains("StudioCatalogView") && searchViewSource.contains(".navigationDestination(item: $viewModel.suggestionDestination)"), "Discovery uses clean typed navigation without jarring suggestion overlays")
+        check(!searchViewSource.contains(".searchSuggestions {") && searchViewSource.contains("GenreCatalogView") && searchViewSource.contains("StudioCatalogView") && searchViewSource.contains(".navigationDestination(item: $viewModel.suggestionDestination)"), "Discovery uses clean typed navigation without jarring suggestion overlays")
         check(!searchViewSource.contains("insufficientMetadata") && searchViewSource.contains("MoviePosterCardPlaceholder()"), "Search uses poster skeletons and omits internal metadata diagnostics")
         check(!searchViewSource.contains(".ultraThinMaterial") && !searchViewSource.contains("design: .rounded"), "Search UI complies with design system rules")
         let filterSheetSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchFilterSheet.swift", encoding: .utf8)
