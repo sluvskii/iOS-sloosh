@@ -83,6 +83,7 @@ public struct SlooshAvatarView: View {
     private var avatarContent: some View {
         if let decoded = AvatarImageProcessor.decodeImage(from: avatarSource) {
             Image(uiImage: decoded)
+                .renderingMode(.original)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
         } else if let source = avatarSource, let url = URL(string: source), source.starts(with: "http") {
@@ -90,6 +91,7 @@ public struct SlooshAvatarView: View {
                 fallbackView
             } content: { img in
                 Image(uiImage: img)
+                    .renderingMode(.original)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } fallback: {

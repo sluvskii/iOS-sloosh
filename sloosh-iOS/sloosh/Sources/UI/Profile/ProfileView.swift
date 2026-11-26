@@ -104,7 +104,6 @@ struct ProfileView: View {
                     avatarHeaderButton
                         .tint(authRepo.isAuthenticated ? .primary : Color.slooshAccent)
                 }
-                .sharedBackgroundVisibility(authRepo.isAuthenticated ? .hidden : .automatic)
 
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -295,24 +294,14 @@ struct ProfileView: View {
                 .tint(.red)
             } label: {
                 ProfileAvatarButton(user: authRepo.currentUser)
-                    .frame(width: 38, height: 38)
-                    .clipShape(Circle())
-                    .contentShape(Circle())
-                    .contentShape(.contextMenuPreview, Circle())
             }
             .menuOrder(.priority)
-            .buttonStyle(.plain)
-            .frame(width: 38, height: 38)
-            .clipShape(Circle())
-            .contentShape(Circle())
-            .contentShape(.contextMenuPreview, Circle())
         } else {
             Button {
                 showAuthSheet = true
             } label: {
                 ProfileAvatarButton(user: nil)
             }
-            .buttonStyle(.plain)
         }
     }
 }
@@ -328,8 +317,7 @@ private struct ProfileAvatarButton: View {
 
     var body: some View {
         if isAuthenticated {
-            SlooshAvatarView(userProfile: user, size: 36)
-                .frame(width: 36, height: 36)
+            SlooshAvatarView(userProfile: user, size: 30)
                 .clipShape(Circle())
                 .contentShape(Circle())
         } else {
@@ -491,18 +479,18 @@ private struct ProfileCategoryPillStrip: View {
                         } label: {
                             HStack(spacing: 5) {
                                 Text(category.title)
-                                    .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
 
                                 if count > 0 {
                                     Text("\(count)")
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(.system(size: 11, weight: .semibold))
                                         .foregroundStyle(isSelected ? Color.secondary : Color.secondary.opacity(0.65))
                                 }
                             }
                             .lineLimit(1)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
                             .background {
                                 if isSelected {
                                     Capsule()

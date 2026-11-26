@@ -26,7 +26,7 @@ struct ContinueView: View {
                                 .disabled(viewModel.isLaunching)
                                 .contextMenu {
                                     Group {
-                                        NavigationLink(destination: DetailsView(movieId: item.metadata?.detailsId ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.rootMediaKey), mediaType: item.metadata?.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                        NavigationLink(destination: DetailsView(movieId: item.metadata?.detailsId ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.rootMediaKey), mediaType: item.metadata?.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                             Label("Подробнее", systemImage: "info.circle")
                                         }
                                         if item.record.isEpisode {

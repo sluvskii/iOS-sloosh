@@ -95,7 +95,6 @@ struct SearchView: View {
             }
             .navigationDestination(item: $viewModel.suggestionDestination) { destination in
                 DetailsView(movieId: destination.movieId, mediaType: destination.mediaType, navigationTransitionID: nil, navigationTransitionNamespace: nil)
-                    .navigationBarBackButtonHidden(true)
             }
             .safeAreaBar(edge: .top, spacing: 0) { searchContext }
             .task {
@@ -202,7 +201,7 @@ struct SearchView: View {
                                     Label("Смотреть", systemImage: "play.fill")
                                 }
 
-                                NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                     Label("Подробнее", systemImage: "info.circle")
                                 }
                             }
@@ -542,7 +541,7 @@ struct SearchDiscoveryView: View {
                                                         Label("Смотреть", systemImage: "play.fill")
                                                     }
 
-                                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                                         Label("Подробнее", systemImage: "info.circle")
                                                     }
                                                 }

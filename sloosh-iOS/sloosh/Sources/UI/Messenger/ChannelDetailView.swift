@@ -178,13 +178,12 @@ public struct ChannelDetailView: View {
                     SlooshAvatarView(
                         avatarSource: currentChannel.avatarUrl,
                         fallbackText: currentChannel.name,
-                        size: 34,
+                        size: 30,
                         isChannel: false
                     )
                 }
-                .buttonStyle(.plain)
+                .accessibilityLabel("О канале: \(currentChannel.name)")
             }
-            .sharedBackgroundVisibility(.hidden)
         }
         .toolbarVisibility(.hidden, for: .tabBar)
         .navigationDestination(isPresented: $isShowingInfo) {

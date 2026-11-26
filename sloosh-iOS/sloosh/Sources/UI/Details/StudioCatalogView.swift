@@ -117,7 +117,7 @@ struct StudioCatalogView: View {
                                             Label("Смотреть", systemImage: "play.fill")
                                         }
                                         
-                                        NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand)) {
                                             Label("Подробнее", systemImage: "info.circle")
                                         }
                                     }

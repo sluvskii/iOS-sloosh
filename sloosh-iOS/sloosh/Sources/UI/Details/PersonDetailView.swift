@@ -198,14 +198,16 @@ struct PersonDetailView: View {
     }
 
     var body: some View {
-        ZStack {
+        GeometryReader { outerGeometry in
+            let topInset = outerGeometry.safeAreaInsets.top
+
             ScrollView {
                 VStack(spacing: 0) {
                     if viewModel.isLoading && viewModel.details == nil {
-                        PersonSkeletonView()
+                        PersonSkeletonView(topInset: topInset)
                             .transition(.opacity)
                     } else if let details = viewModel.details {
-                        personContent(details: details)
+                        personContent(details: details, topInset: topInset)
                             .transition(.opacity)
                     } else if let error = viewModel.errorMessage {
                         VStack(spacing: 16) {
@@ -228,46 +230,28 @@ struct PersonDetailView: View {
                 }
             }
             .scrollIndicators(.hidden)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
-        }
-        .ignoresSafeArea(edges: .top)
-        .hideNavigationBarWithRestore()
-        .fullWidthSwipeBack()
-        .optionalZoomTransition(sourceID: navigationTransitionID, in: navigationTransitionNamespace)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            ZStack {
-                if isTitleAtTop {
-                    Text(viewModel.details?.name ?? initialName ?? "")
-                        .font(.system(size: 17, weight: .semibold))
-                        .backdropForeground()
-                        .lineLimit(1)
-                        .padding(.horizontal, 68)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-
-                HStack {
-                    TelegramGlassIconButton(systemName: "chevron.left") {
-                        dismiss()
-                    }
-
-                    Spacer()
-                }
+            .scrollEdgeEffectStyle(.soft, for: .all)
+            .background {
+                effectiveBackgroundColor
+                    .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
+                    .ignoresSafeArea()
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-            .background(
-                VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 1.0)
-                    .padding(.bottom, -60)
-                    .ignoresSafeArea(edges: .top)
+        }
+        .optionalZoomTransition(sourceID: navigationTransitionID, in: navigationTransitionNamespace)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(viewModel.details?.name ?? initialName ?? "")
+                    .font(.system(size: 17, weight: .semibold))
+                    .backdropForeground()
+                    .lineLimit(1)
                     .opacity(isTitleAtTop ? 1.0 : 0.0)
+                    .scaleEffect(isTitleAtTop ? 1.0 : 0.92, anchor: .center)
+                    .blur(radius: isTitleAtTop ? 0 : 6)
                     .animation(.easeInOut(duration: 0.25), value: isTitleAtTop)
                     .allowsHitTesting(false)
-            )
-        }
-        .background {
-            effectiveBackgroundColor
-                .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
-                .ignoresSafeArea()
+            }
         }
         .fullScreenCover(isPresented: $showPhotoGallery) {
             PersonPhotoGalleryView(
@@ -301,15 +285,16 @@ struct PersonDetailView: View {
     // MARK: - Person Content
 
     @ViewBuilder
-    private func personContent(details: PersonDetailsDto) -> some View {
+    private func personContent(details: PersonDetailsDto, topInset: CGFloat) -> some View {
         let baseHeight: CGFloat = 430
+        let triggerY = max(72, topInset - 12)
 
         // Stretchy Parallax Hero Header (edge-to-edge top, softly fading downward)
         GeometryReader { geometry in
             let minY = geometry.frame(in: .global).minY
-            let isScrollingDown = minY > 0
-            let height = isScrollingDown ? baseHeight + minY : baseHeight
-            let offset = isScrollingDown ? -minY : 0
+            let pullDown = max(0, minY - topInset)
+            let height = baseHeight + pullDown
+            let offset = -topInset - pullDown
 
             PersonHeroHeaderView(
                 url: URL(string: details.photo ?? ""),
@@ -346,7 +331,7 @@ struct PersonDetailView: View {
                 }
             }
         }
-        .frame(height: baseHeight)
+        .frame(height: max(140, baseHeight - topInset))
 
         // Information stack
         VStack(spacing: 20) {
@@ -376,7 +361,8 @@ struct PersonDetailView: View {
                 GeometryReader { geo in
                     Color.clear
                         .onChange(of: geo.frame(in: .global).midY) { _, midY in
-                            let isAtTop = midY < 80
+                            guard midY != 0 else { return }
+                            let isAtTop = midY < triggerY
                             if isTitleAtTop != isAtTop {
                                 withAnimation(.easeInOut(duration: 0.25)) {
                                     isTitleAtTop = isAtTop
@@ -384,7 +370,10 @@ struct PersonDetailView: View {
                             }
                         }
                         .onAppear {
-                            isTitleAtTop = geo.frame(in: .global).midY < 80
+                            let midY = geo.frame(in: .global).midY
+                            if midY != 0 {
+                                isTitleAtTop = midY < triggerY
+                            }
                         }
                 }
             )
@@ -1450,7 +1439,7 @@ private struct PersonFilmographySection: View {
                                 mediaType: movie.type,
                                 navigationTransitionID: transitionID,
                                 navigationTransitionNamespace: namespace
-                            ).navigationBarBackButtonHidden(true)
+                            )
                         ) {
                             MoviePosterCard(movie: movie)
                                 .matchedTransitionSource(id: transitionID, in: namespace)
@@ -1463,7 +1452,7 @@ private struct PersonFilmographySection: View {
                                     mediaType: movie.type,
                                     navigationTransitionID: transitionID,
                                     navigationTransitionNamespace: namespace
-                                ).navigationBarBackButtonHidden(true)
+                                )
                             ) {
                                 Label("Подробнее", systemImage: "info.circle")
                             }
@@ -1479,12 +1468,19 @@ private struct PersonFilmographySection: View {
 // MARK: - Skeleton View
 
 private struct PersonSkeletonView: View {
+    var topInset: CGFloat = 0
+
     var body: some View {
         VStack(spacing: 20) {
-            Rectangle()
-                .fill(Color.gray.opacity(0.15))
-                .frame(height: 380)
-                .shimmer()
+            Color.clear
+                .frame(height: max(120, 380 - topInset))
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 380)
+                        .shimmer()
+                        .offset(y: -topInset)
+                }
 
             VStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 8)

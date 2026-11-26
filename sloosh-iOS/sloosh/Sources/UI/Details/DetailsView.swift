@@ -865,10 +865,10 @@ struct DetailsView: View {
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
-            .ignoresSafeArea(edges: .top)
-            .hideNavigationBarWithRestore()
-            .safeAreaInset(edge: .top, spacing: 0) {
-                ZStack {
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
                     if let details = viewModel.details {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
@@ -876,52 +876,38 @@ struct DetailsView: View {
                             alignment: .center,
                             isTopBar: true
                         )
-                        .frame(height: 32)
-                        .padding(.horizontal, details.isUnreleased ? 112 : 68)
+                        .frame(maxWidth: 220, maxHeight: 32)
                         .opacity(isLogoAtTop ? 1.0 : 0.0)
                         .scaleEffect(isLogoAtTop ? 1.0 : 0.85, anchor: .center)
                         .blur(radius: isLogoAtTop ? 0 : 8)
                         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                         .allowsHitTesting(false)
                     }
-                    
-                    HStack {
-                        TelegramGlassIconButton(systemName: "chevron.left") {
-                            dismiss()
-                        }
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 8) {
-                            // Upcoming titles keep their premiere/countdown slot,
-                            // so their favorite action remains in the navigation bar.
-                            if viewModel.details?.isUnreleased == true {
-                                favoriteButton(inNavigationBar: true)
-                            }
-
-                            TelegramGlassIconButton(systemName: "square.and.arrow.up", iconSize: 20) {
-                                guard viewModel.details != nil else { return }
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                showShareToFriendSheet = true
-                            }
-                            .accessibilityLabel("Поделиться фильмом")
-                            .accessibilityIdentifier("details.share")
-
-
-                        }
-                    }
-
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-                .background(
-                    VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 1.0)
-                        .padding(.bottom, -60)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(isLogoAtTop ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
-                        .allowsHitTesting(false)
-                )
+
+                // Upcoming titles keep their premiere/countdown slot,
+                // so their favorite action remains in the navigation bar.
+                if viewModel.details?.isUnreleased == true {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        favoriteToolbarButton
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        guard viewModel.details != nil else { return }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        showShareToFriendSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .glassForeground()
+                    }
+                    .tint(.primary)
+                    .accessibilityLabel("Поделиться фильмом")
+                    .accessibilityIdentifier("details.share")
+                }
             }
             .task {
                 await viewModel.loadDetails(id: movieId, type: mediaType, studio: initialStudio)
@@ -1356,6 +1342,25 @@ struct DetailsView: View {
         .accessibilityIdentifier("details.favorite")
     }
 
+    private var favoriteToolbarButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                viewModel.toggleFavorite()
+            }
+        } label: {
+            Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .glassForeground()
+                .symbolEffect(.bounce, value: viewModel.isFavorite)
+        }
+        .tint(.primary)
+        .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+        .accessibilityValue(viewModel.isFavorite ? "В избранном" : "Не в избранном")
+        .accessibilityIdentifier("details.favorite")
+    }
+
     private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.prepare()
@@ -1473,79 +1478,83 @@ struct DetailsView: View {
     }
 
     private var portraitDetailsContent: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                if viewModel.isLoading {
-                    DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
-                        .transition(.opacity)
-                } else if let details = viewModel.details {
-                    // Stretchy Backdrop
-                    let baseHeight: CGFloat = 365
-                    
-                    GeometryReader { geometry in
-                        let minY = geometry.frame(in: .global).minY
-                        let isScrollingDown = minY > 0
-                        let height = isScrollingDown ? baseHeight + minY : baseHeight
-                        let offset = isScrollingDown ? -minY : 0
-                        let isHeaderVisible = minY > -250
+        GeometryReader { outerGeometry in
+            let topInset = outerGeometry.safeAreaInsets.top
+            let triggerY = max(72, topInset - 12)
 
-                        BackdropCarouselView(
-                            urls: details.displayBackdropUrls,
-                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
-                            width: geometry.size.width,
-                            height: height,
-                            selectedIndex: $selectedBackdropIndex,
-                            timerProgress: $backdropTimerProgress,
-                            isHeaderVisible: isHeaderVisible,
-                            isPaused: isBackdropPaused
-                        )
-                        .offset(y: offset)
-                    }
-                    .frame(height: baseHeight)
-                    .contextMenu {
-                        backdropContextMenu(for: details)
-                    } preview: {
-                        backdropContextMenuPreview(for: details)
-                    }
+            ScrollView {
+                VStack(spacing: 0) {
+                    if viewModel.isLoading {
+                        DetailsSkeletonView(backgroundColor: effectiveBackgroundColor, topInset: topInset)
+                            .transition(.opacity)
+                    } else if let details = viewModel.details {
+                        // Stretchy Backdrop
+                        let baseHeight: CGFloat = 365
 
-                    VStack(alignment: .center, spacing: 12) {
-                        BackdropPageIndicator(
-                            count: details.displayBackdropUrls.count,
-                            selectedIndex: $selectedBackdropIndex,
-                            progress: backdropTimerProgress,
-                            isAutoAdvance: autoAdvanceBackdrops && !isAnyModalPresented
-                        )
+                        GeometryReader { geometry in
+                            let minY = geometry.frame(in: .global).minY
+                            let pullDown = max(0, minY - topInset)
+                            let height = baseHeight + pullDown
+                            let offset = -topInset - pullDown
+                            let isHeaderVisible = minY > (topInset - 250)
 
-                        RemoteLogoView(
-                            url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                            alignment: .center
-                        )
-                        .opacity(isLogoAtTop ? 0.0 : 1.0)
-                        .scaleEffect(isLogoAtTop ? 0.85 : 1.0, anchor: .center)
-                        .blur(radius: isLogoAtTop ? 8 : 0)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
-                        .padding(.bottom, 8)
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear
-                                    .onChange(of: geo.frame(in: .global).midY) { _, midY in
-                                        guard midY > 0 else { return }
-                                        let isAtTop = midY < 80
-                                        if isLogoAtTop != isAtTop {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                isLogoAtTop = isAtTop
+                            BackdropCarouselView(
+                                urls: details.displayBackdropUrls,
+                                fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
+                                width: geometry.size.width,
+                                height: height,
+                                selectedIndex: $selectedBackdropIndex,
+                                timerProgress: $backdropTimerProgress,
+                                isHeaderVisible: isHeaderVisible,
+                                isPaused: isBackdropPaused
+                            )
+                            .offset(y: offset)
+                        }
+                        .frame(height: max(120, baseHeight - topInset))
+                        .contextMenu {
+                            backdropContextMenu(for: details)
+                        } preview: {
+                            backdropContextMenuPreview(for: details)
+                        }
+
+                        VStack(alignment: .center, spacing: 12) {
+                            BackdropPageIndicator(
+                                count: details.displayBackdropUrls.count,
+                                selectedIndex: $selectedBackdropIndex,
+                                progress: backdropTimerProgress,
+                                isAutoAdvance: autoAdvanceBackdrops && !isAnyModalPresented
+                            )
+
+                            RemoteLogoView(
+                                url: URL(string: details.displayLogoUrl ?? ""),
+                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                alignment: .center
+                            )
+                            .opacity(isLogoAtTop ? 0.0 : 1.0)
+                            .scaleEffect(isLogoAtTop ? 0.85 : 1.0, anchor: .center)
+                            .blur(radius: isLogoAtTop ? 8 : 0)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
+                            .padding(.bottom, 8)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .onChange(of: geo.frame(in: .global).midY) { _, midY in
+                                            guard midY != 0 else { return }
+                                            let isAtTop = midY < triggerY
+                                            if isLogoAtTop != isAtTop {
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                    isLogoAtTop = isAtTop
+                                                }
                                             }
                                         }
-                                    }
-                                    .onAppear {
-                                        let midY = geo.frame(in: .global).midY
-                                        if midY > 0 {
-                                            isLogoAtTop = midY < 80
+                                        .onAppear {
+                                            let midY = geo.frame(in: .global).midY
+                                            if midY != 0 {
+                                                isLogoAtTop = midY < triggerY
+                                            }
                                         }
-                                    }
-                            }
-                        )
+                                }
+                            )
 
                         if showOriginalTitle, let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
@@ -1644,33 +1653,37 @@ struct DetailsView: View {
             .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
         .scrollIndicators(.hidden)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        .refreshable {
+            await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+        }
+        }
         .background {
             effectiveBackgroundColor
                 .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
                 .ignoresSafeArea()
         }
-        .refreshable {
-            await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
-        }
     }
 
     private var landscapeDetailsContent: some View {
         GeometryReader { outerGeometry in
+            let topInset = outerGeometry.safeAreaInsets.top
+            let triggerY = max(56, topInset - 8)
+
             ScrollView {
                 VStack(spacing: 0) {
                     if viewModel.isLoading {
-                        DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
+                        DetailsSkeletonView(backgroundColor: effectiveBackgroundColor, topInset: topInset)
                             .transition(.opacity)
                     } else if let details = viewModel.details {
                         let baseHeight: CGFloat = 280
                         
                         GeometryReader { geometry in
                             let minY = geometry.frame(in: .global).minY
-                            let isScrollingDown = minY > 0
-                            let height = isScrollingDown ? baseHeight + minY : baseHeight
-                            let offset = isScrollingDown ? -minY : 0
-                            let isHeaderVisible = minY > -200
+                            let pullDown = max(0, minY - topInset)
+                            let height = baseHeight + pullDown
+                            let offset = -topInset - pullDown
+                            let isHeaderVisible = minY > (topInset - 200)
 
                             BackdropCarouselView(
                                 urls: details.displayBackdropUrls,
@@ -1684,7 +1697,7 @@ struct DetailsView: View {
                             )
                             .offset(y: offset)
                         }
-                        .frame(height: baseHeight)
+                        .frame(height: max(100, baseHeight - topInset))
                         .contextMenu {
                             backdropContextMenu(for: details)
                         } preview: {
@@ -1714,8 +1727,8 @@ struct DetailsView: View {
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).midY) { _, midY in
-                                                guard midY > 0 else { return }
-                                                let isAtTop = midY < 80
+                                                guard midY != 0 else { return }
+                                                let isAtTop = midY < triggerY
                                                 if isLogoAtTop != isAtTop {
                                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                                         isLogoAtTop = isAtTop
@@ -1724,8 +1737,8 @@ struct DetailsView: View {
                                             }
                                             .onAppear {
                                                 let midY = geo.frame(in: .global).midY
-                                                if midY > 0 {
-                                                    isLogoAtTop = midY < 80
+                                                if midY != 0 {
+                                                    isLogoAtTop = midY < triggerY
                                                 }
                                             }
                                     }
@@ -1834,16 +1847,17 @@ struct DetailsView: View {
                 }
             }
             .scrollIndicators(.hidden)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
-            .background {
-                effectiveBackgroundColor
-                    .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
-                    .ignoresSafeArea()
-            }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .refreshable {
                 await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
             }
-        }.ignoresSafeArea()
+        }
+        .background {
+            effectiveBackgroundColor
+                .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
+                .ignoresSafeArea()
+        }
+        .ignoresSafeArea(edges: [.horizontal, .bottom])
     }
 }
 
@@ -1869,6 +1883,7 @@ private extension View {
 
 private struct DetailsSkeletonView: View {
     let backgroundColor: Color
+    var topInset: CGFloat = 0
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
@@ -1876,11 +1891,16 @@ private struct DetailsSkeletonView: View {
         
         VStack(spacing: 0) {
             // Backdrop
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: baseHeight)
-                .shimmer()
-                .mask(BackdropFadeMask())
+            Color.clear
+                .frame(height: max(120, baseHeight - topInset))
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(height: baseHeight)
+                        .shimmer()
+                        .mask(BackdropFadeMask())
+                        .offset(y: -topInset)
+                }
             
             VStack(alignment: .center, spacing: 12) {
                 // Page indicator placeholder
@@ -3937,7 +3957,6 @@ private struct CrewSection: View {
                                 navigationTransitionID: transitionID,
                                 navigationTransitionNamespace: namespace
                             )
-                            .navigationBarBackButtonHidden(true)
                         ) {
                             if let namespace {
                                 CrewCardView(member: member)
@@ -4047,7 +4066,6 @@ private struct ActorsSection: View {
                                 navigationTransitionID: transitionID,
                                 navigationTransitionNamespace: namespace
                             )
-                            .navigationBarBackButtonHidden(true)
                         ) {
                             if let namespace {
                                 ActorCardView(actor: actor)
@@ -4256,7 +4274,7 @@ private struct FranchiseCollectionSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(parts) { part in
-                            NavigationLink(destination: DetailsView(movieId: part.id, mediaType: "movie", navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                            NavigationLink(destination: DetailsView(movieId: part.id, mediaType: "movie", navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                 MoviePosterCard(movie: part)
                                     .frame(width: 120)
                             }
@@ -4268,7 +4286,7 @@ private struct FranchiseCollectionSection: View {
                                     } label: {
                                         Label("Смотреть", systemImage: "play.fill")
                                     }
-                                    NavigationLink(destination: DetailsView(movieId: part.id, mediaType: "movie", navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                    NavigationLink(destination: DetailsView(movieId: part.id, mediaType: "movie", navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                         Label("Подробнее", systemImage: "info.circle")
                                     }
                                 }
@@ -4313,7 +4331,7 @@ private struct RelatedStudioSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(items, id: \.artworkIdentifier) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
+                            NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand)) {
                                 MoviePosterCard(movie: movie)
                                     .frame(width: 120)
                             }
@@ -4325,7 +4343,7 @@ private struct RelatedStudioSection: View {
                                     } label: {
                                         Label("Смотреть", systemImage: "play.fill")
                                     }
-                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
+                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand)) {
                                         Label("Подробнее", systemImage: "info.circle")
                                     }
                                 }
@@ -4357,7 +4375,7 @@ private struct SimilarMediaSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(items, id: \.artworkIdentifier) { item in
-                        NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                        NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                             MoviePosterCard(movie: item)
                                 .frame(width: 120)
                         }
@@ -4369,7 +4387,7 @@ private struct SimilarMediaSection: View {
                                 } label: {
                                     Label("Смотреть", systemImage: "play.fill")
                                 }
-                                NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                     Label("Подробнее", systemImage: "info.circle")
                                 }
                             }

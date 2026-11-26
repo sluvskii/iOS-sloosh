@@ -65,41 +65,44 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text("Главная")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text(viewModel.selectedFilter.title)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .contentTransition(.numericText())
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                        ForEach(HomeFilter.allCases) { filter in
                             Button {
+                                guard viewModel.selectedFilter != filter else { return }
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-                                    viewModel.selectedCategory = category
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                                    viewModel.selectedFilter = filter
                                 }
                             } label: {
-                                if viewModel.selectedCategory == category {
-                                    Label(category.title, systemImage: "checkmark")
+                                if viewModel.selectedFilter == filter {
+                                    Label(filter.title, systemImage: "checkmark")
                                 } else {
-                                    Text(category.title)
+                                    Label(filter.title, systemImage: filter.icon)
                                 }
                             }
                         }
                     } label: {
-                        HStack(spacing: 5) {
-                            Text(viewModel.selectedCategory.segmentedTitle)
-                                .font(.system(size: 16, weight: .semibold))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .foregroundStyle(.primary)
-                        .glassForeground()
+                        let isTopRated = viewModel.selectedFilter == .topRated
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(isTopRated ? Color.slooshAccent : Color.primary)
+                            .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: isTopRated ? Color.slooshAccent : .primary))
                     }
-                    .tint(.primary)
-                    .accessibilityLabel("Категория: \(viewModel.selectedCategory.title)")
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text("Главная")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
+                    .tint(viewModel.selectedFilter == .topRated ? Color.slooshAccent : .primary)
+                    .accessibilityLabel("Сортировка: \(viewModel.selectedFilter.title)")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -214,13 +217,14 @@ struct HomeCategoryContentView: View {
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 8) {
                         HomeCategoryPillStrip(selectedCategory: $viewModel.selectedCategory)
-                        HomeFilterPillStrip(
-                            selectedFilter: $viewModel.selectedFilter,
-                            searchFilters: $viewModel.searchFilters
-                        )
+                        if !viewModel.searchFilters.isEmpty {
+                            HomeActiveFiltersStrip(searchFilters: $viewModel.searchFilters)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
                     }
+                    .animation(.spring(response: 0.32, dampingFraction: 0.85), value: viewModel.searchFilters.isEmpty)
 
                     Group {
                         if let items = items, !items.isEmpty {
@@ -276,6 +280,7 @@ struct HomeCategoryContentView: View {
                     .id(category)
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 0.18), value: category)
+                    .animation(.easeInOut(duration: 0.18), value: viewModel.selectedFilter)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 45, coordinateSpace: .local)
                             .onEnded { value in
@@ -335,7 +340,6 @@ struct MovieDetailsNavigationLink<Label: View>: View {
                 navigationTransitionNamespace: navigationTransition,
                 initialStudio: studio
             )
-            .navigationBarBackButtonHidden(true)
         ) {
             label()
                 .matchedTransitionSource(id: transitionID, in: navigationTransition)
@@ -346,120 +350,76 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 
 private struct HomeCategoryPillStrip: View {
     @Binding var selectedCategory: HomeCategory
+    @Namespace private var selectionNamespace
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        let isSelected = selectedCategory == category
-                        Button {
-                            guard !isSelected else { return }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                selectedCategory = category
-                            }
-                        } label: {
-                            Text(category.segmentedTitle)
-                                .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
-                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                                .lineLimit(1)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background {
-                                    if isSelected {
-                                        Capsule()
-                                            .fill(Color.primary.opacity(0.14))
-                                    }
-                                }
-                                .contentShape(.capsule)
-                                .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                        .buttonStyle(.glassPress)
-                        .id(category)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        HStack(spacing: 2) {
+            ForEach(HomeCategory.allCases, id: \.self) { category in
+                let isSelected = selectedCategory == category
+                Button {
+                    guard !isSelected else { return }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        selectedCategory = category
                     }
+                } label: {
+                    Text(category.segmentedTitle)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background {
+                            if isSelected {
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.15))
+                                    .matchedGeometryEffect(id: "homeCategoryPill", in: selectionNamespace)
+                            }
+                        }
+                        .contentShape(.capsule)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            }
-            .scrollClipDisabled()
-            .onAppear {
-                scrollProxy.scrollTo(selectedCategory, anchor: .center)
-            }
-            .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    scrollProxy.scrollTo(newCategory, anchor: .center)
-                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+        .padding(4)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
         .sensoryFeedback(.selection, trigger: selectedCategory)
     }
 }
 
-private struct HomeFilterPillStrip: View {
-    @Binding var selectedFilter: HomeFilter
+private struct HomeActiveFiltersStrip: View {
     @Binding var searchFilters: SearchFilters
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(HomeFilter.allCases) { filter in
-                    let isSelected = selectedFilter == filter
-                    Button {
-                        guard !isSelected else { return }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                            selectedFilter = filter
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: filter.icon)
-                                .font(.system(size: 12, weight: .semibold))
-                            Text(filter.title)
-                                .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.14))
+                ForEach(CatalogSearchFilter.allCases) { field in
+                    if let label = field.label(in: searchFilters) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                searchFilters = field.removing(from: searchFilters)
                             }
-                        }
-                        .contentShape(.capsule)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                    }
-                    .buttonStyle(.glassPress)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                }
-
-                if !searchFilters.isEmpty {
-                    ForEach(CatalogSearchFilter.allCases) { field in
-                        if let label = field.label(in: searchFilters) {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                                    searchFilters = field.removing(from: searchFilters)
-                                }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text(label)
-                                        .lineLimit(1)
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 10, weight: .bold))
-                                }
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.slooshAccent)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 6)
-                                .contentShape(.capsule)
-                                .glassEffect(.regular.interactive(), in: .capsule)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(label)
+                                    .lineLimit(1)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
                             }
-                            .buttonStyle(.glassPress)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.slooshAccent)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .contentShape(.capsule)
+                            .glassEffect(.regular.interactive(), in: .capsule)
                         }
+                        .buttonStyle(.glassPress)
                     }
                 }
             }
@@ -467,7 +427,6 @@ private struct HomeFilterPillStrip: View {
             .padding(.vertical, 4)
         }
         .scrollClipDisabled()
-        .sensoryFeedback(.selection, trigger: selectedFilter)
     }
 }
 

@@ -86,15 +86,13 @@ public struct ChatDetailView: View {
                     SlooshAvatarView(
                         avatarSource: peerUser.avatarUrl,
                         fallbackText: peerUser.displayTitle,
-                        size: 34,
+                        size: 30,
                         showOnline: true,
                         isOnline: online
                     )
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel("Профиль: \(peerUser.displayTitle)")
             }
-            .sharedBackgroundVisibility(.hidden)
         }
         .toolbarVisibility(.hidden, for: .tabBar)
         .navigationDestination(isPresented: $isShowingInfo) {
