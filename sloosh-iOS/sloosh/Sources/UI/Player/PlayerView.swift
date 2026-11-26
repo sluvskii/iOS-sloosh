@@ -882,20 +882,20 @@ class PlayerViewModel: ObservableObject {
                 self.currentTime = saved
                 logDebug("beginLoad: initialized with saved progress \(saved)s for \(mediaId)")
             } else if isCollapsStream {
-                self.pendingSeekPosition = 3.5
+                self.pendingSeekPosition = 4.0
                 self.isInitialSeekPending = true
-                self.currentTime = 3.5
-                logDebug("beginLoad: Collaps stream initialized with 3.5s offset")
+                self.currentTime = 4.0
+                logDebug("beginLoad: Collaps stream initialized with 4.0s offset")
             } else {
                 self.pendingSeekPosition = nil
                 self.isInitialSeekPending = false
                 self.currentTime = 0
             }
         } else if isCollapsStream {
-            self.pendingSeekPosition = 3.5
+            self.pendingSeekPosition = 4.0
             self.isInitialSeekPending = true
-            self.currentTime = 3.5
-            logDebug("beginLoad: Collaps stream initialized with 3.5s offset")
+            self.currentTime = 4.0
+            logDebug("beginLoad: Collaps stream initialized with 4.0s offset")
         } else {
             self.pendingSeekPosition = nil
             self.isInitialSeekPending = false
@@ -972,14 +972,16 @@ class PlayerViewModel: ObservableObject {
                     makeAutoQualityOption(url: directUrl)
                 ]
                 self.currentQualityKey = "Авто"
-                playVideo(url: directUrl, headers: effectiveHeaders, voices: voices, subtitles: subtitles)
+                let effectiveVoices = self.availableVoiceovers.isEmpty ? voices : self.availableVoiceovers
+                playVideo(url: directUrl, headers: effectiveHeaders, voices: effectiveVoices, subtitles: subtitles)
                 Task { [weak self] in
                     guard let self else { return }
                     await self.fetchAndUpdateQualitiesFromMaster(url: directUrl, headers: effectiveHeaders)
                 }
             }
         } else if let iframe = iframeUrl, !iframe.isEmpty {
-            startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles)
+            let effectiveVoices = self.availableVoiceovers.isEmpty ? voices : self.availableVoiceovers
+            startParsing(iframeUrl: iframe, voices: effectiveVoices, subtitles: subtitles)
         } else if (kpId != nil && kpId! > 0) || (tmdbId != nil && tmdbId! > 0) {
             // Dynamic fetch from AllohaRepository if iframeUrl was not provided
             Task { @MainActor [weak self] in
@@ -1530,7 +1532,7 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let current = player.currentTime().seconds
         let validCurrent = (current.isFinite && !current.isNaN && current >= 0) ? current : currentTime
-        let minTime: Double = isCollapsStream ? 3.5 : 0.0
+        let minTime: Double = isCollapsStream ? 4.0 : 0.0
         let target: Double
         if currentDuration > 0 {
             target = max(minTime, min(currentDuration, validCurrent + seconds))
@@ -1544,11 +1546,12 @@ class PlayerViewModel: ObservableObject {
 
     func seek(to seconds: Double, isRemote: Bool = false) {
         guard let player else { return }
-        let minTime: Double = isCollapsStream ? 3.5 : 0.0
+        let minTime: Double = isCollapsStream ? 4.0 : 0.0
         let effectiveSeconds = max(minTime, seconds)
         let time = CMTime(seconds: effectiveSeconds, preferredTimescale: 600)
         let isParty = WatchPartyRepository.shared.isConnected || isRemote
-        let tolerance = isParty ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
+        let requireExactCollapsSeek = isCollapsStream && effectiveSeconds <= 15.0
+        let tolerance = (isParty || requireExactCollapsSeek) ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
         let wasPlaying = !isPausedByUser
         isUserSeeking = true
         lastSeekTimestamp = Date()
@@ -2572,13 +2575,23 @@ class PlayerViewModel: ObservableObject {
             }
 
             let mediaId = currentMediaId ?? (currentKpId.map { "kp_\($0)" } ?? "unknown")
+            let proxyVoices: [String] = {
+                if isCollapsStream || resolvedAudioVariants.count > 1 || self.availableVoiceovers.count <= 1 {
+                    return voices
+                }
+                if !voices.isEmpty && voices != self.availableVoiceovers {
+                    return voices
+                }
+                return [targetVoiceover ?? _currentTranslationName].compactMap { $0 }.filter { !$0.isEmpty }
+            }()
 
             HlsProxyServer.shared.start(
                 headers: headers,
-                voices: voices,
+                voices: proxyVoices,
                 subtitles: subtitles,
                 mediaId: mediaId,
-                preferredVoiceName: targetVoiceover ?? _currentTranslationName
+                preferredVoiceName: targetVoiceover ?? _currentTranslationName,
+                isCollaps: isCollapsStream
             )
             // currentPlaybackSourceURL — прокси URL (127.0.0.1); для перезапуска используем originalStreamURL
             currentPlaybackSourceURL = proxyUrl
@@ -2878,12 +2891,13 @@ class PlayerViewModel: ObservableObject {
                             } else {
                                 // Still no alternatives — perform a clean reload
                                 self.logDebug("setupPlayerItemObservers: No alternative quality found, retrying stream URL")
-                                 HlsProxyServer.shared.start(
+                                HlsProxyServer.shared.start(
                                     headers: self.currentHeaders,
-                                    voices: self.availableVoiceovers,
+                                    voices: self.resolvedAudioVariants.count > 1 || self.isCollapsStream ? self.availableVoiceovers : [self.targetVoiceover ?? self._currentTranslationName].compactMap { $0 }.filter { !$0.isEmpty },
                                     subtitles: self.availableSubtitles,
                                     mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
-                                    preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
+                                    preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName,
+                                    isCollaps: self.isCollapsStream
                                 )
                                 self.reloadPlayback(to: url, preferredPeakBitRate: nil, qualityKey: self.currentQualityKey)
                             }
@@ -2906,10 +2920,11 @@ class PlayerViewModel: ObservableObject {
                             if let origUrl = self.originalStreamURL {
                                 HlsProxyServer.shared.start(
                                     headers: self.currentHeaders,
-                                    voices: self.availableVoiceovers,
+                                    voices: self.resolvedAudioVariants.count > 1 || self.isCollapsStream ? self.availableVoiceovers : [self.targetVoiceover ?? self._currentTranslationName].compactMap { $0 }.filter { !$0.isEmpty },
                                     subtitles: self.availableSubtitles,
                                     mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
-                                    preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
+                                    preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName,
+                                    isCollaps: self.isCollapsStream
                                 )
                                 self.reloadPlayback(to: origUrl, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate, qualityKey: self.currentQualityKey)
                             } else {
@@ -2987,7 +3002,7 @@ class PlayerViewModel: ObservableObject {
         guard let player = self.player else { return }
         guard item === player.currentItem else { return }
 
-        let minStartTime: Double = isCollapsStream ? 3.5 : 0.0
+        let minStartTime: Double = isCollapsStream ? 4.0 : 0.0
         let targetSeek: Double = {
             if WatchPartyRepository.shared.isConnected,
                let session = WatchPartyRepository.shared.activeSession {
@@ -3008,6 +3023,7 @@ class PlayerViewModel: ObservableObject {
             return minStartTime
         }()
 
+        let exactSeekRequired = WatchPartyRepository.shared.isConnected || isCollapsStream
         let threshold: Double = WatchPartyRepository.shared.isConnected ? 0.5 : 2.0
         guard targetSeek > threshold else {
             self.isInitialSeekPending = false
@@ -3028,7 +3044,7 @@ class PlayerViewModel: ObservableObject {
         }
 
         let currentPos = player.currentTime().seconds
-        let matchTolerance: Double = WatchPartyRepository.shared.isConnected ? 0.25 : 1.0
+        let matchTolerance: Double = exactSeekRequired ? 0.15 : 1.0
         if currentPos.isFinite && abs(currentPos - targetSeek) < matchTolerance {
             self.isInitialSeekPending = false
             self.pendingSeekPosition = nil
@@ -3050,7 +3066,7 @@ class PlayerViewModel: ObservableObject {
         self.isInitialSeekPending = true
         self.pendingSeekPosition = targetSeek
         self.logDebug("applySeekIfNeeded: seeking to \(targetSeek)s for \(self.currentMediaId ?? "")")
-        let tolerance = WatchPartyRepository.shared.isConnected ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
+        let tolerance = exactSeekRequired ? CMTime.zero : CMTime(seconds: 1.5, preferredTimescale: 600)
         player.seek(
             to: CMTime(seconds: targetSeek, preferredTimescale: 600),
             toleranceBefore: tolerance,
@@ -3060,10 +3076,16 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 self.isInitialSeekPending = false
                 self.pendingSeekPosition = nil
-                if finished {
+                let actualPos = self.player?.currentTime().seconds
+                if let actualPos, actualPos.isFinite, !actualPos.isNaN, actualPos >= 0 {
+                    self.currentTime = actualPos
+                    self.updateSubtitleCue(at: actualPos)
+                } else if finished {
                     self.currentTime = targetSeek
                     self.updateSubtitleCue(at: targetSeek)
-                    self.logDebug("applySeekIfNeeded: seek to \(targetSeek)s completed successfully")
+                }
+                if finished {
+                    self.logDebug("applySeekIfNeeded: seek to \(targetSeek)s completed (actual=\(self.currentTime)s)")
                 }
                 if WatchPartyRepository.shared.isConnected,
                    let session = WatchPartyRepository.shared.activeSession {
@@ -3761,37 +3783,24 @@ class PlayerViewModel: ObservableObject {
             logDebug("selectAudioTrackInPlayer: \(reason) option='\(option.displayName)' title='\(self.extractTrackTitle(from: option))'")
         }
 
+        let exactOrderPriority: Bool = isCollapsStream || options.count == self.availableVoiceovers.count
+
         // 1. Exact match by authentic track title from HLS metadata
-        if let option = options.first(where: { 
+        if let option = options.first(where: {
             let title = self.extractTrackTitle(from: $0)
             return allohaTranslationNamesMatch(title, name, exactOnly: true)
         }) {
             applySelection(option, reason: "selected exact title match")
             return
         }
-        
-        // 2. Fuzzy match by authentic track title from HLS metadata
-        if let option = options.first(where: { 
-            let title = self.extractTrackTitle(from: $0)
-            return allohaTranslationNamesMatch(title, name, exactOnly: false)
-        }) {
-            applySelection(option, reason: "selected fuzzy title match")
-            return
-        }
 
-        // 3. Exact match by displayName
+        // 2. Exact match by displayName
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
             applySelection(option, reason: "selected exact displayName match")
             return
         }
-        
-        // 4. Fuzzy match by displayName
-        if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
-            applySelection(option, reason: "selected fuzzy displayName match")
-            return
-        }
-        
-        // 5. Match by track index (crucial for Collaps / Source 2 and multi-audio manifests where audio0..audioN map to availableVoiceovers)
+
+        // 3. Positional track index when track list aligns 1:1 with stream manifest
         let resolvedTrackIndex: Int? = {
             if let index, index >= 0, index < options.count {
                 return index
@@ -3805,6 +3814,33 @@ class PlayerViewModel: ObservableObject {
             return nil
         }()
 
+        if exactOrderPriority, let resolvedTrackIndex {
+            let candidate = options[resolvedTrackIndex]
+            let targetLang = detectLanguageTag(in: name)
+            let optLang = detectLanguageTag(in: self.extractTrackTitle(from: candidate))
+                ?? candidate.extendedLanguageTag.flatMap { detectLanguageTag(in: $0) }
+            if targetLang == nil || optLang == nil || targetLang == optLang {
+                applySelection(candidate, reason: "selected by aligned trackIndex \(resolvedTrackIndex)")
+                return
+            }
+        }
+
+        // 4. Fuzzy match by authentic track title from HLS metadata
+        if let option = options.first(where: {
+            let title = self.extractTrackTitle(from: $0)
+            return allohaTranslationNamesMatch(title, name, exactOnly: false)
+        }) {
+            applySelection(option, reason: "selected fuzzy title match")
+            return
+        }
+
+        // 5. Fuzzy match by displayName
+        if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
+            applySelection(option, reason: "selected fuzzy displayName match")
+            return
+        }
+
+        // 6. Track index fallback (for non-aligned manifests)
         if let resolvedTrackIndex {
             applySelection(options[resolvedTrackIndex], reason: "selected by trackIndex \(resolvedTrackIndex)")
             return

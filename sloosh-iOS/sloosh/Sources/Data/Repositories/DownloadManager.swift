@@ -644,7 +644,12 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        let lines = mediaPlaylistContent.components(separatedBy: .newlines)
+        let filteredPlaylist = PlaybackHlsRewriter.rewriteMediaPlaylist(
+            content: mediaPlaylistContent,
+            baseUrl: mediaPlaylistUrl,
+            isCollaps: headers["Referer"]?.contains("kinokrad") == true
+        ) { $0 }
+        let lines = filteredPlaylist.components(separatedBy: .newlines)
         var segmentUrls: [URL] = []
         var segmentLines: [Int] = []
         var keyUrl: URL? = nil

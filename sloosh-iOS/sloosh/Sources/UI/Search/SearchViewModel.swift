@@ -53,6 +53,7 @@ final class SearchViewModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var generation = 0
     private var observedRequest: Request?
+    private var activeFilters: SearchFilters = SearchFilters()
     private var cancellables = Set<AnyCancellable>()
 
     init(defaults: UserDefaults = .standard, historyScope: String, debounceNanoseconds: UInt64 = 300_000_000,
@@ -161,9 +162,20 @@ final class SearchViewModel: ObservableObject {
         if reset {
             generation += 1
             task?.cancel()
-            results = []; page = 0; totalPages = 1; resolvedQuery = nil
-            recoveredExactTitle = false
-            nextCursor = nil; sortScope = nil; correctionReason = nil; originalQuery = nil; insufficientMetadata = 0
+            let filtersChanged = request.filters != activeFilters
+            let preserveResultsWhileTyping = delayed && !request.query.isEmpty && !filtersChanged && !results.isEmpty
+            activeFilters = request.filters
+            if !preserveResultsWhileTyping {
+                results = []
+                resolvedQuery = nil
+                recoveredExactTitle = false
+                nextCursor = nil
+                sortScope = nil
+                correctionReason = nil
+                originalQuery = nil
+                insufficientMetadata = 0
+            }
+            page = 0; totalPages = 1
             isAppending = false
         } else if isLoading || isAppending { return task }
         error = nil
@@ -289,7 +301,7 @@ final class SearchViewModel: ObservableObject {
             suggestionFetchQuery = query
         }
         serverSuggestions = []
-        guard !query.isEmpty, let suggestionsLoader else { return }
+        guard CatalogSearchQuery.text(query).count >= 2, let suggestionsLoader else { return }
         suggestionsTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 300_000_000)

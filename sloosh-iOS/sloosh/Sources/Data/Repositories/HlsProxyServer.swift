@@ -15,6 +15,7 @@ class HlsProxyServer {
     private var subtitles: [PlaybackSubtitle] = []
     private var mediaId: String = ""
     private var preferredVoiceName: String? = nil
+    private var isCollapsStream: Bool = false
     private var currentMasterUrl: URL?
 
     // Фоновая задача iOS: не даёт системе заморозить процесс пока прокси активен в фоне
@@ -61,9 +62,9 @@ class HlsProxyServer {
         // Завершаем фоновую задачу при возврате в активный режим
         endBackgroundTaskIfNeeded()
 
-        let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String, preferredVoiceName: String?)? = stateLock.withLock {
+        let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String, preferredVoiceName: String?, isCollaps: Bool)? = stateLock.withLock {
             if !self.mediaId.isEmpty {
-                return (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName)
+                return (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName, self.isCollapsStream)
             }
             return nil
         }
@@ -79,7 +80,7 @@ class HlsProxyServer {
                     return existing
                 }
                 deadListener?.cancel()
-                start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId, preferredVoiceName: p.preferredVoiceName)
+                start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId, preferredVoiceName: p.preferredVoiceName, isCollaps: p.isCollaps)
             }
         }
     }
@@ -101,7 +102,7 @@ class HlsProxyServer {
 
     // MARK: - Lifecycle
 
-    func start(headers: [String: String] = [:], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
+    func start(headers: [String: String] = [:], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil, isCollaps: Bool = false) {
         playlistCacheLock.withLock {
             self.playlistCache.removeAll()
         }
@@ -110,6 +111,7 @@ class HlsProxyServer {
             self.voices = voices
             self.subtitles = subtitles
             self.mediaId = mediaId
+            self.isCollapsStream = isCollaps
             if let preferredVoiceName, !preferredVoiceName.isEmpty {
                 self.preferredVoiceName = preferredVoiceName
             }
@@ -181,11 +183,11 @@ class HlsProxyServer {
         print("HlsProxyServer: scheduling self-healing restart in 300ms")
         queue.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self else { return }
-            let (headers, voices, subtitles, mediaId, preferred) = self.stateLock.withLock {
-                (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName)
+            let (headers, voices, subtitles, mediaId, preferred, collaps) = self.stateLock.withLock {
+                (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName, self.isCollapsStream)
             }
             guard !mediaId.isEmpty else { return }
-            self.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId, preferredVoiceName: preferred)
+            self.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId, preferredVoiceName: preferred, isCollaps: collaps)
         }
     }
 
@@ -427,8 +429,8 @@ class HlsProxyServer {
     }
     
     private func fetchAndServe(realUrl: URL, isPlaylist: Bool, targetQuality: String? = nil, incomingHeaders: [String: String], connection: NWConnection) async {
-        let (currentHeaders, currentVoices, currentSubtitles, currentMediaId, currentPreferredVoice) = stateLock.withLock {
-            (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName)
+        let (currentHeaders, currentVoices, currentSubtitles, currentMediaId, currentPreferredVoice, currentIsCollaps) = stateLock.withLock {
+            (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName, self.isCollapsStream)
         }
 
         var request = URLRequest(url: realUrl)
@@ -448,7 +450,7 @@ class HlsProxyServer {
 
         do {
             if isPlaylist {
-                let cacheKey = "\(realUrl.absoluteString)_\(targetQuality ?? "")_\(currentPreferredVoice ?? "")"
+                let cacheKey = "\(realUrl.absoluteString)_\(targetQuality ?? "")_\(currentPreferredVoice ?? "")_\(currentIsCollaps)"
                 if let cached = playlistCacheLock.withLock({ () -> String? in
                     if let entry = self.playlistCache[cacheKey], Date().timeIntervalSince(entry.timestamp) < 30.0 {
                         return entry.content
@@ -497,14 +499,15 @@ class HlsProxyServer {
                             mediaId: currentMediaId,
                             targetQuality: targetQuality,
                             preferredVoiceName: currentPreferredVoice,
-                            port: Int(self.port.rawValue)
+                            port: Int(self.port.rawValue),
+                            isCollaps: currentIsCollaps
                         )
 
                         AppDiagnostics.shared.log("HlsProxyServer: master playlist rewritten (\(playlistRewritten.count) bytes)")
-                        rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
+                        rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl, isCollaps: currentIsCollaps)
                     } else {
                         AppDiagnostics.shared.log("HlsProxyServer: media playlist served for \(realUrl.lastPathComponent) (\(content.count) bytes)")
-                        rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
+                        rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl, isCollaps: currentIsCollaps)
                     }
 
                     playlistCacheLock.withLock {
@@ -575,110 +578,13 @@ class HlsProxyServer {
         task.resume()
     }
     
-    private func rewriteM3u8(content: String, baseUrl: URL) -> String {
-        let lines = content.components(separatedBy: .newlines)
-        var result = [String]()
-        var skipNextUri = false
-        var hasEmittedStartOffset = false
-        let isCollaps = baseUrl.host?.contains("interkh.com") == true || baseUrl.absoluteString.contains("interkh")
-        
-        for line in lines {
-            if line.isEmpty {
-                if !skipNextUri { result.append(line) }
-                continue
-            }
-            if line.hasPrefix("#") {
-                // If this is a Collaps media playlist without EXT-X-START, inject start offset
-                if isCollaps && !hasEmittedStartOffset && line.hasPrefix("#EXTINF:") {
-                    if !result.contains(where: { $0.hasPrefix("#EXT-X-START") }) {
-                        result.append("#EXT-X-START:TIME-OFFSET=3.5,PRECISE=YES")
-                    }
-                    hasEmittedStartOffset = true
-                }
-
-                // Filter AV1 streams from master playlist — not supported on iOS AVPlayer.
-                // Skip the #EXT-X-STREAM-INF header and its following URI line.
-                if line.hasPrefix("#EXT-X-STREAM-INF") {
-                    if hlsLineHasAV1Codecs(line) {
-                        skipNextUri = true
-                        continue
-                    }
-                    skipNextUri = false
-                    // Normalize VIDEO-RANGE: iOS doesn't support H.264 + PQ/HLG → causes -11848.
-                    // Strip HDR VIDEO-RANGE attribute from non-HEVC/DV streams.
-                    let normalizedLine = normalizeStreamInfVideoRange(line)
-                    result.append(normalizedLine)
-                    continue
-                }
-                if line.contains("URI=") {
-                    var modifiedLine = line
-                    if let range = modifiedLine.range(of: "URI=\"([^\"]+)\"", options: .regularExpression) {
-                        let match = String(modifiedLine[range])
-                        let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
-                        if !uriString.isEmpty && uriString != "none" {
-                            if uriString.hasPrefix("http://127.0.0.1:") {
-                                // Already a local proxy URL, keep as is
-                            } else {
-                                let proxied = proxyUrl(uriString, baseUrl: baseUrl)
-                                modifiedLine.replaceSubrange(range, with: "URI=\"\(proxied)\"")
-                            }
-                        }
-                    }
-                    result.append(modifiedLine)
-                } else {
-                    result.append(line)
-                }
-            } else {
-                // URI line following #EXT-X-STREAM-INF — skip if AV1 was detected
-                if skipNextUri {
-                    skipNextUri = false
-                    continue
-                }
-                result.append(proxyUrl(line, baseUrl: baseUrl))
-            }
-        }
-        return result.joined(separator: "\n")
-    }
-    
-    /// Strips VIDEO-RANGE=PQ and VIDEO-RANGE=HLG from non-HEVC/Dolby-Vision STREAM-INF lines.
-    /// iOS AVPlayer does not support H.264 with HDR transfer functions — this causes -11848.
-    /// HEVC (hvc1/hev1) and Dolby Vision (dvh1/dvhe) streams are left unchanged.
-    private func normalizeStreamInfVideoRange(_ line: String) -> String {
-        let lower = line.lowercased()
-        // HEVC and Dolby Vision support HDR on iOS — leave those untouched
-        let isHdrCapable = lower.contains("hvc1") || lower.contains("hev1") ||
-                           lower.contains("dvh1") || lower.contains("dvhe")
-        guard !isHdrCapable else { return line }
-        
-        var normalized = line
-        if let regex = try? NSRegularExpression(pattern: ",?\\s*VIDEO-RANGE=[^,\\s]+", options: .caseInsensitive) {
-            let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
-            normalized = regex.stringByReplacingMatches(in: normalized, options: [], range: range, withTemplate: "")
-        }
-        return normalized
-    }
-    
-    /// Returns true if a #EXT-X-STREAM-INF line declares an AV1 codec (av01.*)
-    private func hlsLineHasAV1Codecs(_ line: String) -> Bool {
-        let lower = line.lowercased()
-        guard lower.contains("codecs=") else {
-            // No CODECS attr — also check raw "av01" in the line as a safety net
-            return lower.contains("av01")
-        }
-        // Extract value from CODECS="..."
-        guard let afterPrefix = lower.range(of: "codecs=\"") else {
-            return lower.contains("av01")
-        }
-        let rest = lower[afterPrefix.upperBound...]
-        let codecValue: String
-        if let endQuote = rest.firstIndex(of: "\"") {
-            codecValue = String(rest[rest.startIndex..<endQuote])
-        } else {
-            codecValue = String(rest)
-        }
-        // Each codec is comma-separated, e.g. "hvc1.2.4.L120.B0,mp4a.40.2"
-        return codecValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.contains { codec in
-            codec.hasPrefix("av01") || codec == "av1"
+    private func rewriteM3u8(content: String, baseUrl: URL, isCollaps: Bool = false) -> String {
+        PlaybackHlsRewriter.rewriteMediaPlaylist(
+            content: content,
+            baseUrl: baseUrl,
+            isCollaps: isCollaps
+        ) { [weak self] uriString in
+            self?.proxyUrl(uriString, baseUrl: baseUrl) ?? uriString
         }
     }
     

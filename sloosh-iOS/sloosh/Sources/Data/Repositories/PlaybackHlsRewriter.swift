@@ -35,7 +35,8 @@ class PlaybackHlsRewriter {
         preferredVoiceName: String? = nil,
         rewriteVariantUris: Bool = false,
         stripExistingSubtitles: Bool = false,
-        port: Int = 8181
+        port: Int = 8181,
+        isCollaps: Bool = false
     ) -> String {
         guard !master.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return master
@@ -59,9 +60,11 @@ class PlaybackHlsRewriter {
         let streamInfIndex = filteredLines.firstIndex { $0.hasPrefix("#EXT-X-STREAM-INF") } ?? filteredLines.count
         let hasMediaTags = filteredLines.contains { $0.hasPrefix("#EXT-X-MEDIA") } || !subtitles.isEmpty
         var hasEmittedVersion = false
-        
-        for i in 0..<streamInfIndex {
-            let line = filteredLines[i]
+
+        let headerLines = Array(filteredLines[..<streamInfIndex])
+        let audioReplacements = rewriteAudioMediaLines(in: headerLines, voices: voices, preferredVoiceName: preferredVoiceName)
+
+        for (i, line) in headerLines.enumerated() {
             if stripExistingSubtitles && isSubtitleMediaLine(line) {
                 continue
             }
@@ -74,7 +77,7 @@ class PlaybackHlsRewriter {
                     continue
                 }
             }
-            output.append(rewriteMediaLine(line, voices: voices, preferredVoiceName: preferredVoiceName))
+            output.append(audioReplacements[i] ?? line)
         }
 
         if hasMediaTags && !hasEmittedVersion && !output.contains(where: { $0.hasPrefix("#EXT-X-VERSION:") }) {
@@ -85,11 +88,12 @@ class PlaybackHlsRewriter {
             }
         }
 
-        if !output.contains(where: { $0.hasPrefix("#EXT-X-START") }) && (master.contains("interkh.com") || master.contains("interkh") || voices.contains(where: { $0.contains("Дорожка") })) {
+        let collapsDetected = isCollaps || master.contains("interkh.com") || master.contains("interkh") || voices.contains(where: { $0.contains("Дорожка") })
+        if collapsDetected && !output.contains(where: { $0.hasPrefix("#EXT-X-START") }) {
             if let verIdx = output.firstIndex(where: { $0.hasPrefix("#EXT-X-VERSION") }) {
-                output.insert("#EXT-X-START:TIME-OFFSET=3.5,PRECISE=YES", at: verIdx + 1)
+                output.insert("#EXT-X-START:TIME-OFFSET=4.0,PRECISE=YES", at: verIdx + 1)
             } else if let extm3uIdx = output.firstIndex(where: { $0.hasPrefix("#EXTM3U") }) {
-                output.insert("#EXT-X-START:TIME-OFFSET=3.5,PRECISE=YES", at: extm3uIdx + 1)
+                output.insert("#EXT-X-START:TIME-OFFSET=4.0,PRECISE=YES", at: extm3uIdx + 1)
             }
         }
 
@@ -375,45 +379,324 @@ class PlaybackHlsRewriter {
         return result
     }
     
-    private static func rewriteMediaLine(_ line: String, voices: [String], preferredVoiceName: String? = nil) -> String {
-        guard line.hasPrefix("#EXT-X-MEDIA") else { return line }
-        guard line.contains("TYPE=AUDIO") else { return line }
-        guard !voices.isEmpty else { return line }
+    /// Rewrites a subplaylist (video/audio/master) to strip spliced ad blocks, normalize HDR flags,
+    /// inject Collaps start offsets, and rewrite segment/key URIs cleanly.
+    static func rewriteMediaPlaylist(
+        content: String,
+        baseUrl: URL,
+        isCollaps: Bool = false,
+        rewriteUri: (String) -> String
+    ) -> String {
+        let normalized = content.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
+        let strippedLines = stripSplicedAdBlocks(in: lines, baseUrl: baseUrl)
 
-        let rawName = extractQuotedAttr(line, key: "NAME")
-        let uri = extractQuotedAttr(line, key: "URI")
-        let language = extractQuotedAttr(line, key: "LANGUAGE")
+        var result: [String] = []
+        var skipNextUri = false
+        var hasEmittedStartOffset = false
+        let collapsDetected = isCollaps || baseUrl.host?.contains("interkh.com") == true || baseUrl.absoluteString.contains("interkh")
 
-        let index = extractAudioIndex(from: rawName)
-            ?? extractAudioIndex(from: uri, isUri: true)
-            ?? extractAudioIndex(from: language)
+        for line in strippedLines {
+            if line.isEmpty {
+                if !skipNextUri { result.append(line) }
+                continue
+            }
+            if line.hasPrefix("#") {
+                if collapsDetected && !hasEmittedStartOffset && line.hasPrefix("#EXTINF:") {
+                    if !result.contains(where: { $0.hasPrefix("#EXT-X-START") }) {
+                        result.append("#EXT-X-START:TIME-OFFSET=4.0,PRECISE=YES")
+                    }
+                    hasEmittedStartOffset = true
+                }
 
-        guard let index, index >= 0, index < voices.count else { return line }
+                if line.hasPrefix("#EXT-X-STREAM-INF") {
+                    if isUnsupportedCodec(line) {
+                        skipNextUri = true
+                        continue
+                    }
+                    skipNextUri = false
+                    result.append(normalizeStreamInfVideoRange(line))
+                    continue
+                }
 
-        // Only rewrite if rawName is missing or generic (e.g. "rus0", "fin3", "ukr4", "audio0")
-        if let raw = rawName, !isGenericTrackName(raw) {
-            return line
+                if line.contains("URI=") {
+                    var modifiedLine = line
+                    if let range = modifiedLine.range(of: "URI=\"([^\"]+)\"", options: .regularExpression) {
+                        let match = String(modifiedLine[range])
+                        let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
+                        if !uriString.isEmpty && uriString != "none" && !uriString.hasPrefix("http://127.0.0.1:") {
+                            let proxied = rewriteUri(uriString)
+                            modifiedLine.replaceSubrange(range, with: "URI=\"\(proxied)\"")
+                        }
+                    }
+                    result.append(modifiedLine)
+                } else {
+                    result.append(line)
+                }
+            } else {
+                if skipNextUri {
+                    skipNextUri = false
+                    continue
+                }
+                result.append(rewriteUri(line))
+            }
+        }
+        return result.joined(separator: "\n")
+    }
+
+    private static func stripSplicedAdBlocks(in lines: [String], baseUrl: URL) -> [String] {
+        var result: [String] = []
+        var inCueAd = false
+        var pendingBlock: [String] = []
+        var pendingHasExternalHostOrAdMarker = false
+        var insideDiscontinuityBlock = false
+
+        let baseHost = baseUrl.host?.lowercased()
+        let baseDomainRoot: String? = baseHost.map { host in
+            let parts = host.split(separator: ".")
+            return parts.count >= 2 ? parts.suffix(2).joined(separator: ".") : host
         }
 
-        let voiceName = voices[index]
-        let normalizedLang: String
-        let lower = voiceName.lowercased()
-        if lower.contains("eng") || lower.contains("original") || lower.contains("англ") {
-            normalizedLang = "en"
-        } else {
-            normalizedLang = "ru"
+        func isAdSegmentUri(_ rawUri: String, allowCrossDomain: Bool) -> Bool {
+            let trimmed = rawUri.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            let lower = trimmed.lowercased()
+            let adMarkers = ["/ad/", "/ads/", "preroll", "midroll", "postroll", "vast", "/promo/", "doubleclick", "googlesyndication", "distribrey", "/lift", "lift_", "-lift"]
+            if adMarkers.contains(where: { lower.contains($0) }) {
+                return true
+            }
+            if allowCrossDomain,
+               let resolved = URL(string: trimmed, relativeTo: baseUrl)?.host?.lowercased(),
+               let baseDomainRoot, !resolved.hasSuffix(baseDomainRoot) {
+                return true
+            }
+            return false
         }
 
-        var output = addOrReplaceAttribute(line, key: "NAME", value: voiceName)
-        output = addOrReplaceAttribute(output, key: "LANGUAGE", value: normalizedLang)
-
-        if let preferred = preferredVoiceName, !preferred.isEmpty {
-            let isMatch = allohaTranslationNamesMatch(voiceName, preferred, exactOnly: false)
-            output = addOrReplaceAttribute(output, key: "DEFAULT", value: isMatch ? "YES" : "NO", quoted: false)
-            output = addOrReplaceAttribute(output, key: "AUTOSELECT", value: isMatch ? "YES" : "NO", quoted: false)
+        func flushPendingBlock() {
+            if !pendingBlock.isEmpty {
+                let hasInitMap = pendingBlock.contains { $0.hasPrefix("#EXT-X-MAP:") }
+                if !pendingHasExternalHostOrAdMarker || hasInitMap {
+                    result.append(contentsOf: pendingBlock)
+                }
+                pendingBlock.removeAll()
+                pendingHasExternalHostOrAdMarker = false
+            }
+            insideDiscontinuityBlock = false
         }
 
-        return output
+        var pendingRegularBlock: [String] = []
+
+        func flushRegularOrAdSegment(uri: String) {
+            if isAdSegmentUri(uri, allowCrossDomain: false) {
+                pendingRegularBlock.removeAll()
+                return
+            }
+            if !pendingRegularBlock.isEmpty {
+                result.append(contentsOf: pendingRegularBlock)
+                pendingRegularBlock.removeAll()
+            }
+            result.append(uri)
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("#EXT-X-CUE-OUT") || trimmed.hasPrefix("#EXT-X-OATCLS-SCTE35") || trimmed.hasPrefix("#EXT-X-SCTE35-OUT") {
+                pendingRegularBlock.removeAll()
+                inCueAd = true
+                continue
+            }
+            if trimmed.hasPrefix("#EXT-X-CUE-IN") || trimmed.hasPrefix("#EXT-X-SCTE35-IN") {
+                inCueAd = false
+                continue
+            }
+            if inCueAd {
+                continue
+            }
+
+            if trimmed == "#EXT-X-DISCONTINUITY" {
+                pendingRegularBlock.removeAll()
+                flushPendingBlock()
+                insideDiscontinuityBlock = true
+                pendingBlock.append(line)
+                continue
+            }
+
+            if insideDiscontinuityBlock {
+                if trimmed == "#EXT-X-ENDLIST" {
+                    flushPendingBlock()
+                    result.append(line)
+                } else {
+                    pendingBlock.append(line)
+                    if !trimmed.isEmpty && !trimmed.hasPrefix("#") && isAdSegmentUri(trimmed, allowCrossDomain: true) {
+                        pendingHasExternalHostOrAdMarker = true
+                    }
+                    if pendingBlock.count > 25 && !pendingHasExternalHostOrAdMarker {
+                        flushPendingBlock()
+                    }
+                }
+                continue
+            }
+
+            if trimmed.hasPrefix("#EXTINF:") || trimmed.hasPrefix("#EXT-X-BYTERANGE:") {
+                pendingRegularBlock.append(line)
+                continue
+            }
+
+            if !trimmed.isEmpty && !trimmed.hasPrefix("#") && !pendingRegularBlock.isEmpty {
+                flushRegularOrAdSegment(uri: line)
+                continue
+            }
+
+            if !pendingRegularBlock.isEmpty {
+                result.append(contentsOf: pendingRegularBlock)
+                pendingRegularBlock.removeAll()
+            }
+            result.append(line)
+        }
+        if !pendingRegularBlock.isEmpty {
+            result.append(contentsOf: pendingRegularBlock)
+        }
+        flushPendingBlock()
+        return result
+    }
+
+    private struct AudioTrackEntry {
+        let lineIndex: Int
+        let ordinal: Int
+        let groupId: String
+        let line: String
+        let rawName: String?
+        let uri: String?
+        let language: String?
+        let resolvedIndex: Int?
+        let displayLabel: String
+        let rewrittenLanguage: String
+    }
+
+    private static func rewriteAudioMediaLines(
+        in headerLines: [String],
+        voices: [String],
+        preferredVoiceName: String?
+    ) -> [Int: String] {
+        var groupLineIndices: [String: [Int]] = [:]
+        var groupOrder: [String] = []
+        for (i, line) in headerLines.enumerated() {
+            guard line.hasPrefix("#EXT-X-MEDIA"), line.contains("TYPE=AUDIO") else { continue }
+            let groupId = extractQuotedAttr(line, key: "GROUP-ID") ?? "default"
+            if groupLineIndices[groupId] == nil {
+                groupOrder.append(groupId)
+            }
+            groupLineIndices[groupId, default: []].append(i)
+        }
+
+        var replacements: [Int: String] = [:]
+
+        for groupId in groupOrder {
+            guard let indices = groupLineIndices[groupId], !indices.isEmpty else { continue }
+            let groupCount = indices.count
+            var entries: [AudioTrackEntry] = []
+
+            for (ordinal, lineIdx) in indices.enumerated() {
+                let line = headerLines[lineIdx]
+                let rawName = extractQuotedAttr(line, key: "NAME")
+                let uri = extractQuotedAttr(line, key: "URI")
+                let language = extractQuotedAttr(line, key: "LANGUAGE")
+
+                let resolvedIndex: Int? = {
+                    guard !voices.isEmpty else { return nil }
+                    if groupCount == 1, voices.count > 1, let preferred = preferredVoiceName, !preferred.isEmpty {
+                        if let exactIdx = voices.firstIndex(where: { allohaTranslationNamesMatch($0, preferred, exactOnly: true) }) {
+                            return exactIdx
+                        }
+                        if let fuzzyIdx = voices.firstIndex(where: { allohaTranslationNamesMatch($0, preferred, exactOnly: false) }) {
+                            return fuzzyIdx
+                        }
+                    }
+                    if voices.count == groupCount {
+                        return ordinal
+                    }
+                    if let uriIdx = extractAudioIndex(from: uri, isUri: true), uriIdx >= 0, uriIdx < voices.count {
+                        return uriIdx
+                    }
+                    if let nameIdx = extractAudioIndex(from: rawName), nameIdx >= 0, nameIdx < voices.count {
+                        return nameIdx
+                    }
+                    if let langIdx = extractAudioIndex(from: language), langIdx >= 0, langIdx < voices.count {
+                        return langIdx
+                    }
+                    return ordinal < voices.count ? ordinal : nil
+                }()
+
+                let mappedVoice = resolvedIndex.map { voices[$0] }
+                let shouldRename: Bool = {
+                    guard mappedVoice != nil else { return false }
+                    guard let rawName else { return true }
+                    return isGenericTrackName(rawName)
+                }()
+                let displayLabel = shouldRename ? (mappedVoice ?? rawName ?? "") : (rawName ?? mappedVoice ?? "")
+                let rewrittenLanguage: String = {
+                    if isOriginalOrEnglishTranslation(displayLabel) { return "en" }
+                    if detectLanguageTag(in: displayLabel) == "ukr" { return "uk" }
+                    if detectLanguageTag(in: displayLabel) == "kaz" { return "kk" }
+                    return "ru"
+                }()
+
+                entries.append(AudioTrackEntry(
+                    lineIndex: lineIdx,
+                    ordinal: ordinal,
+                    groupId: groupId,
+                    line: line,
+                    rawName: rawName,
+                    uri: uri,
+                    language: language,
+                    resolvedIndex: resolvedIndex,
+                    displayLabel: displayLabel,
+                    rewrittenLanguage: rewrittenLanguage
+                ))
+            }
+
+            // Pick EXACTLY ONE winning default track per GROUP-ID
+            var winningOrdinal: Int? = nil
+            if let preferred = preferredVoiceName, !preferred.isEmpty {
+                winningOrdinal = entries.first(where: {
+                    allohaTranslationNamesMatch($0.displayLabel, preferred, exactOnly: true)
+                })?.ordinal
+                if winningOrdinal == nil {
+                    winningOrdinal = entries.first(where: {
+                        allohaTranslationNamesMatch($0.displayLabel, preferred, exactOnly: false)
+                    })?.ordinal
+                }
+                if winningOrdinal == nil, !voices.isEmpty {
+                    let voiceIdx = voices.firstIndex(where: { allohaTranslationNamesMatch($0, preferred, exactOnly: true) })
+                        ?? voices.firstIndex(where: { allohaTranslationNamesMatch($0, preferred, exactOnly: false) })
+                    if let voiceIdx {
+                        winningOrdinal = entries.first(where: { $0.resolvedIndex == voiceIdx })?.ordinal
+                    }
+                }
+                if winningOrdinal == nil && isRussianTranslation(preferred) {
+                    winningOrdinal = entries.first(where: {
+                        isRussianTranslation($0.displayLabel)
+                    })?.ordinal
+                }
+            }
+
+            for entry in entries {
+                var output = entry.line
+                if entry.resolvedIndex != nil, (entry.rawName == nil || isGenericTrackName(entry.rawName!)) {
+                    output = addOrReplaceAttribute(output, key: "NAME", value: entry.displayLabel)
+                    output = addOrReplaceAttribute(output, key: "LANGUAGE", value: entry.rewrittenLanguage)
+                }
+                if let winningOrdinal {
+                    let isDefault = entry.ordinal == winningOrdinal
+                    output = addOrReplaceAttribute(output, key: "DEFAULT", value: isDefault ? "YES" : "NO", quoted: false)
+                    output = addOrReplaceAttribute(output, key: "AUTOSELECT", value: isDefault ? "YES" : "NO", quoted: false)
+                }
+                replacements[entry.lineIndex] = output
+            }
+        }
+
+        return replacements
     }
 
     private static func isGenericTrackName(_ name: String) -> Bool {

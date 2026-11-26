@@ -84,6 +84,9 @@ jobs:
       - name: Test translation availability
         run: bash sloosh-iOS/Tests/run-translation-availability-tests.sh
 
+      - name: Test playback voiceover matching and ad filtering
+        run: bash sloosh-iOS/Tests/run-playback-voiceover-tests.sh
+
       - name: Test remote campaigns
         run: bash sloosh-iOS/Tests/run-campaign-tests.sh
 

@@ -171,6 +171,22 @@ struct CatalogSearchTests {
         check(debounceCalls == 0 && debounced.history.isEmpty, "Debounce suppresses keystroke requests and history spam")
         await debounced.submit()
         check(debounceCalls == 1 && debounced.history == ["матрица"], "Submit bypasses debounce exactly once and commits history")
+        var preservedDuringTyping = false
+        var typingPending: [String: CheckedContinuation<MediaResponse, Error>] = [:]
+        let flickerFree = SearchViewModel(defaults: defaults, historyScope: "flickerFree", debounceNanoseconds: 0) { query, _, _ in
+            try await withCheckedThrowingContinuation { typingPending[query] = $0 }
+        }
+        flickerFree.searchQuery = "матрица"
+        await waitUntil { typingPending["матрица"] != nil }
+        typingPending.removeValue(forKey: "матрица")!.resume(returning: MediaResponse(results: [film], pages: 1))
+        await waitUntil { !flickerFree.isLoading }
+        flickerFree.searchQuery = "матрица 2"
+        preservedDuringTyping = flickerFree.results.first?.artworkIdentifier == film.artworkIdentifier
+        check(preservedDuringTyping, "Typing a refined query preserves current results instead of flashing empty loading")
+        await waitUntil { typingPending["матрица 2"] != nil }
+        typingPending.removeValue(forKey: "матрица 2")!.resume(returning: MediaResponse(results: [series], pages: 1))
+        await waitUntil { !flickerFree.isLoading }
+        check(flickerFree.results.first?.artworkIdentifier == series.artworkIdentifier, "Refined query replaces preserved results when resolved")
         for i in 0..<25 { debounced.searchQuery = "Запрос \(i)"; debounced.rememberCurrentQuery() }
         debounced.searchQuery = ""
         check(debounced.history.count == 20, "Bound and persist recent history")

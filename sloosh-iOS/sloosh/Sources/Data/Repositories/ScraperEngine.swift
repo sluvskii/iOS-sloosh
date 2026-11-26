@@ -28,9 +28,14 @@ final class ScraperEngine: @unchecked Sendable {
 
     // MARK: - Lifecycle & Remote Update
 
-    /// Фоновый прогрев и обновление скрейперов при запуске приложения
+    /// Фоновый прогрев скрейперов при запуске приложения (без запросов к удалённому серверу,
+    /// так как /api/v1/scrapers/:id выведен из эксплуатации и локальный парсер актуален)
     func warmup() async {
-        await refreshScraper(id: "collaps")
+        lock.lock()
+        if (inMemoryScripts["collaps"] ?? "").isEmpty {
+            inMemoryScripts["collaps"] = Self.bundledCollapsScraper
+        }
+        lock.unlock()
     }
 
     /// Проверяет наличие обновленного скрейпера на сервере
@@ -224,11 +229,11 @@ final class ScraperEngine: @unchecked Sendable {
         var result = [];
         for (var i = 0; i < audioObj.names.length; i++) {
           var name = String(audioObj.names[i] || "").trim();
-          if (name.toLowerCase() === "delete") {
-            name = "Перевод " + (i + 1);
+          if (!name || name.toLowerCase() === "delete") {
+            name = "Дорожка " + (i + 1);
           }
           name = name.replace(/\"/g, "'");
-          if (name) result.push(name);
+          result.push(name);
         }
         return result;
       }

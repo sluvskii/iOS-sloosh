@@ -290,7 +290,7 @@ final class CollapsParser {
         var result: [String] = []
         for (idx, raw) in names.enumerated() {
             var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if name.lowercased() == "delete" {
+            if name.isEmpty || name.lowercased() == "delete" {
                 name = "Дорожка \(idx + 1)"
             }
             // Sanitize inner double quotes which break HLS EXT-X-MEDIA attributes in AVPlayer
@@ -298,7 +298,7 @@ final class CollapsParser {
             result.append(name)
         }
 
-        return result.filter { !$0.isEmpty }
+        return result
     }
 
 

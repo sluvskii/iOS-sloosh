@@ -127,26 +127,30 @@ struct SearchView: View {
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .searchSuggestions {
-                ForEach(viewModel.catalogSuggestions) { suggestion in
-                    if let movie = suggestion.movie {
-                        Button { openMovieSuggestion(movie) } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: movie.type == "tv" ? "tv" : "film")
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(movie.displayTitle)
-                                    Text([movie.year?.stringValue, movie.type == "tv" ? "Сериал" : "Фильм"].compactMap { $0 }.joined(separator: " · "))
-                                        .font(.caption).foregroundStyle(.secondary)
+                if isSearchPresented,
+                   !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   viewModel.results.isEmpty {
+                    ForEach(viewModel.catalogSuggestions) { suggestion in
+                        if let movie = suggestion.movie {
+                            Button { openMovieSuggestion(movie) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: movie.type == "tv" ? "tv" : "film")
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(movie.displayTitle)
+                                        Text([movie.year?.stringValue, movie.type == "tv" ? "Сериал" : "Фильм"].compactMap { $0 }.joined(separator: " · "))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
                                 }
                             }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
-                }
-                if !viewModel.historySuggestions.isEmpty {
-                    Section("Недавние запросы") {
-                        ForEach(viewModel.historySuggestions, id: \.self) { query in
-                            Label(query, systemImage: "clock")
-                                .searchCompletion(query)
+                    if !viewModel.historySuggestions.isEmpty {
+                        Section("Недавние запросы") {
+                            ForEach(viewModel.historySuggestions, id: \.self) { query in
+                                Label(query, systemImage: "clock")
+                                    .searchCompletion(query)
+                            }
                         }
                     }
                 }
@@ -220,71 +224,66 @@ struct SearchView: View {
     @ViewBuilder
     private var searchContext: some View {
         if !viewModel.isDiscovery {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    if !viewModel.searchFilters.isEmpty {
-                        Button { showFilters = true } label: {
-                            Label("Фильтры: \(viewModel.searchFilters.activeCount)", systemImage: "line.3.horizontal.decrease")
-                                .font(.subheadline.weight(.medium))
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                        .buttonStyle(.plain)
-                        Button("Сбросить") { viewModel.searchFilters = SearchFilters() }
-                            .font(.subheadline)
-                    }
-                    Spacer()
-                    if !viewModel.isLoading, !viewModel.results.isEmpty {
-                        Text("Показано: \(viewModel.results.count)").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if !viewModel.searchFilters.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(CatalogSearchFilter.allCases) { field in
-                                if let label = field.label(in: viewModel.searchFilters) {
-                                    Button {
-                                        viewModel.searchFilters = field.removing(from: viewModel.searchFilters)
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Text(label).lineLimit(1)
-                                            Image(systemName: "xmark").font(.caption2.weight(.semibold))
-                                        }
-                                        .font(.caption.weight(.medium))
-                                        .padding(.horizontal, 10).padding(.vertical, 7)
+            let hasStatusRow = !viewModel.searchFilters.isEmpty || (viewModel.isLoading && !viewModel.results.isEmpty)
+            let hasCorrection = viewModel.resolvedQuery != nil || viewModel.insufficientMetadata > 0
+            if hasStatusRow || hasCorrection {
+                VStack(alignment: .leading, spacing: 8) {
+                    if hasStatusRow {
+                        HStack {
+                            if !viewModel.searchFilters.isEmpty {
+                                Button { showFilters = true } label: {
+                                    Label("Фильтры: \(viewModel.searchFilters.activeCount)", systemImage: "line.3.horizontal.decrease")
+                                        .font(.subheadline.weight(.medium))
+                                        .padding(.horizontal, 12).padding(.vertical, 7)
                                         .glassEffect(.regular.interactive(), in: .capsule)
+                                }
+                                .buttonStyle(.plain)
+                                Button("Сбросить") { viewModel.searchFilters = SearchFilters() }
+                                    .font(.subheadline)
+                            }
+                            Spacer()
+                            if viewModel.isLoading && !viewModel.results.isEmpty {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                    if !viewModel.searchFilters.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(CatalogSearchFilter.allCases) { field in
+                                    if let label = field.label(in: viewModel.searchFilters) {
+                                        Button {
+                                            viewModel.searchFilters = field.removing(from: viewModel.searchFilters)
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Text(label).lineLimit(1)
+                                                Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                                            }
+                                            .font(.caption.weight(.medium))
+                                            .padding(.horizontal, 10).padding(.vertical, 7)
+                                            .glassEffect(.regular.interactive(), in: .capsule)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Убрать фильтр: \(label)")
                                     }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Убрать фильтр: \(label)")
                                 }
                             }
                         }
                     }
+                    if let query = viewModel.resolvedQuery {
+                        Text("Показано для «\(query)»")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Уточнённый запрос: \(query)")
+                    }
+                    if viewModel.insufficientMetadata > 0 {
+                        Text("Часть карточек скрыта: недостаточно данных для проверки фильтров")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                if viewModel.recoveredExactTitle {
-                    Text("Найдено по точному названию").font(.caption).foregroundStyle(.secondary)
-                }
-                if let query = viewModel.resolvedQuery {
-                    Text("Результаты для «\(query)»")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                        .accessibilityLabel("Уточнённый запрос: \(query)")
-                }
-                if let raw = viewModel.originalQuery, viewModel.resolvedQuery != nil {
-                    Text("Исходный запрос: «\(raw)»").font(.caption).foregroundStyle(.secondary)
-                }
-                if let reason = viewModel.correctionReason {
-                    Text(reason).font(.caption).foregroundStyle(.secondary)
-                }
-                if viewModel.insufficientMetadata > 0 {
-                    Text("Часть карточек скрыта: недостаточно данных для проверки фильтров")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if viewModel.usesLocalSorting {
-                    Text("Сортировка по загруженным результатам")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                .padding(.horizontal, 16).padding(.vertical, 6)
             }
-            .padding(.horizontal, 16).padding(.vertical, 6)
         }
     }
 
@@ -312,14 +311,42 @@ struct SearchDiscoveryView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
                 FlowLayout(spacing: 8) {
-                    Button("Фильмы") { viewModel.searchFilters = SearchFilters(type: "FILM") }
-                    Button("Сериалы") { viewModel.searchFilters = SearchFilters(type: "TV_SERIES") }
-                    Button("Новинки") {
-                        viewModel.searchFilters = SearchFilters(order: "YEAR", yearFrom: Calendar.current.component(.year, from: Date()))
+                    Button {
+                        viewModel.searchFilters = SearchFilters(type: "FILM")
+                    } label: {
+                        Text("Фильмы")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .glassEffect(.regular.interactive(), in: Capsule())
                     }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        viewModel.searchFilters = SearchFilters(type: "TV_SERIES")
+                    } label: {
+                        Text("Сериалы")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        viewModel.searchFilters = SearchFilters(order: "YEAR", yearFrom: Calendar.current.component(.year, from: Date()))
+                    } label: {
+                        Text("Новинки")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.bordered)
-                .tint(.primary)
                 .padding(.horizontal, 16)
 
                 // 1. History
