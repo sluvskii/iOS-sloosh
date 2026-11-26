@@ -37,6 +37,7 @@ struct TrailerPlayerSheetView: View {
                 }
                 .padding(.bottom, 16)
             }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationTitle("Трейлер")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

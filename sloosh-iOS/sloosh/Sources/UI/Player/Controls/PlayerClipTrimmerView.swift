@@ -1006,6 +1006,7 @@ private struct PublishMomentSheet: View {
                 .padding(.vertical, 16)
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .background(Color.black.opacity(0.94))
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top

@@ -178,6 +178,7 @@ struct MediaArtworkPickerSheet: View {
                 .padding(.bottom, 36)
             }
             .scrollContentBackground(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .refreshable {
                 await loadAvailableImagesIfNeeded(force: true)
             }

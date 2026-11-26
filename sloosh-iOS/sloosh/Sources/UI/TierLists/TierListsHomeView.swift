@@ -117,6 +117,7 @@ struct TierListsHomeView: View {
                 }
             }
         }
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .navigationTitle("Тир-листы")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

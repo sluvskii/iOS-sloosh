@@ -167,6 +167,7 @@ public struct MovieSelectorSheet: View {
             .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
+        .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
     private func performDebouncedSearch(query: String) {

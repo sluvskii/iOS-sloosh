@@ -249,6 +249,7 @@ public struct ChatDetailView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
                     scrollOffset = offset
                 }

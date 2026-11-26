@@ -39,6 +39,7 @@ struct WatchPartyFriendPickerSheet: View {
                         .padding(.top, 12)
                         .padding(.bottom, 32)
                     }
+                    .scrollEdgeEffectStyle(.soft, for: .all)
                 }
             }
             .navigationTitle("Смотреть вместе")

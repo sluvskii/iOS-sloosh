@@ -59,6 +59,7 @@ struct TierTargetPickerSheet: View {
                     }
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationDestination(item: $newDraft) { draft in
                 TierListEditorView(draft: draft, onPublished: { _ in onDismiss() }, onDismiss: { onDismiss() })
             }

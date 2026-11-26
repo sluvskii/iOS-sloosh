@@ -125,6 +125,7 @@ struct TierListEditorView: View {
                 }
             }
             .scrollClipDisabled()
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .scrollDisabled(isDraggingCard)
         }
     }
@@ -363,6 +364,7 @@ struct TierListEditorView: View {
                     .disabled(isPublishing || title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .disabled(isPublishing)
             .interactiveDismissDisabled(isPublishing)
             .navigationTitle("Публикация")
@@ -645,6 +647,7 @@ struct TierRowEditSheet: View {
                     }
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationTitle("Уровень")
             .navigationBarTitleDisplayMode(.inline)
             .tint(.primary)

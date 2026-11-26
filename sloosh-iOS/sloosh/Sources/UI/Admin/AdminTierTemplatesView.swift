@@ -69,7 +69,7 @@ struct AdminTierTemplatesView: View {
         }
         .scrollContentBackground(.hidden)
         .disabled(isDeleting)
-        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .task(id: auth.isAdmin) {
             if auth.isAdmin, ownerId == auth.currentUser?.id, editing == nil {
                 editing = sessionStore.load()
@@ -164,6 +164,7 @@ private struct AdminTierTemplateEditor: View {
                 footer: { Text("Не менее четырёх. Первые четыре постера формируют обложку; порядок меняется за ручку справа.") }
             }
             .environment(\.editMode, .constant(.active))
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .disabled(isSaving || !auth.isAdmin)
             .navigationTitle(original == nil ? "Новый шаблон" : "Редактирование")
             .navigationBarTitleDisplayMode(.inline)

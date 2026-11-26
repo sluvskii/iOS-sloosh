@@ -330,6 +330,7 @@ public struct ChannelDetailView: View {
                     .frame(minHeight: geometry.size.height)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: posts.count) { _, _ in
                     if let lastPost = posts.last {

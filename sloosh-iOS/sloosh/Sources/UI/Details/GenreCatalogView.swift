@@ -88,6 +88,7 @@ struct GenreCatalogView: View {
                 }
             }
         }
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .refreshable {
             await viewModel.loadInitial(force: true)
         }

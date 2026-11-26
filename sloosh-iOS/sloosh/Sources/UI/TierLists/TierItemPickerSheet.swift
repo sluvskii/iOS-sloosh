@@ -148,6 +148,7 @@ struct TierItemPickerSheet: View {
                     }
                 }
             }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .searchable(text: Binding(get: { searchText }, set: { searchText = $0 }), prompt: "Название фильма или сериала")
             .navigationTitle("Добавить фильмы")
             .navigationBarTitleDisplayMode(.inline)

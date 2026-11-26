@@ -62,6 +62,7 @@ public struct CreateChannelSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationTitle("Новый канал")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

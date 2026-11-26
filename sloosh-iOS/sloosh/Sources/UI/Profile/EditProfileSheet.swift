@@ -62,6 +62,7 @@ public struct EditProfileSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .navigationTitle("Редактировать профиль")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

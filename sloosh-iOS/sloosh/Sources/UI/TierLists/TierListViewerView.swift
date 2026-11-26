@@ -91,6 +91,7 @@ struct TierListViewerView: View {
                     .frame(maxWidth: .infinity, minHeight: 300)
             }
         }
+        .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
     @ViewBuilder

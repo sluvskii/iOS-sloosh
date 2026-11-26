@@ -61,6 +61,7 @@ struct ContinueView: View {
                         .padding(.vertical, 12)
                     }
                     .scrollIndicators(.hidden)
+                    .scrollEdgeEffectStyle(.soft, for: .bottom)
                     .refreshable {
                         await CloudSyncService.shared.syncAllDataAsync(force: true)
                         await viewModel.reload(forceMetadataRefresh: true)
