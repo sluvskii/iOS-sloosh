@@ -158,7 +158,7 @@ struct CatalogSearchTests {
         check(queries == ["ghbdtn", "привет", "привет"], "Pagination freezes the resolved query, never mixes spelling variants")
         fallback.searchQuery = "первый мститель"
         await fallback.performSearch(reset: true)
-        check(queries.count >= 4 && queries[3] == "первый мститель" && fallback.resolvedQuery == nil, "Refining a resolved query never reuses stale resolvedQuery")
+        check(queries.count >= 4 && queries[3] == "первый мститель" && !queries.dropFirst(3).contains("привет") && fallback.resolvedQuery == nil, "Refining a resolved query never reuses stale resolvedQuery")
         var errors = 0
         let failing = SearchViewModel(defaults: defaults, historyScope: "fail", debounceNanoseconds: 0) { _, _, _ in
             errors += 1; throw URLError(.timedOut)
