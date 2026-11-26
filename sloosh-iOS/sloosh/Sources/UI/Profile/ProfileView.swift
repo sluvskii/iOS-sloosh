@@ -102,9 +102,9 @@ struct ProfileView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     avatarHeaderButton
+                        .tint(authRepo.isAuthenticated ? .primary : Color.slooshAccent)
                 }
                 .sharedBackgroundVisibility(authRepo.isAuthenticated ? .hidden : .automatic)
-                .tint(authRepo.isAuthenticated ? .primary : Color.slooshAccent)
 
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
