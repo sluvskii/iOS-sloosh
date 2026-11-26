@@ -1,5 +1,14 @@
 import SwiftUI
+import UIKit
 import Combine
+
+private enum SearchScreenState: Equatable {
+    case discovery
+    case skeleton
+    case error
+    case empty
+    case results
+}
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel(
@@ -26,136 +35,48 @@ struct SearchView: View {
         return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
     }
 
+    private var screenState: SearchScreenState {
+        if viewModel.isDiscovery { return .discovery }
+        if viewModel.isLoading && viewModel.results.isEmpty { return .skeleton }
+        if viewModel.error != nil && viewModel.results.isEmpty { return .error }
+        if viewModel.results.isEmpty { return .empty }
+        return .results
+    }
+
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.isDiscovery {
-                    SearchDiscoveryView(viewModel: viewModel)
-                } else if viewModel.isLoading && viewModel.results.isEmpty {
-                    ProgressView("Ищем...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.error, viewModel.results.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "wifi.exclamationmark")
-                            .font(.system(size: 42))
-                            .foregroundColor(.secondary)
-                        Text(error)
-                            .multilineTextAlignment(.center)
-                            .foregroundColor(.secondary)
-                        if viewModel.isInvalidRequest {
-                            Button("Изменить фильтры") { showFilters = true }
-                        } else {
-                        Button("Повторить") {
-                            Task {
-                                await viewModel.retry()
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Color.slooshAccent)
-                        }
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.results.isEmpty {
-                    VStack(spacing: 16) {
-                        SearchEmptyState(
-                            icon: "magnifyingglass",
-                            title: viewModel.hasMore ? "В этой части каталога совпадений нет" : "Ничего не найдено",
-                            subtitle: viewModel.searchFilters.isEmpty ? "Проверьте название или выберите подсказку" : "Попробуйте убрать часть фильтров — они не сбрасываются автоматически"
-                        )
-                        if viewModel.hasMore {
-                            Button("Продолжить поиск") { Task { await viewModel.loadNextPage() } }
-                                .disabled(viewModel.isAppending)
-                        }
-                        if !viewModel.searchFilters.isEmpty {
-                            Button("Сбросить фильтры") { viewModel.searchFilters = SearchFilters() }
-                        }
-                        if viewModel.isAppending { ProgressView() }
-                    }
-                } else {
-                    ScrollView {
-                        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
-                        let padding: CGFloat = cardDensity == .compact ? 12 : 16
-                        LazyVGrid(columns: columns, spacing: spacing) {
-                            ForEach(viewModel.results, id: \.artworkIdentifier) { movie in
-                                MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                                    .contextMenu {
-                                        Group {
-                                            Button {
-                                                viewModel.directPlaybackMovie = movie
-                                            } label: {
-                                                Label("Смотреть", systemImage: "play.fill")
-                                            }
-                                            
-                                            NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
-                                                Label("Подробнее", systemImage: "info.circle")
-                                            }
-                                        }
-                                        .tint(nil)
-                                    }
-                                    .simultaneousGesture(TapGesture().onEnded { viewModel.rememberCurrentQuery() })
-                                    .onAppear {
-                                        if movie.artworkIdentifier == viewModel.results.last?.artworkIdentifier {
-                                            Task {
-                                                await viewModel.loadNextPage()
-                                            }
-                                        }
-                                    }
-                            }
+            ZStack {
+                switch screenState {
+                case .discovery:
+                    SearchDiscoveryView(viewModel: viewModel, navigationTransition: navigationTransition)
+                        .transition(.opacity.combined(with: .scale(scale: 0.99)))
 
-                            if viewModel.isAppending {
-                                ForEach(0..<3, id: \.self) { _ in
-                                    MoviePosterCardPlaceholder()
-                                }
-                            }
-                        }
-                        .padding(padding)
-                        paginationFooter
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 20)
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-                    .scrollEdgeEffectStyle(.soft, for: .bottom)
-                    .refreshable {
-                        await viewModel.performSearch(reset: true)
-                    }
+                case .skeleton:
+                    skeletonGrid
+                        .transition(.opacity)
+
+                case .error:
+                    errorView
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+
+                case .empty:
+                    emptyView
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+
+                case .results:
+                    resultsGrid
+                        .transition(.opacity)
                 }
             }
+            .animation(.spring(response: 0.34, dampingFraction: 0.88), value: screenState)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: viewModel.searchFilters)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $viewModel.searchQuery, isPresented: $isSearchPresented, prompt: "Название, оригинальное название…")
+            .searchable(text: $viewModel.searchQuery, isPresented: $isSearchPresented, prompt: "Фильмы, сериалы, мультфильмы…")
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
-            .searchSuggestions {
-                if isSearchPresented,
-                   !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   viewModel.results.isEmpty {
-                    ForEach(viewModel.catalogSuggestions) { suggestion in
-                        if let movie = suggestion.movie {
-                            Button { openMovieSuggestion(movie) } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: movie.type == "tv" ? "tv" : "film")
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(movie.displayTitle)
-                                        Text([movie.year?.stringValue, movie.type == "tv" ? "Сериал" : "Фильм"].compactMap { $0 }.joined(separator: " · "))
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    if !viewModel.historySuggestions.isEmpty {
-                        Section("Недавние запросы") {
-                            ForEach(viewModel.historySuggestions, id: \.self) { query in
-                                Label(query, systemImage: "clock")
-                                    .searchCompletion(query)
-                            }
-                        }
-                    }
-                }
-            }
             .onSubmit(of: .search) {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 isSearchPresented = false
                 Task { await viewModel.submit() }
             }
@@ -165,8 +86,14 @@ struct SearchView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) { searchContext }
             .task {
-                if let items = try? await MoviesRepository.shared.getPopularMovies(page: 1) {
-                    viewModel.setDiscoveryMovies(items)
+                guard viewModel.discoveryMovies.isEmpty else { return }
+                viewModel.setDiscoveryLoading(true)
+                if let trending = try? await MoviesRepository.shared.getTrending(page: 1), !trending.isEmpty {
+                    viewModel.setDiscoveryMovies(trending)
+                } else if let popular = try? await MoviesRepository.shared.getPopularMovies(page: 1) {
+                    viewModel.setDiscoveryMovies(popular)
+                } else {
+                    viewModel.setDiscoveryLoading(false)
                 }
             }
             .toolbar {
@@ -177,14 +104,26 @@ struct SearchView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showFilters = true
-                    } label: {
-                        Image(systemName: viewModel.searchFilters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                            .font(.system(size: 19))
-                            .foregroundColor(.primary)
-                            .glassForeground()
+                    HStack(spacing: 10) {
+                        if viewModel.isLoading && !viewModel.results.isEmpty {
+                            ProgressView()
+                                .controlSize(.small)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showFilters = true
+                        } label: {
+                            let hasFilters = !viewModel.searchFilters.isEmpty
+                            Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(hasFilters ? Color.slooshAccent : Color.primary)
+                                .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: hasFilters ? Color.slooshAccent : .primary))
+                        }
+                        .accessibilityLabel("Фильтры")
                     }
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
                 }
             }
             .sheet(isPresented: $showFilters) {
@@ -216,74 +155,205 @@ struct SearchView: View {
             }
         }
     }
-    private func openMovieSuggestion(_ movie: MediaDto) {
-        isSearchPresented = false
-        viewModel.openSuggestion(movie)
+
+    // MARK: - Substates
+
+    private var skeletonGrid: some View {
+        ScrollView(showsIndicators: false) {
+            let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+            let padding: CGFloat = cardDensity == .compact ? 12 : 16
+            LazyVGrid(columns: columns, spacing: spacing) {
+                ForEach(0..<12, id: \.self) { _ in
+                    MoviePosterCardPlaceholder()
+                }
+            }
+            .padding(padding)
+        }
+        .scrollDisabled(true)
+    }
+
+    private var resultsGrid: some View {
+        ScrollView {
+            let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+            let padding: CGFloat = cardDensity == .compact ? 12 : 16
+            LazyVGrid(columns: columns, spacing: spacing) {
+                ForEach(Array(viewModel.results.enumerated()), id: \.element.artworkIdentifier) { index, movie in
+                    MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                        .contextMenu {
+                            Group {
+                                Button {
+                                    viewModel.directPlaybackMovie = movie
+                                } label: {
+                                    Label("Смотреть", systemImage: "play.fill")
+                                }
+
+                                NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                    Label("Подробнее", systemImage: "info.circle")
+                                }
+                            }
+                            .tint(nil)
+                        }
+                        .simultaneousGesture(TapGesture().onEnded { viewModel.rememberCurrentQuery() })
+                        .onAppear {
+                            let threshold = max(0, viewModel.results.count - 4)
+                            if index >= threshold {
+                                Task {
+                                    await viewModel.loadNextPage()
+                                }
+                            }
+                        }
+                }
+
+                if viewModel.isAppending {
+                    ForEach(0..<3, id: \.self) { _ in
+                        MoviePosterCardPlaceholder()
+                    }
+                }
+            }
+            .padding(padding)
+            .opacity(viewModel.isLoading ? 0.65 : 1.0)
+            .animation(.easeInOut(duration: 0.18), value: viewModel.isLoading)
+
+            paginationFooter
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
+        .refreshable {
+            await viewModel.performSearch(reset: true)
+        }
+    }
+
+    private var errorView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 44, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(viewModel.error ?? "Не удалось загрузить результаты")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 280)
+            if viewModel.isInvalidRequest {
+                Button("Изменить фильтры") { showFilters = true }
+                    .buttonStyle(.bordered)
+                    .tint(Color.slooshAccent)
+            } else {
+                Button("Повторить") {
+                    Task { await viewModel.retry() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.slooshAccent)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            SearchEmptyState(
+                icon: "magnifyingglass",
+                title: "Ничего не найдено",
+                subtitle: viewModel.searchFilters.isEmpty
+                    ? "Проверьте написание названия или попробуйте другое слово"
+                    : "Попробуйте изменить или сбросить выбранные фильтры"
+            )
+            if !viewModel.searchFilters.isEmpty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        viewModel.searchFilters = SearchFilters()
+                    }
+                } label: {
+                    Text("Сбросить фильтры")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .glassForeground()
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                }
+                .buttonStyle(.glassPress)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
     private var searchContext: some View {
-        if !viewModel.isDiscovery {
-            let hasStatusRow = !viewModel.searchFilters.isEmpty || (viewModel.isLoading && !viewModel.results.isEmpty)
-            let hasCorrection = viewModel.resolvedQuery != nil || viewModel.insufficientMetadata > 0
-            if hasStatusRow || hasCorrection {
-                VStack(alignment: .leading, spacing: 8) {
-                    if hasStatusRow {
-                        HStack {
-                            if !viewModel.searchFilters.isEmpty {
-                                Button { showFilters = true } label: {
-                                    Label("Фильтры: \(viewModel.searchFilters.activeCount)", systemImage: "line.3.horizontal.decrease")
-                                        .font(.subheadline.weight(.medium))
-                                        .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .glassEffect(.regular.interactive(), in: .capsule)
-                                }
-                                .buttonStyle(.plain)
-                                Button("Сбросить") { viewModel.searchFilters = SearchFilters() }
-                                    .font(.subheadline)
-                            }
-                            Spacer()
-                            if viewModel.isLoading && !viewModel.results.isEmpty {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-                        }
-                    }
-                    if !viewModel.searchFilters.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(CatalogSearchFilter.allCases) { field in
-                                    if let label = field.label(in: viewModel.searchFilters) {
-                                        Button {
+        let hasFilters = !viewModel.searchFilters.isEmpty
+        let hasCorrection = viewModel.resolvedQuery != nil
+        if !viewModel.isDiscovery && (hasFilters || hasCorrection) {
+            VStack(alignment: .leading, spacing: 6) {
+                if hasFilters {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(CatalogSearchFilter.allCases) { field in
+                                if let label = field.label(in: viewModel.searchFilters) {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                                             viewModel.searchFilters = field.removing(from: viewModel.searchFilters)
-                                        } label: {
-                                            HStack(spacing: 6) {
-                                                Text(label).lineLimit(1)
-                                                Image(systemName: "xmark").font(.caption2.weight(.semibold))
-                                            }
-                                            .font(.caption.weight(.medium))
-                                            .padding(.horizontal, 10).padding(.vertical, 7)
-                                            .glassEffect(.regular.interactive(), in: .capsule)
                                         }
-                                        .buttonStyle(.plain)
-                                        .accessibilityLabel("Убрать фильтр: \(label)")
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Text(label)
+                                                .lineLimit(1)
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                        .glassForeground()
+                                        .padding(.horizontal, 11)
+                                        .padding(.vertical, 6)
+                                        .glassEffect(.regular.interactive(), in: .capsule)
                                     }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Убрать фильтр: \(label)")
+                                    .transition(.scale(scale: 0.9).combined(with: .opacity))
                                 }
                             }
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                                    viewModel.searchFilters = SearchFilters()
+                                }
+                            } label: {
+                                Text("Сбросить")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.slooshAccent)
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 6)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
                         }
-                    }
-                    if let query = viewModel.resolvedQuery {
-                        Text("Показано для «\(query)»")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel("Уточнённый запрос: \(query)")
-                    }
-                    if viewModel.insufficientMetadata > 0 {
-                        Text("Часть карточек скрыта: недостаточно данных для проверки фильтров")
-                            .font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
                     }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 6)
+
+                if let resolved = viewModel.resolvedQuery {
+                    Text("Показано для «\(resolved)»")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .accessibilityLabel("Уточнённый запрос: \(resolved)")
+                }
             }
+            .padding(.top, 4)
+            .padding(.bottom, 8)
+            .background(
+                VariableBlurView(tintColor: Color(UIColor.systemBackground), tintOpacity: 0.95)
+                    .padding(.bottom, -24)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+            )
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
@@ -291,167 +361,256 @@ struct SearchView: View {
     private var paginationFooter: some View {
         if let error = viewModel.error {
             VStack(spacing: 10) {
-                Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                if viewModel.isInvalidRequest {
-                    Button("Обновить поиск") { Task { await viewModel.performSearch(reset: true) } }
-                } else {
-                    Button("Повторить загрузку") { Task { await viewModel.retry() } }
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Повторить загрузку") {
+                    Task { await viewModel.retry() }
                 }
+                .buttonStyle(.bordered)
+                .tint(Color.slooshAccent)
             }
+            .padding(.top, 8)
         } else if viewModel.hasMore && !viewModel.isAppending {
-            Button("Показать ещё") { Task { await viewModel.loadNextPage() } }
+            Button {
+                Task { await viewModel.loadNextPage() }
+            } label: {
+                Text("Показать ещё")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .glassForeground()
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+            }
+            .buttonStyle(.glassPress)
+            .padding(.top, 6)
         }
     }
 }
 
+// MARK: - Discovery Showcase
+
 struct SearchDiscoveryView: View {
     @ObservedObject var viewModel: SearchViewModel
+    let navigationTransition: Namespace.ID
+
+    private struct GenreTile: Identifiable {
+        let name: String
+        let icon: String
+        var id: String { name }
+    }
+
+    private let genreTiles: [GenreTile] = [
+        GenreTile(name: "Боевик", icon: "bolt.fill"),
+        GenreTile(name: "Комедия", icon: "face.smiling.fill"),
+        GenreTile(name: "Драма", icon: "theatermasks.fill"),
+        GenreTile(name: "Фантастика", icon: "sparkles"),
+        GenreTile(name: "Триллер", icon: "eye.fill"),
+        GenreTile(name: "Ужасы", icon: "moon.stars.fill"),
+        GenreTile(name: "Детектив", icon: "magnifyingglass"),
+        GenreTile(name: "Мелодрама", icon: "heart.fill"),
+        GenreTile(name: "Приключения", icon: "map.fill"),
+        GenreTile(name: "Фэнтези", icon: "wand.and.stars"),
+        GenreTile(name: "Мультфильм", icon: "paintpalette.fill"),
+        GenreTile(name: "Криминал", icon: "flame.fill"),
+        GenreTile(name: "Семейный", icon: "figure.2.and.child.holdinghands"),
+        GenreTile(name: "Аниме", icon: "star.fill")
+    ]
+
+    private let tileColumns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 22) {
-                FlowLayout(spacing: 8) {
-                    Button {
-                        viewModel.searchFilters = SearchFilters(type: "FILM")
-                    } label: {
-                        Text("Фильмы")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 9)
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        viewModel.searchFilters = SearchFilters(type: "TV_SERIES")
-                    } label: {
-                        Text("Сериалы")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 9)
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        viewModel.searchFilters = SearchFilters(order: "YEAR", yearFrom: Calendar.current.component(.year, from: Date()))
-                    } label: {
-                        Text("Новинки")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 9)
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-
-                // 1. History
+            VStack(alignment: .leading, spacing: 26) {
+                // 1. Recent queries (single horizontal row, never a wall of pills)
                 if !viewModel.history.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("Недавние запросы")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.secondary)
+                            Text("Недавние")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(.primary)
                             Spacer()
                             Button("Очистить") {
-                                viewModel.clearHistory()
-                            }
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.slooshAccent)
-                        }
-                        .padding(.horizontal, 16)
-                        
-                        FlowLayout(spacing: 8) {
-                            ForEach(viewModel.history, id: \.self) { query in
-                                HStack(spacing: 8) {
-                                    Button {
-                                        viewModel.selectHistory(query)
-                                    } label: {
-                                        Text(query)
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundColor(.primary)
-                                    }
-                                    .buttonStyle(.plain)
-                                    
-                                    Button {
-                                        viewModel.removeHistory(query)
-                                    } label: {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Удалить запрос «\(query)» из истории")
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                                    viewModel.clearHistory()
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .glassEffect(.regular.interactive(), in: Capsule())
                             }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.slooshAccent)
                         }
                         .padding(.horizontal, 16)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(viewModel.history, id: \.self) { query in
+                                    HStack(spacing: 7) {
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            viewModel.selectHistory(query)
+                                        } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "clock")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundStyle(.secondary)
+                                                Text(query)
+                                                    .font(.system(size: 14, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                                viewModel.removeHistory(query)
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundStyle(.secondary)
+                                                .padding(2)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Удалить запрос «\(query)» из истории")
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
+                                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                // 2. Trending Cinema Carousel
+                if viewModel.isDiscoveryLoading || !viewModel.discoveryMovies.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Сейчас в тренде")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 16)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 12) {
+                                if viewModel.discoveryMovies.isEmpty {
+                                    ForEach(0..<5, id: \.self) { _ in
+                                        MoviePosterCardPlaceholder()
+                                            .frame(width: 122)
+                                    }
+                                } else {
+                                    ForEach(viewModel.discoveryMovies.prefix(15), id: \.artworkIdentifier) { movie in
+                                        MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                            .frame(width: 122)
+                                            .contextMenu {
+                                                Group {
+                                                    Button {
+                                                        viewModel.directPlaybackMovie = movie
+                                                    } label: {
+                                                        Label("Смотреть", systemImage: "play.fill")
+                                                    }
+
+                                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                                        Label("Подробнее", systemImage: "info.circle")
+                                                    }
+                                                }
+                                                .tint(nil)
+                                            }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
                     }
                 }
 
-                // 2. Popular Genres
-                VStack(alignment: .leading, spacing: 14) {
+                // 3. Genres 2-Column Cinema Tiles
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Жанры")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 16)
-                    
-                    FlowLayout(spacing: 8) {
-                        ForEach([
-                            "Боевик", "Комедия", "Драма", "Фантастика", "Триллер",
-                            "Ужасы", "Детектив", "Мелодрама", "Приключения", "Фэнтези",
-                            "Мультфильм", "Криминал", "Семейный", "Аниме"
-                        ], id: \.self) { genre in
-                            Button {
-                                viewModel.searchFilters = SearchFilters(genres: genre.lowercased())
-                            } label: {
-                                Text(genre)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 9)
-                                    .glassEffect(.regular.interactive(), in: Capsule())
+
+                    LazyVGrid(columns: tileColumns, spacing: 10) {
+                        ForEach(genreTiles) { tile in
+                            NavigationLink(destination: GenreCatalogView(genre: tile.name)) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: tile.icon)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(Color.slooshAccent)
+                                        .frame(width: 30, height: 30)
+                                        .background(Color.slooshAccent.opacity(0.14), in: Circle())
+
+                                    Text(tile.name)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 11)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.cardPress)
                         }
                     }
                     .padding(.horizontal, 16)
                 }
 
-                // 3. Studios and Networks
-                VStack(alignment: .leading, spacing: 14) {
+                // 4. Studios and Streaming Services Horizontal Rail
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Студии и стриминги")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 16)
-                    
-                    FlowLayout(spacing: 8) {
-                        ForEach(StudioBrand.all) { brand in
-                            Button {
-                                viewModel.searchFilters = SearchFilters(studio: brand.id)
-                            } label: {
-                                Text(brand.name)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 9)
-                                    .glassEffect(.regular.interactive(), in: Capsule())
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(StudioBrand.all) { brand in
+                                NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                                    HStack(spacing: 9) {
+                                        Image(systemName: brand.isNetwork ? "play.tv.fill" : "film.stack.fill")
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundStyle(Color.slooshAccent)
+
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(brand.name)
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundStyle(.primary)
+                                                .lineLimit(1)
+                                            Text(brand.isNetwork ? "Стриминг" : "Студия")
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                                .buttonStyle(.cardPress)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 16)
                 }
             }
-            .padding(.vertical, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum FilterContext {
     case home
@@ -9,7 +10,9 @@ struct SearchFilterSheet: View {
     @Binding var filters: SearchFilters
     var context: FilterContext = .search
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var contentTypeNamespace
     @State private var draft: SearchFilters
+    @State private var scrollOffset: CGFloat = 0
 
     init(filters: Binding<SearchFilters>, context: FilterContext = .search) {
         self._filters = filters
@@ -19,12 +22,21 @@ struct SearchFilterSheet: View {
 
     private let currentYear = Calendar.current.component(.year, from: Date())
 
+    private let contentTypes: [(title: String, value: String?)] = [
+        ("Все", nil),
+        ("Фильмы", "FILM"),
+        ("Сериалы", "TV_SERIES"),
+        ("Мульты", "CARTOON"),
+        ("Аниме", "ANIME")
+    ]
+
+    private let ratingPresets: [Double] = [9.0, 8.5, 8.0, 7.5, 7.0, 6.0, 5.0]
     private var ratingOptions: [Double] {
-        stride(from: 0.5, through: 10.0, by: 0.5).map { round($0 * 10) / 10 }
+        stride(from: 1.0, through: 9.5, by: 0.5).map { round($0 * 10) / 10 }
     }
 
     private var yearOptions: [Int] {
-        Array(stride(from: currentYear + 3, through: 1880, by: -1))
+        Array(stride(from: currentYear, through: 1960, by: -1))
     }
 
     private let genresList = [
@@ -39,24 +51,23 @@ struct SearchFilterSheet: View {
         "Канада", "Индия", "Китай"
     ]
 
-    @State private var scrollOffset: CGFloat = 0
-
     private var blurOpacity: Double {
-        let progress = max(0, scrollOffset) / 25.0
-        return min(1.0, Double(progress))
+        min(1.0, Double(max(0, scrollOffset) / 25.0))
+    }
+
+    private var hasPendingChanges: Bool {
+        draft.normalized != filters.normalized
     }
 
     var body: some View {
         NavigationStack {
             List {
-                // 1. Content Type (only in Search context)
                 if context == .search {
                     Section {
                         contentTypeRow
                     }
                 }
 
-                // 2. Main Parameters Card (Сортировка, Студия, Жанр, Страна)
                 Section {
                     sortRow
                     if context == .home { studioRow }
@@ -64,38 +75,16 @@ struct SearchFilterSheet: View {
                     countryRow
                 }
 
-                // 3. Explicit inclusive ranges, including archive and future releases.
-                Section("Рейтинг") {
-                    Picker("От", selection: $draft.ratingFrom) {
-                        Text("Любой").tag(Double?.none)
-                        ForEach(ratingOptions, id: \.self) { Text(String(format: "%.1f", $0)).tag(Optional($0)) }
-                    }
-                    Picker("До", selection: $draft.ratingTo) {
-                        Text("Любой").tag(Double?.none)
-                        ForEach(ratingOptions, id: \.self) { Text(String(format: "%.1f", $0)).tag(Optional($0)) }
-                    }
-                }
-                Section("Год выпуска") {
-                    Picker("От", selection: $draft.yearFrom) {
-                        Text("Любой").tag(Int?.none)
-                        ForEach(yearOptions, id: \.self) { Text(String($0)).tag(Optional($0)) }
-                    }
-                    Picker("До", selection: $draft.yearTo) {
-                        Text("Любой").tag(Int?.none)
-                        ForEach(yearOptions, id: \.self) { Text(String($0)).tag(Optional($0)) }
-                    }
-                }
                 Section {
-                    Button("Отмена") { dismiss() }.foregroundStyle(.primary)
-                } footer: {
-                    Text("Жанры: все выбранные. Страны: любая из выбранных. Условия действуют вместе. Изменения применятся по кнопке ✓.")
+                    ratingRow
+                    yearRow
                 }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .contentMargins(.top, 0, for: .scrollContent)
             .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
-            .scrollBounceBehavior(.always)
+            .scrollBounceBehavior(.basedOnSize)
             .scrollEdgeEffectStyle(.soft, for: .all)
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
@@ -107,7 +96,7 @@ struct SearchFilterSheet: View {
                 headerBar
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 6)
                     .background(
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
@@ -119,23 +108,13 @@ struct SearchFilterSheet: View {
             .background(Color.clear)
         }
         .presentationDetents([.medium, .large])
-        .onChange(of: draft.yearFrom) { _, value in
-            if let value, let end = draft.yearTo, value > end { draft.yearTo = value }
-        }
-        .onChange(of: draft.yearTo) { _, value in
-            if let value, let start = draft.yearFrom, value < start { draft.yearFrom = value }
-        }
-        .onChange(of: draft.ratingFrom) { _, value in
-            if let value, let end = draft.ratingTo, value > end { draft.ratingTo = value }
-        }
-        .onChange(of: draft.ratingTo) { _, value in
-            if let value, let start = draft.ratingFrom, value < start { draft.ratingFrom = value }
-        }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
+        .sensoryFeedback(.selection, trigger: draft.type)
     }
 
     // MARK: - Header Bar
+
     private var headerBar: some View {
         ZStack {
             Text("Фильтры")
@@ -149,12 +128,12 @@ struct SearchFilterSheet: View {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.prepare()
                     generator.impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
                         draft = SearchFilters()
                     }
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(draft.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
                         .glassForeground(isEnabled: !draft.isEmpty)
                         .frame(width: 44, height: 44)
@@ -163,7 +142,7 @@ struct SearchFilterSheet: View {
                 .buttonStyle(.glassPress)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .disabled(draft.isEmpty)
-                .accessibilityLabel("Сбросить")
+                .accessibilityLabel("Сбросить фильтры")
 
                 Spacer()
 
@@ -173,9 +152,9 @@ struct SearchFilterSheet: View {
                     dismiss()
                 } label: {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .glassForeground()
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(hasPendingChanges ? Color.slooshAccent : Color.primary)
+                        .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: hasPendingChanges ? Color.slooshAccent : .primary))
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
@@ -186,10 +165,10 @@ struct SearchFilterSheet: View {
         }
     }
 
-    // MARK: - Content Type Row (Segmented, Standard Settings Style)
+    // MARK: - Content Type Sliding Pill Bar (Zero Truncation)
 
     private var contentTypeRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Image(systemName: "play.rectangle.on.rectangle")
                     .foregroundStyle(Color.slooshAccent)
@@ -200,19 +179,41 @@ struct SearchFilterSheet: View {
                     .font(.body)
             }
 
-            Picker("Тип контента", selection: $draft.type) {
-                Text("Все").tag(String?.none)
-                Text("Фильмы").tag(Optional("FILM"))
-                Text("Сериалы").tag(Optional("TV_SERIES"))
-                Text("Мульты").tag(Optional("CARTOON"))
-                Text("Аниме").tag(Optional("ANIME"))
+            HStack(spacing: 2) {
+                ForEach(contentTypes, id: \.title) { option in
+                    let isSelected = draft.type == option.value
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                            draft.type = option.value
+                        }
+                    } label: {
+                        Text(option.title)
+                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
+                            .frame(maxWidth: .infinity)
+                            .background {
+                                if isSelected {
+                                    Capsule()
+                                        .fill(Color.primary.opacity(0.16))
+                                        .matchedGeometryEffect(id: "contentTypePill", in: contentTypeNamespace)
+                                }
+                            }
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .pickerStyle(.segmented)
+            .padding(3)
+            .background(Color.primary.opacity(0.07), in: Capsule())
         }
         .padding(.vertical, 4)
     }
 
-    // MARK: - Filter Rows (Standard Settings Style, Only Trailing Selection Animates)
+    // MARK: - Core Parameter Rows
 
     private var sortRow: some View {
         HStack(spacing: 12) {
@@ -228,77 +229,26 @@ struct SearchFilterSheet: View {
             Spacer()
 
             Menu {
-                if context == .search {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        draft.order = nil
-                    } label: {
-                        HStack {
-                            Text("Релевантность")
-                            if draft.order == nil { Image(systemName: "checkmark") }
-                        }
-                    }
-                } else {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        draft.order = nil
-                    } label: {
-                        HStack {
-                            Text("Смотрят сейчас")
-                            if draft.order == nil { Image(systemName: "checkmark") }
-                        }
-                    }
-                }
+                sortOptionButton(title: context == .search ? "Релевантность" : "Смотрят сейчас", value: nil)
                 if context == .home {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        draft.order = "NUM_VOTE"
-                    } label: {
-                        HStack {
-                            Text("По популярности")
-                            if draft.order == "NUM_VOTE" { Image(systemName: "checkmark") }
-                        }
-                    }
+                    sortOptionButton(title: "По популярности", value: "NUM_VOTE")
                 }
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    draft.order = "RATING"
-                } label: {
-                    HStack {
-                        Text("По рейтингу")
-                        if draft.order == "RATING" { Image(systemName: "checkmark") }
-                    }
-                }
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    draft.order = "YEAR"
-                } label: {
-                    HStack {
-                        Text("По году выпуска")
-                        if draft.order == "YEAR" { Image(systemName: "checkmark") }
-                    }
-                }
+                sortOptionButton(title: "По рейтингу", value: "RATING")
+                sortOptionButton(title: "По году выпуска", value: "YEAR")
             } label: {
-                HStack(spacing: 6) {
-                    Text(currentSortTitle)
-                        .font(.body)
-                        .lineLimit(1)
-                        .foregroundStyle(Color.slooshAccent)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                }
-                .contentShape(Rectangle())
+                trailingMenuLabel(currentSortTitle)
+            }
+        }
+    }
+
+    private func sortOptionButton(title: String, value: String?) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            draft.order = value
+        } label: {
+            HStack {
+                Text(title)
+                if draft.order == value { Image(systemName: "checkmark") }
             }
         }
     }
@@ -318,73 +268,41 @@ struct SearchFilterSheet: View {
 
             Menu {
                 Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        draft.studio = nil
-                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    draft.studio = nil
                 } label: {
                     HStack {
                         Text("Любая")
-                        if draft.studio == nil {
-                            Image(systemName: "checkmark")
-                        }
+                        if draft.studio == nil { Image(systemName: "checkmark") }
                     }
                 }
 
                 Section("Студии") {
                     ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
-                        let isSelected = draft.studio == brand.id
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                draft.studio = isSelected ? nil : brand.id
-                            }
-                        } label: {
-                            HStack {
-                                Text(brand.name)
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
+                        studioOption(brand)
                     }
                 }
 
                 Section("Стриминги") {
                     ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
-                        let isSelected = draft.studio == brand.id
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                draft.studio = isSelected ? nil : brand.id
-                            }
-                        } label: {
-                            HStack {
-                                Text(brand.name)
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
+                        studioOption(brand)
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Text(currentStudioTitle)
-                        .font(.body)
-                        .lineLimit(1)
-                        .foregroundStyle(Color.slooshAccent)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                }
-                .contentShape(Rectangle())
+                trailingMenuLabel(currentStudioTitle)
+            }
+        }
+    }
+
+    private func studioOption(_ brand: StudioBrand) -> some View {
+        let isSelected = draft.studio == brand.id
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            draft.studio = isSelected ? nil : brand.id
+        } label: {
+            HStack {
+                Text(brand.name)
+                if isSelected { Image(systemName: "checkmark") }
             }
         }
     }
@@ -404,18 +322,12 @@ struct SearchFilterSheet: View {
 
             Menu {
                 Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        draft.selectedGenres = []
-                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    draft.selectedGenres = []
                 } label: {
                     HStack {
                         Text("Любой")
-                        if draft.selectedGenres.isEmpty {
-                            Image(systemName: "checkmark")
-                        }
+                        if draft.selectedGenres.isEmpty { Image(systemName: "checkmark") }
                     }
                 }
 
@@ -424,39 +336,24 @@ struct SearchFilterSheet: View {
                 ForEach(genresList, id: \.self) { genre in
                     let isSelected = draft.selectedGenres.contains(genre.lowercased())
                     Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            var current = draft.selectedGenres
-                            if isSelected {
-                                current.remove(genre.lowercased())
-                            } else {
-                                current.insert(genre.lowercased())
-                            }
-                            draft.selectedGenres = current
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        var current = draft.selectedGenres
+                        if isSelected {
+                            current.remove(genre.lowercased())
+                        } else {
+                            current.insert(genre.lowercased())
                         }
+                        draft.selectedGenres = current
                     } label: {
                         HStack {
                             Text(genreDisplayName(genre))
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                            }
+                            if isSelected { Image(systemName: "checkmark") }
                         }
                     }
                     .menuActionDismissBehavior(.disabled)
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Text(currentGenreTitle)
-                        .font(.body)
-                        .lineLimit(1)
-                        .foregroundStyle(Color.slooshAccent)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                }
-                .contentShape(Rectangle())
+                trailingMenuLabel(currentGenreTitle)
             }
         }
     }
@@ -476,18 +373,12 @@ struct SearchFilterSheet: View {
 
             Menu {
                 Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        draft.selectedCountries = []
-                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    draft.selectedCountries = []
                 } label: {
                     HStack {
                         Text("Любая")
-                        if draft.selectedCountries.isEmpty {
-                            Image(systemName: "checkmark")
-                        }
+                        if draft.selectedCountries.isEmpty { Image(systemName: "checkmark") }
                     }
                 }
 
@@ -496,41 +387,181 @@ struct SearchFilterSheet: View {
                 ForEach(countriesList, id: \.self) { country in
                     let isSelected = draft.selectedCountries.contains(country)
                     Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            var current = draft.selectedCountries
-                            if isSelected {
-                                current.remove(country)
-                            } else {
-                                current.insert(country)
-                            }
-                            draft.selectedCountries = current
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        var current = draft.selectedCountries
+                        if isSelected {
+                            current.remove(country)
+                        } else {
+                            current.insert(country)
                         }
+                        draft.selectedCountries = current
                     } label: {
                         HStack {
                             Text(country)
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                            }
+                            if isSelected { Image(systemName: "checkmark") }
                         }
                     }
                     .menuActionDismissBehavior(.disabled)
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Text(currentCountryTitle)
-                        .font(.body)
-                        .lineLimit(1)
-                        .foregroundStyle(Color.slooshAccent)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                }
-                .contentShape(Rectangle())
+                trailingMenuLabel(currentCountryTitle)
             }
         }
+    }
+
+    // MARK: - Rating & Year Rows
+
+    private var ratingRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "star.fill")
+                .foregroundStyle(Color.slooshAccent)
+                .font(.system(size: 17))
+                .frame(width: 24)
+
+            Text("Рейтинг")
+                .font(.body)
+                .foregroundStyle(Color.primary)
+
+            Spacer()
+
+            Menu {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    draft.ratingFrom = nil
+                    draft.ratingTo = nil
+                } label: {
+                    HStack {
+                        Text("Любой")
+                        if draft.ratingFrom == nil && draft.ratingTo == nil { Image(systemName: "checkmark") }
+                    }
+                }
+
+                Divider()
+
+                ForEach(ratingPresets, id: \.self) { minRating in
+                    let isSelected = draft.ratingFrom == minRating && draft.ratingTo == nil
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        draft.ratingFrom = minRating
+                        draft.ratingTo = nil
+                    } label: {
+                        HStack {
+                            Text(String(format: "%.1f и выше", locale: Locale(identifier: "ru_RU"), minRating))
+                            if isSelected { Image(systemName: "checkmark") }
+                        }
+                    }
+                }
+
+                Divider()
+
+                Menu("Точный минимум") {
+                    ForEach(Array(ratingOptions.reversed()), id: \.self) { value in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            draft.ratingFrom = value
+                            if let to = draft.ratingTo, value > to { draft.ratingTo = nil }
+                        } label: {
+                            HStack {
+                                Text(String(format: "От %.1f", locale: Locale(identifier: "ru_RU"), value))
+                                if draft.ratingFrom == value { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                trailingMenuLabel(currentRatingTitle)
+            }
+        }
+    }
+
+    private var yearRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "calendar")
+                .foregroundStyle(Color.slooshAccent)
+                .font(.system(size: 17))
+                .frame(width: 24)
+
+            Text("Год выпуска")
+                .font(.body)
+                .foregroundStyle(Color.primary)
+
+            Spacer()
+
+            Menu {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    draft.yearFrom = nil
+                    draft.yearTo = nil
+                } label: {
+                    HStack {
+                        Text("Любой")
+                        if draft.yearFrom == nil && draft.yearTo == nil { Image(systemName: "checkmark") }
+                    }
+                }
+
+                Divider()
+
+                yearRangeButton(title: "\(currentYear)", from: currentYear, to: currentYear)
+                yearRangeButton(title: "\(currentYear - 1)", from: currentYear - 1, to: currentYear - 1)
+                yearRangeButton(title: "\(currentYear - 2)", from: currentYear - 2, to: currentYear - 2)
+
+                Divider()
+
+                yearRangeButton(title: "2020-е", from: 2020, to: currentYear)
+                yearRangeButton(title: "2010-е", from: 2010, to: 2019)
+                yearRangeButton(title: "2000-е", from: 2000, to: 2009)
+                yearRangeButton(title: "1990-е", from: 1990, to: 1999)
+                yearRangeButton(title: "Классика (до 1990)", from: nil, to: 1989)
+
+                Divider()
+
+                Menu("Выбрать год…") {
+                    ForEach(yearOptions, id: \.self) { year in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            draft.yearFrom = year
+                            draft.yearTo = year
+                        } label: {
+                            HStack {
+                                Text(verbatim: "\(year)")
+                                if draft.yearFrom == year && draft.yearTo == year {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                trailingMenuLabel(currentYearTitle)
+            }
+        }
+    }
+
+    private func yearRangeButton(title: String, from: Int?, to: Int?) -> some View {
+        let isSelected = draft.yearFrom == from && draft.yearTo == to
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            draft.yearFrom = from
+            draft.yearTo = to
+        } label: {
+            HStack {
+                Text(title)
+                if isSelected { Image(systemName: "checkmark") }
+            }
+        }
+    }
+
+    private func trailingMenuLabel(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(.body)
+                .lineLimit(1)
+                .foregroundStyle(Color.slooshAccent)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.slooshAccent)
+        }
+        .contentShape(Rectangle())
     }
 
     // MARK: - Formatters & Titles
@@ -568,6 +599,37 @@ struct SearchFilterSheet: View {
         } else {
             return "Выбрано: \(selected.count)"
         }
+    }
+
+    private var currentRatingTitle: String {
+        let normalized = draft.normalized
+        func format(_ value: Double) -> String {
+            String(format: "%.1f", locale: Locale(identifier: "ru_RU"), value)
+        }
+        if let from = normalized.ratingFrom, let to = normalized.ratingTo {
+            return "\(format(from))–\(format(to))"
+        }
+        if let from = normalized.ratingFrom {
+            return "от \(format(from))"
+        }
+        if let to = normalized.ratingTo {
+            return "до \(format(to))"
+        }
+        return "Любой"
+    }
+
+    private var currentYearTitle: String {
+        let normalized = draft.normalized
+        if let from = normalized.yearFrom, let to = normalized.yearTo {
+            return from == to ? String(from) : "\(from)–\(to)"
+        }
+        if let from = normalized.yearFrom {
+            return "с \(from)"
+        }
+        if let to = normalized.yearTo {
+            return "до \(to)"
+        }
+        return "Любой"
     }
 
     private var currentSortTitle: String {

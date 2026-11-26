@@ -9,27 +9,33 @@ enum CatalogSearchQuery {
     }
 
     static func key(_ raw: String) -> String {
-        text(raw).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "ru_RU"))
+        text(raw)
+            .replacingOccurrences(of: "й", with: "\u{F001}")
+            .replacingOccurrences(of: "Й", with: "\u{F002}")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "ru_RU"))
+            .replacingOccurrences(of: "\u{F001}", with: "й")
+            .replacingOccurrences(of: "\u{F002}", with: "й")
             .replacingOccurrences(of: "ё", with: "е")
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     /// Bounded, only after a successful EMPTY response. Never retry network
-    /// errors as spelling errors and never replace a nonempty primary result.
+    /// errors as spelling errors, never replace a nonempty primary result,
+    /// and never rewrite valid Cyrillic queries into Latin transliteration.
     static func alternatives(_ raw: String) -> [String] {
         let query = text(raw).lowercased()
         guard query.count >= 3, query.count <= 100 else { return [] }
         let latin = Array("qwertyuiop[]asdfghjkl;'zxcvbnm,.")
         let russian = Array("йцукенгшщзхъфывапролджэячсмитьбю")
         let hasLatin = query.unicodeScalars.contains { (97...122).contains($0.value) }
-        let hasRussian = query.unicodeScalars.contains { (0x430...0x44F).contains($0.value) }
+        let hasRussian = query.unicodeScalars.contains { (0x430...0x44F).contains($0.value) || $0.value == 0x451 }
         guard hasLatin != hasRussian else { return [] }
         let map = Dictionary(uniqueKeysWithValues: zip(hasLatin ? latin : russian, hasLatin ? russian : latin))
         let keyboard = String(query.map { map[$0] ?? $0 })
-        let transliteration = hasLatin
+        let transliteration: String? = hasLatin
             ? query.applyingTransform(StringTransform("Latin-Cyrillic"), reverse: false)
-            : query.applyingTransform(.toLatin, reverse: false)
+            : nil
         var seen = Set([key(query)])
         return [keyboard, transliteration].compactMap { $0 }.filter {
             !key($0).isEmpty && seen.insert(key($0)).inserted
@@ -97,6 +103,11 @@ extension SearchFilters {
         if let low = copy.yearFrom, let high = copy.yearTo, low > high {
             copy.yearFrom = high; copy.yearTo = low
         }
+        copy.release = release.flatMap {
+            let value = CatalogSearchQuery.text($0).lowercased()
+            return (value == "released" || value == "upcoming") ? value : nil
+        }
+        copy.minVotes = minVotes.flatMap { $0 > 0 ? min(1_000_000, $0) : nil }
         return copy
     }
 
@@ -229,9 +240,14 @@ enum CatalogSearchError: LocalizedError {
 enum CatalogSearchRequest {
     static func items(query: String, filters: SearchFilters, page: Int, cursor: String? = nil) -> [URLQueryItem] {
         let text = CatalogSearchQuery.text(query)
+        let f = filters.normalized
         var items = discoveryItems(filters: filters, page: page)
         if !text.isEmpty {
-            items.removeAll { $0.name == "order" || $0.name == "studio" }
+            items.removeAll {
+                $0.name == "order" || $0.name == "studio"
+                    || ($0.name == "release" && f.release == nil)
+                    || ($0.name == "minVotes" && f.minVotes == nil)
+            }
             items.append(URLQueryItem(name: "query", value: text))
         } else if let cursor {
             items.removeAll { $0.name == "page" }
@@ -260,6 +276,18 @@ enum CatalogSearchRequest {
         }
         for (name, value) in [("yearFrom", f.yearFrom), ("yearTo", f.yearTo)] {
             if let value { items.append(URLQueryItem(name: name, value: String(value))) }
+        }
+        let currentYear = Calendar.current.component(.year, from: Date())
+        let targetsFutureYear = (f.yearFrom ?? 0) > currentYear || (f.yearTo ?? 0) > currentYear
+        if let release = f.release {
+            items.append(URLQueryItem(name: "release", value: release))
+        } else if f.order == "YEAR" && !targetsFutureYear {
+            items.append(URLQueryItem(name: "release", value: "released"))
+        }
+        if let minVotes = f.minVotes {
+            items.append(URLQueryItem(name: "minVotes", value: String(minVotes)))
+        } else if f.order == "YEAR" && !targetsFutureYear {
+            items.append(URLQueryItem(name: "minVotes", value: "5"))
         }
         return items
     }

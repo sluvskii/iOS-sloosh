@@ -27,9 +27,11 @@ struct CatalogSearchTests {
                              genres: [GenreDto(id: "16", name: nil)], countries: ["JP"])
         check(CatalogSearchQuery.text("  Ёлки\n \t2026 ") == "Ёлки 2026", "Normalize repeated whitespace, preserve readable query")
         check(CatalogSearchQuery.key("ЁЛКИ—2026!") == CatalogSearchQuery.key("елки 2026"), "Case, punctuation and ё/е comparison")
+        check(CatalogSearchQuery.key("первый") != CatalogSearchQuery.key("первыи"), "Cyrillic й must remain distinct from и")
         check(CatalogSearchQuery.text(String(repeating: "я", count: 10_000)).count == 200, "Bound untrusted query length")
         check(CatalogSearchQuery.alternatives("ghbdtn").contains("привет"), "Recover Russian text typed on Latin keyboard")
         check(CatalogSearchQuery.alternatives("руддщ").contains("hello"), "Recover Latin text typed on Russian keyboard")
+        check(!CatalogSearchQuery.alternatives("первый").contains(where: { $0.contains("pervy") }), "Russian queries never rewrite into Latin transliteration")
         check(CatalogSearchQuery.alternatives("я").isEmpty && CatalogSearchQuery.alternatives("film фильм").isEmpty, "Do not transform short or mixed-script titles blindly")
         check(CatalogSearchQuery.alternatives("matrix").count <= 2, "Fallback budget is bounded")
         check(CatalogSearchQuery.editDistance("матрица", "матирца") == 1, "Adjacent transposition counts as one typo")
@@ -136,13 +138,13 @@ struct CatalogSearchTests {
         var scanned: [Int] = []
         let sparse = SearchViewModel(defaults: defaults, historyScope: "sparse", debounceNanoseconds: 0) { _, page, _ in
             scanned.append(page)
-            return MediaResponse(results: page == 5 ? [film] : [], pages: 10)
+            return MediaResponse(results: page == 3 ? [film] : [], pages: 10)
         }
         sparse.searchFilters = SearchFilters(yearFrom: 2026)
         await sparse.performSearch(reset: true)
-        check(scanned == [1, 2, 3, 4] && sparse.page == 4 && sparse.hasMore && sparse.results.isEmpty, "Bound empty-page scanning and retain explicit continuation")
+        check(scanned == [1, 2] && sparse.page == 2 && sparse.hasMore && sparse.results.isEmpty, "Bound empty-page scanning and retain explicit continuation")
         await sparse.loadNextPage()
-        check(sparse.results.count == 1 && sparse.page == 5, "A matching title beyond the first empty pages is reachable")
+        check(sparse.results.count == 1 && sparse.page == 3, "A matching title beyond the first empty pages is reachable")
 
         var queries: [String] = []
         let fallback = SearchViewModel(defaults: defaults, historyScope: "fallback", debounceNanoseconds: 0) { query, page, _ in
@@ -154,6 +156,9 @@ struct CatalogSearchTests {
         check(fallback.resolvedQuery == "привет" && fallback.results.count == 1, "Successful keyboard recovery is disclosed, original input retained")
         await fallback.loadNextPage()
         check(queries == ["ghbdtn", "привет", "привет"], "Pagination freezes the resolved query, never mixes spelling variants")
+        fallback.searchQuery = "первый мститель"
+        await fallback.performSearch(reset: true)
+        check(queries.count >= 4 && queries[3] == "первый мститель" && fallback.resolvedQuery == nil, "Refining a resolved query never reuses stale resolvedQuery")
         var errors = 0
         let failing = SearchViewModel(defaults: defaults, historyScope: "fail", debounceNanoseconds: 0) { _, _, _ in
             errors += 1; throw URLError(.timedOut)
@@ -189,7 +194,7 @@ struct CatalogSearchTests {
         check(flickerFree.results.first?.artworkIdentifier == series.artworkIdentifier, "Refined query replaces preserved results when resolved")
         for i in 0..<25 { debounced.searchQuery = "Запрос \(i)"; debounced.rememberCurrentQuery() }
         debounced.searchQuery = ""
-        check(debounced.history.count == 20, "Bound and persist recent history")
+        check(debounced.history.count == 8, "Bound and persist concise recent history")
         let other = SearchViewModel(defaults: defaults, historyScope: "other", loadPage: { _, _, _ in MediaResponse() })
         check(other.history.isEmpty, "Search history is account-isolated")
         debounced.clearHistory()
@@ -384,10 +389,16 @@ struct CatalogSearchTests {
         let noIdentity = MediaDto(title: "Без ID")
         independent.openSuggestion(noIdentity)
         check(independent.suggestionDestination == nil && independent.history.isEmpty, "Invalid catalog identity cannot open guessed details or create history")
+        let yearDiscoverItems = CatalogSearchRequest.discoveryItems(filters: SearchFilters(order: "YEAR"), page: 1)
+        check(yearDiscoverItems.contains { $0.name == "release" && $0.value == "released" }, "Year sorting defaults to released titles to avoid future stubs")
+        let futureYearItems = CatalogSearchRequest.discoveryItems(filters: SearchFilters(order: "YEAR", yearFrom: 2030), page: 1)
+        check(!futureYearItems.contains { $0.name == "release" && $0.value == "released" }, "Explicit future year range preserves upcoming scope")
         let searchViewSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchView.swift", encoding: .utf8)
-        check(searchViewSource.contains("ForEach(viewModel.catalogSuggestions)") && searchViewSource.contains("Button { openMovieSuggestion(movie) }") && searchViewSource.contains(".navigationDestination(item: $viewModel.suggestionDestination)"), "All catalog suggestions use explicit typed navigation, not a nested link or text completion")
-        check(searchViewSource.contains("viewModel.setDiscoveryMovies(items)") && !searchViewSource.contains("setDiscoveryTitles"), "Popular empty-field cards preserve identity and use the same opening action")
-        check(searchViewSource.contains("isPresented: $isSearchPresented") && searchViewSource.contains("isSearchPresented = false"), "Explicit submission and film selection dismiss native suggestion presentation")
+        check(!searchViewSource.contains(".searchSuggestions") && searchViewSource.contains("GenreCatalogView") && searchViewSource.contains("StudioCatalogView") && searchViewSource.contains(".navigationDestination(item: $viewModel.suggestionDestination)"), "Discovery uses clean typed navigation without jarring suggestion overlays")
+        check(!searchViewSource.contains("insufficientMetadata") && searchViewSource.contains("MoviePosterCardPlaceholder()"), "Search uses poster skeletons and omits internal metadata diagnostics")
+        check(!searchViewSource.contains(".ultraThinMaterial") && !searchViewSource.contains("design: .rounded"), "Search UI complies with design system rules")
+        let filterSheetSource = try String(contentsOfFile: "sloosh/Sources/UI/Search/SearchFilterSheet.swift", encoding: .utf8)
+        check(!filterSheetSource.contains("Button(\"Отмена\")") && !filterSheetSource.contains("pickerStyle(.segmented)"), "Filter sheet uses custom non-truncating type selector and avoids redundant cancel footer")
         let source = try String(contentsOfFile: "sloosh/Sources/Data/Repositories/MoviesRepository.swift", encoding: .utf8)
         check(!source.contains("filteredResults = rawResults") && !source.contains("filteredResults = studioItems"), "Repository never restores unfiltered data when filters eliminate a page")
         let homeSource = try String(contentsOfFile: "sloosh/Sources/UI/Home/HomeView.swift", encoding: .utf8)

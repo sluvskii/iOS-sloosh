@@ -25,6 +25,7 @@ final class SearchViewModel: ObservableObject {
     @Published private(set) var originalQuery: String?
     @Published private(set) var insufficientMetadata = 0
     @Published private(set) var serverSuggestions: [CatalogSearchSuggestion] = []
+    @Published private(set) var isDiscoveryLoading = false
     @Published var suggestionDestination: CatalogSearchDestination?
     @Published var directPlaybackMovie: MediaDto?
     @Published var playerConfig: PlayerConfig?
@@ -56,7 +57,7 @@ final class SearchViewModel: ObservableObject {
     private var activeFilters: SearchFilters = SearchFilters()
     private var cancellables = Set<AnyCancellable>()
 
-    init(defaults: UserDefaults = .standard, historyScope: String, debounceNanoseconds: UInt64 = 300_000_000,
+    init(defaults: UserDefaults = .standard, historyScope: String, debounceNanoseconds: UInt64 = 280_000_000,
          cursorLoader: CursorLoader? = nil, suggestionsLoader: SuggestionsLoader? = nil,
          diagnostic: @escaping (String) -> Void = { _ in },
          loadPage: @escaping Loader) {
@@ -71,7 +72,7 @@ final class SearchViewModel: ObservableObject {
         var seen = Set<String>()
         history = stored.map(CatalogSearchQuery.text).filter {
             !$0.isEmpty && seen.insert(CatalogSearchQuery.key($0)).inserted
-        }.prefix(20).map { $0 }
+        }.prefix(8).map { $0 }
         Publishers.CombineLatest($searchQuery, $searchFilters)
             .sink { [weak self] query, filters in
                 guard let self else { return }
@@ -101,8 +102,13 @@ final class SearchViewModel: ObservableObject {
     }
     var usesLocalSorting: Bool { !CatalogSearchQuery.text(searchQuery).isEmpty && searchFilters.order != nil || sortScope == "window" }
 
+    func setDiscoveryLoading(_ loading: Bool) {
+        isDiscoveryLoading = loading
+    }
+
     func setDiscoveryMovies(_ movies: [MediaDto]) {
         discoveryMovies = Array(CatalogSearchPolicy.merge([], movies, order: nil).filter { CatalogSearchDestination($0) != nil }.prefix(30))
+        isDiscoveryLoading = false
         rememberCards(discoveryMovies)
     }
 
@@ -123,7 +129,7 @@ final class SearchViewModel: ObservableObject {
         let query = CatalogSearchQuery.text(title)
         guard !query.isEmpty else { return }
         let key = CatalogSearchQuery.key(query)
-        history = Array(([query] + history.filter { CatalogSearchQuery.key($0) != key }).prefix(20))
+        history = Array(([query] + history.filter { CatalogSearchQuery.key($0) != key }).prefix(8))
         persistHistory()
     }
 
@@ -167,14 +173,14 @@ final class SearchViewModel: ObservableObject {
             activeFilters = request.filters
             if !preserveResultsWhileTyping {
                 results = []
-                resolvedQuery = nil
-                recoveredExactTitle = false
                 nextCursor = nil
                 sortScope = nil
-                correctionReason = nil
-                originalQuery = nil
                 insufficientMetadata = 0
             }
+            resolvedQuery = nil
+            recoveredExactTitle = false
+            correctionReason = nil
+            originalQuery = nil
             page = 0; totalPages = 1
             isAppending = false
         } else if isLoading || isAppending { return task }
@@ -188,7 +194,7 @@ final class SearchViewModel: ObservableObject {
         let token = generation
         if reset { isLoading = true } else { isAppending = true }
         let firstPage = reset ? 1 : page + 1
-        let frozenQuery = resolvedQuery ?? request.query
+        let frozenQuery = reset ? request.query : (resolvedQuery ?? request.query)
         let delay = delayed ? debounceNanoseconds : 0
         let legacyLoader = self.loader
         let cursorLoader = self.cursorLoader
@@ -253,7 +259,7 @@ final class SearchViewModel: ObservableObject {
                 // Server post-filtering can leave empty pages with later matches.
                 // Scan a bounded window, then expose an explicit Continue action.
                 var scanned = 1
-                while response.allItems.isEmpty && nextPage < 500 && (response.nextCursor != nil || nextPage < response.effectiveTotalPages) && scanned < 4 {
+                while response.allItems.isEmpty && nextPage < 500 && (response.nextCursor != nil || nextPage < response.effectiveTotalPages) && scanned < 2 {
                     nextPage += 1; scanned += 1
                     cursor = response.nextCursor
                     response = try await loader(query, nextPage, request.filters, cursor)
