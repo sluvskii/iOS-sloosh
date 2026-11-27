@@ -58,29 +58,41 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            HomeCategoryContentView(
-                viewModel: viewModel,
-                navigationTransition: navigationTransition
-            )
-            .tint(.primary)
-            .navigationTitle(viewModel.selectedCategory.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarTitleMenu {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-                            viewModel.selectedCategory = category
-                        }
-                    } label: {
-                        if viewModel.selectedCategory == category {
-                            Label(category.title, systemImage: "checkmark")
-                        } else {
-                            Text(category.title)
+            GeometryReader { outerGeometry in
+                let topInset = outerGeometry.safeAreaInsets.top
+                let bottomInset = outerGeometry.safeAreaInsets.bottom
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            HomeCategoryContentView(
+                                viewModel: viewModel,
+                                category: category,
+                                navigationTransition: navigationTransition
+                            )
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .safeAreaPadding(.top, topInset)
+                            .safeAreaPadding(.bottom, bottomInset)
+                            .id(category)
                         }
                     }
+                    .scrollTargetLayout()
                 }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: Binding(
+                    get: { viewModel.selectedCategory },
+                    set: { newValue in
+                        if let newValue, newValue != viewModel.selectedCategory {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.selectedCategory = newValue
+                        }
+                    }
+                ))
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .ignoresSafeArea()
             }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -100,15 +112,55 @@ struct HomeView: View {
                             }
                         }
                     } label: {
-                        let isTopRated = viewModel.selectedFilter == .topRated
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(isTopRated ? Color.slooshAccent : Color.primary)
-                            .glassForeground(isEnabled: GlassForegroundAppearance.shouldBlend(tint: isTopRated ? Color.slooshAccent : .primary))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.primary)
                     }
-                    .tint(viewModel.selectedFilter == .topRated ? Color.slooshAccent : .primary)
+                    .tint(.primary)
                     .accessibilityLabel("Сортировка: \(viewModel.selectedFilter.title)")
                 }
+
+                ToolbarItem(placement: .principal) {
+                    Menu {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                                    viewModel.selectedCategory = category
+                                }
+                            } label: {
+                                if viewModel.selectedCategory == category {
+                                    Label(category.title, systemImage: "checkmark")
+                                } else {
+                                    Text(category.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        VStack(spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(viewModel.selectedCategory.title)
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(viewModel.selectedFilter.title)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
+                        }
+                        .fixedSize()
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .tint(.primary)
+                    .accessibilityLabel("Категория: \(viewModel.selectedCategory.title), сортировка: \(viewModel.selectedFilter.title)")
+                }
+                .sharedBackgroundVisibility(.hidden)
 
                 ToolbarItem(placement: .topBarTrailing) {
                     let hasFilters = !viewModel.searchFilters.isEmpty
@@ -185,6 +237,7 @@ struct HomeView: View {
 
 struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
+    let category: HomeCategory
     let navigationTransition: Namespace.ID
 
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
@@ -195,19 +248,7 @@ struct HomeCategoryContentView: View {
         return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
     }
 
-    private func switchCategory(by step: Int) {
-        let all = HomeCategory.allCases
-        guard let currentIndex = all.firstIndex(of: viewModel.selectedCategory) else { return }
-        let targetIndex = currentIndex + step
-        guard targetIndex >= 0 && targetIndex < all.count else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-            viewModel.selectedCategory = all[targetIndex]
-        }
-    }
-
     var body: some View {
-        let category = viewModel.selectedCategory
         let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
         let items = viewModel.cachedItems[key]
         let isLoading = viewModel.isLoading[key] ?? false
@@ -218,7 +259,7 @@ struct HomeCategoryContentView: View {
                 let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                 let padding: CGFloat = cardDensity == .compact ? 12 : 16
 
-                // Invisible anchor used to scroll-to-top on category switch
+                // Invisible anchor used to scroll-to-top on sort/filter switch
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -278,19 +319,7 @@ struct HomeCategoryContentView: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
-                    .id(category)
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.18), value: category)
                     .animation(.easeInOut(duration: 0.18), value: viewModel.selectedFilter)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 45, coordinateSpace: .local)
-                            .onEnded { value in
-                                let dx = value.translation.width
-                                let dy = value.translation.height
-                                guard abs(dx) > 70, abs(dx) > abs(dy) * 1.8, abs(value.predictedEndTranslation.width) > 90 else { return }
-                                switchCategory(by: dx < 0 ? 1 : -1)
-                            }
-                    )
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 16)
@@ -301,10 +330,17 @@ struct HomeCategoryContentView: View {
             .refreshable {
                 await viewModel.refresh(category: category)
             }
-            .onChange(of: viewModel.selectedCategory) { _, _ in
-                withAnimation(.easeOut(duration: 0.22)) {
-                    proxy.scrollTo("home-scroll-top", anchor: .top)
+            .task(id: key) {
+                guard category != viewModel.selectedCategory else { return }
+                if viewModel.cachedItems[key] == nil, !(viewModel.isLoading[key] ?? false) {
+                    await viewModel.loadData(for: category)
                 }
+            }
+            .onChange(of: viewModel.selectedFilter) { _, _ in
+                proxy.scrollTo("home-scroll-top", anchor: .top)
+            }
+            .onChange(of: viewModel.searchFilters) { _, _ in
+                proxy.scrollTo("home-scroll-top", anchor: .top)
             }
         }
     }
