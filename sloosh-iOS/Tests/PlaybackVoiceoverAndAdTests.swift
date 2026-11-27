@@ -142,6 +142,97 @@ struct PlaybackVoiceoverAndAdTests {
         let matched = findMatchingAudioVariant(in: variants, for: "Гаврилов (Русский)")
         check((matched?["url"] as? String) == "https://cdn.test/gavrilov.m3u8", "Author token match wins over first generic Russian language tag")
 
+        // 8. Large multi-season / multi-dub AllohaSourceAvailabilityIndex correctness & speed
+        var seasonsFixture: [AllohaSeason] = []
+        let baseDubs: [String] = [
+            "Дубляж Red Head Sound", "HDrezka Studio", "LostFilm", "Kubik v Kube (18+)",
+            "TVShows", "NewStudio", "Jaskier", "AlexFilm", "RuDub", "ColdFilm",
+            "LE-Production", "Dragon Money Studio", "Оригинал", "Український"
+        ] + (1...26).map { "Озвучка Студия \($0) (Russian) AC3 5.1" }
+
+        for s in 1...5 {
+            var epsFixture: [AllohaEpisode] = []
+            for e in 1...8 {
+                var epTranslations: [AllohaTranslation] = baseDubs.enumerated().map { idx, name in
+                    let effectiveName = (s == 5 && name == "Дубляж Red Head Sound") ? "RHS" : name
+                    return AllohaTranslation(
+                        id: "\(s)_\(e)_\(idx)",
+                        name: effectiveName,
+                        iframeUrl: "https://example.test/e/\(s)/\(e)/\(idx)",
+                        streamUrl: nil
+                    )
+                }
+                if s <= 4 {
+                    epTranslations.append(AllohaTranslation(
+                        id: "\(s)_\(e)_exclusive",
+                        name: "Пифагор Дубляж",
+                        iframeUrl: "https://example.test/e/\(s)/\(e)/ex",
+                        streamUrl: nil
+                    ))
+                }
+                epTranslations.append(AllohaTranslation(
+                    id: "\(s)_\(e)_sub",
+                    name: "Русские субтитры",
+                    iframeUrl: "https://example.test/e/\(s)/\(e)/sub",
+                    streamUrl: nil
+                ))
+                epsFixture.append(AllohaEpisode(season: s, episode: e, translations: epTranslations))
+            }
+            seasonsFixture.append(AllohaSeason(season: s, episodes: epsFixture))
+        }
+        let heavySeries = AllohaApiResult(title: "The Boys Fixture", isSerial: true, movie: nil, seasons: seasonsFixture)
+        let t0 = Date().timeIntervalSinceReferenceDate
+        let index = AllohaSourceAvailabilityIndex(result: heavySeries, effectiveIsSerial: true)
+        var availableChecks = 0
+        for s in index.sortedSeasons {
+            _ = index.seasonHasTranslation(season: s, name: "Пифагор Дубляж")
+            _ = index.seasonHasTranslation(season: s, name: "Дубляж Red Head Sound")
+            for e in index.episodesBySeason[s] ?? [] {
+                if index.episodeHasTranslation(season: s, episode: e, name: "LostFilm") {
+                    availableChecks += 1
+                }
+            }
+        }
+        let elapsed = Date().timeIntervalSinceReferenceDate - t0
+        check(index.sortedSeasons == [1, 2, 3, 4, 5], "Sorted seasons preserved")
+        check(!index.sortedNames.contains("Русские субтитры"), "Subtitles must be excluded from voiceovers list")
+        check(index.seasonHasTranslation(season: 1, name: "Пифагор Дубляж"), "Season 1 includes Пифагор Дубляж")
+        check(!index.seasonHasTranslation(season: 5, name: "Пифагор Дубляж"), "Season 5 excludes missing Пифагор Дубляж")
+        check(index.seasonHasTranslation(season: 5, name: "Дубляж Red Head Sound"), "Season 5 fuzzy-matches RHS alias to Дубляж Red Head Sound")
+        check(index.episode(season: 3, episode: 5)?.episode == 5, "O(1) episode lookup returns matching episode")
+        check(availableChecks == 40, "All 40 episodes report LostFilm available")
+        check(elapsed < 1.0, "40-episode x 40-dub index build and queries must complete fast (took \(elapsed)s)")
+
+        // 9. Collaps cinemascope 1272x530 maps to 720p and caps higher requested preference (1080p -> 720p) identically
+        check(PlaybackHlsRewriter.normalizeResolutionLabel(width: 1272, height: 530) == "720p", "Cinemascope 1272x530 normalizes to 720p")
+        let cinemascopeMaster = """
+        #EXTM3U
+        #EXT-X-VERSION:4
+        #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="rus0",DEFAULT=YES,AUTOSELECT=YES,LANGUAGE="ru",URI="a0.m3u8"
+        #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="failover-audio-0",NAME="rus0",DEFAULT=YES,AUTOSELECT=YES,LANGUAGE="ru",URI="a0_fail.m3u8"
+        #EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1272x530,AUDIO="audio0"
+        720.m3u8
+        #EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360,AUDIO="audio0"
+        360.m3u8
+        """
+        let cappedFrom1080 = PlaybackHlsRewriter.rewrite(
+            master: cinemascopeMaster,
+            voices: ["Red Head Sound"],
+            mediaId: "kp_460586",
+            targetQuality: "1080p",
+            isCollaps: true
+        )
+        let exact720 = PlaybackHlsRewriter.rewrite(
+            master: cinemascopeMaster,
+            voices: ["Red Head Sound"],
+            mediaId: "kp_460586",
+            targetQuality: "720p",
+            isCollaps: true
+        )
+        check(cappedFrom1080 == exact720, "1080p target on 720p max Collaps stream produces identical rewritten playlist as 720p")
+        check(cappedFrom1080.contains("720.m3u8") && !cappedFrom1080.contains("360.m3u8"), "Highest tier kept and lower tier filtered")
+        check(!cappedFrom1080.contains("failover-audio-0"), "Failover duplicate audio group must be stripped")
+
         print("PASS: \(count) playback voiceover and ad-filtering tests")
     }
 }

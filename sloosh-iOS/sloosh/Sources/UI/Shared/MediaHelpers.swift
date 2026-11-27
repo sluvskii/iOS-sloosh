@@ -172,129 +172,191 @@ func isTalkShowOrRealityByTitle(_ rawTitle: String?) -> Bool {
 
 // MARK: - Translation Name Sanitization
 
-/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, динамически извлекает язык и флаг)
-func cleanTranslationName(_ rawName: String) -> String {
-    var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty else { return "По умолчанию" }
-    
-    // 1. Убираем громоздкие сцен-теги релиза (2160p, WEB-DL, BDRip и т.д.)
-    if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265|spacehd\\d*)[a-z0-9._-]*", options: []) {
-        let range = NSRange(location: 0, length: name.utf16.count)
-        name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+private final class TranslationNameCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: String] = [:]
+    private let maxCount = 2048
 
-    // 1b. Убираем аудио-кодеки, каналы и битрейты (DD 51 @ 448 kbps, AC3 5.1 @ 640 kbps, AAC 2.0 и т.д.)
-    name = name.replacingOccurrences(of: "(?i)\\b(?:AC3|E-AC3|EAC3|DDP|DD|DTS-HD|DTS|TrueHD|AAC|FLAC|MP3|PCM|LPCM)\\s*(?:5[.]?1|7[.]?1|2[.]?0|51)?(?:\\s*@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?)?", with: "", options: .regularExpression)
-    name = name.replacingOccurrences(of: "(?i)@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?", with: "", options: .regularExpression)
-    name = name.replacingOccurrences(of: "(?i)\\b\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)\\b", with: "", options: .regularExpression)
-    name = name.replacingOccurrences(of: "(?i)\\b(?:Blu-ray(?:\\s*CEE)?|BDRip|WEB-DL|HDTV|Line)\\b", with: "", options: .regularExpression)
-    name = name.replacingOccurrences(of: "(?i)\\b(?:5[.]?1|7[.]?1|2[.]?0)\\b", with: "", options: .regularExpression)
-    
-    name = name.replacingOccurrences(of: "(?i)\\bHDrezka\\s+St(?:\\.|\\b)", with: "HDrezka Studio", options: .regularExpression)
-    
-    // 2. Субтитры
-    if name.localizedCaseInsensitiveContains("субтитр") || name.localizedCaseInsensitiveContains("subtitle") {
-        return "💬 \(name)"
+    func value(for key: String, compute: () -> String) -> String {
+        lock.lock()
+        if let cached = storage[key] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        let result = compute()
+        lock.lock()
+        if storage.count >= maxCount {
+            storage.removeAll(keepingCapacity: true)
+        }
+        storage[key] = result
+        lock.unlock()
+        return result
     }
-    
-    // 3. Динамическое извлечение языка из тегов вида (Russian), (English), [Ukrainian] или префиксов
-    struct LangInfo {
+}
+
+private enum TranslationCleaner {
+    struct CompiledLangMatcher {
         let flag: String
         let defaultName: String
-        let patterns: [String]
+        let patterns: [(raw: String, parenRegex: NSRegularExpression, prefixRegex: NSRegularExpression)]
     }
-    
-    let knownLanguages: [LangInfo] = [
-        LangInfo(flag: "🇷🇺", defaultName: "Русский", patterns: ["russian", "русский", "рус", "ru"]),
-        LangInfo(flag: "🇺🇸", defaultName: "Оригинал", patterns: ["original", "оригинальный", "оригинал", "english", "английский", "англ", "eng", "usa", "en"]),
-        LangInfo(flag: "🇺🇦", defaultName: "Украинский", patterns: ["ukrainian", "украинский", "укр", "ukr", "uk"]),
-        LangInfo(flag: "🇯🇵", defaultName: "Японский", patterns: ["japanese", "японский", "япон", "jap", "ja"]),
-        LangInfo(flag: "🇰🇷", defaultName: "Корейский", patterns: ["korean", "корейский", "корей", "kor", "ko"]),
-        LangInfo(flag: "🇨🇳", defaultName: "Китайский", patterns: ["chinese", "китайский", "китай", "chi", "zh"]),
-        LangInfo(flag: "🇰🇿", defaultName: "Казахский", patterns: ["kazakh", "казахский", "казах", "kaz", "kz"]),
-        LangInfo(flag: "🇬🇪", defaultName: "Грузинский", patterns: ["georgian", "грузинский", "грузин", "geo", "ka"]),
-        LangInfo(flag: "🇫🇷", defaultName: "Французский", patterns: ["french", "французский", "француз", "fra", "fr"]),
-        LangInfo(flag: "🇩🇪", defaultName: "Немецкий", patterns: ["german", "немецкий", "немец", "ger", "de"]),
-        LangInfo(flag: "🇪🇸", defaultName: "Испанский", patterns: ["spanish", "испанский", "испан", "spa", "es"]),
-        LangInfo(flag: "🇮🇹", defaultName: "Итальянский", patterns: ["italian", "итальянский", "итальян", "ita", "it"]),
-        LangInfo(flag: "🇹🇷", defaultName: "Турецкий", patterns: ["turkish", "турецкий", "турец", "tur", "tr"])
-    ]
-    
-    var detectedFlag: String?
-    var detectedDefaultName: String = "Русский"
-    var cleanRemainder = name
-    
-    // Ищем соответствие языку
-    for lang in knownLanguages {
-        for pattern in lang.patterns {
-            // Проверяем формат (Language) или [Language]
-            let parenPattern = "(?i)[\\(\\[]\\s*\(pattern)\\s*[\\)\\]]"
-            if let regex = try? NSRegularExpression(pattern: parenPattern, options: []) {
-                let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
-                if regex.firstMatch(in: cleanRemainder, options: [], range: range) != nil {
-                    detectedFlag = lang.flag
-                    detectedDefaultName = lang.defaultName
-                    cleanRemainder = regex.stringByReplacingMatches(in: cleanRemainder, options: [], range: range, withTemplate: " ")
-                    break
-                }
-            }
-            
-            // Проверяем формат в начале строки "Language: ..." или "Language ..."
-            let prefixPattern = "(?i)^\(pattern)[:\\s-]+"
-            if let regex = try? NSRegularExpression(pattern: prefixPattern, options: []) {
-                let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
-                if regex.firstMatch(in: cleanRemainder, options: [], range: range) != nil {
-                    detectedFlag = lang.flag
-                    detectedDefaultName = lang.defaultName
-                    cleanRemainder = regex.stringByReplacingMatches(in: cleanRemainder, options: [], range: range, withTemplate: " ")
-                    break
-                }
-            }
-            
-            // Если вся строка это просто название языка (например "English", "Оригинальный")
-            if cleanRemainder.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == pattern {
-                detectedFlag = lang.flag
-                detectedDefaultName = lang.defaultName
-                cleanRemainder = ""
-                break
-            }
-        }
-        if detectedFlag != nil { break }
-    }
-    
-    // Очищаем оставшиеся скобки, спецсимволы и лишние пробелы
-    cleanRemainder = cleanRemainder
-        .replacingOccurrences(of: "(", with: " ")
-        .replacingOccurrences(of: ")", with: " ")
-        .replacingOccurrences(of: "[", with: " ")
-        .replacingOccurrences(of: "]", with: " ")
-        .replacingOccurrences(of: "|", with: " ")
-        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    
-    // Очищаем тире и префиксы вида "Многоголосый - " при наличии названия студии,
-    // но сохраняем "Дубляж" если это дубляж!
-    cleanRemainder = cleanRemainder
-        .replacingOccurrences(of: "\\s*[–—-]\\s*", with: " - ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespacesAndNewlines)
 
-    if let dashRange = cleanRemainder.range(of: " - ") {
-        let prefix = String(cleanRemainder[..<dashRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-        let suffix = String(cleanRemainder[dashRange.upperBound...]).trimmingCharacters(in: .whitespaces)
-        let lowerPrefix = prefix.lowercased()
-        if lowerPrefix.contains("дубл") {
-            cleanRemainder = suffix.isEmpty ? "Дубляж" : "Дубляж \(suffix)"
-        } else if lowerPrefix.contains("многоголос") || lowerPrefix.contains("двухголос") || lowerPrefix.contains("закадр") || lowerPrefix.contains("проф") || lowerPrefix.contains("люб") {
-            if !suffix.isEmpty {
-                cleanRemainder = suffix
+    static let cache = TranslationNameCache()
+
+    static let releaseTagsRegex = try! NSRegularExpression(
+        pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265|spacehd\\d*)[a-z0-9._-]*"
+    )
+    static let codecRegex = try! NSRegularExpression(
+        pattern: "(?i)\\b(?:AC3|E-AC3|EAC3|DDP|DD|DTS-HD|DTS|TrueHD|AAC|FLAC|MP3|PCM|LPCM)\\s*(?:5[.]?1|7[.]?1|2[.]?0|51)?(?:\\s*@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?)?"
+    )
+    static let atBitrateRegex = try! NSRegularExpression(
+        pattern: "(?i)@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?"
+    )
+    static let bitrateRegex = try! NSRegularExpression(
+        pattern: "(?i)\\b\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)\\b"
+    )
+    static let sourceTagRegex = try! NSRegularExpression(
+        pattern: "(?i)\\b(?:Blu-ray(?:\\s*CEE)?|BDRip|WEB-DL|HDTV|Line)\\b"
+    )
+    static let channelsRegex = try! NSRegularExpression(
+        pattern: "(?i)\\b(?:5[.]?1|7[.]?1|2[.]?0)\\b"
+    )
+    static let hdrezkaRegex = try! NSRegularExpression(
+        pattern: "(?i)\\bHDrezka\\s+St(?:\\.|\\b)"
+    )
+    static let whitespaceRegex = try! NSRegularExpression(pattern: "\\s+")
+    static let dashNormalizeRegex = try! NSRegularExpression(pattern: "\\s*[–—-]\\s*")
+    static let dubPrefixRegex = try! NSRegularExpression(
+        pattern: "(?i)^(?:профессиональный\\s+|проф[.]\\s+|полный\\s+)?(?:дублированный|дубляж)[:\\s-]+(.+)$"
+    )
+    static let voicePrefixRegex = try! NSRegularExpression(
+        pattern: "(?i)^(?:профессиональный\\s+|проф[.]\\s+|любительский\\s+|люб[.]\\s+)?(?:многоголосый|двухголосый|одноголосый|закадровый)[:\\s-]+(.+)$"
+    )
+
+    static let compiledLanguages: [CompiledLangMatcher] = {
+        let specs: [(flag: String, defaultName: String, patterns: [String])] = [
+            ("🇷🇺", "Русский", ["russian", "русский", "рус", "ru"]),
+            ("🇺🇸", "Оригинал", ["original", "оригинальный", "оригинал", "english", "английский", "англ", "eng", "usa", "en"]),
+            ("🇺🇦", "Украинский", ["ukrainian", "украинский", "укр", "ukr", "uk"]),
+            ("🇯🇵", "Японский", ["japanese", "японский", "япон", "jap", "ja"]),
+            ("🇰🇷", "Корейский", ["korean", "корейский", "корей", "kor", "ko"]),
+            ("🇨🇳", "Китайский", ["chinese", "китайский", "китай", "chi", "zh"]),
+            ("🇰🇿", "Казахский", ["kazakh", "казахский", "казах", "kaz", "kz"]),
+            ("🇬🇪", "Грузинский", ["georgian", "грузинский", "грузин", "geo", "ka"]),
+            ("🇫🇷", "Французский", ["french", "французский", "француз", "fra", "fr"]),
+            ("🇩🇪", "Немецкий", ["german", "немецкий", "немец", "ger", "de"]),
+            ("🇪🇸", "Испанский", ["spanish", "испанский", "испан", "spa", "es"]),
+            ("🇮🇹", "Итальянский", ["italian", "итальянский", "итальян", "ita", "it"]),
+            ("🇹🇷", "Турецкий", ["turkish", "турецкий", "турец", "tur", "tr"])
+        ]
+        return specs.compactMap { spec in
+            let compiled = spec.patterns.compactMap { pattern -> (String, NSRegularExpression, NSRegularExpression)? in
+                guard let paren = try? NSRegularExpression(pattern: "(?i)[\\(\\[]\\s*\(pattern)\\s*[\\)\\]]"),
+                      let prefix = try? NSRegularExpression(pattern: "(?i)^\(pattern)[:\\s-]+") else {
+                    return nil
+                }
+                return (pattern, paren, prefix)
             }
+            return CompiledLangMatcher(flag: spec.flag, defaultName: spec.defaultName, patterns: compiled)
         }
-    } else {
-        let dubPrefixPattern = "(?i)^(?:профессиональный\\s+|проф[.]\\s+|полный\\s+)?(?:дублированный|дубляж)[:\\s-]+(.+)$"
-        var matchedDub = false
-        if let regex = try? NSRegularExpression(pattern: dubPrefixPattern, options: []) {
+    }()
+
+    static func replacing(_ regex: NSRegularExpression, in string: String, with template: String) -> String {
+        let range = NSRange(location: 0, length: string.utf16.count)
+        return regex.stringByReplacingMatches(in: string, options: [], range: range, withTemplate: template)
+    }
+}
+
+/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, динамически извлекает язык и флаг)
+func cleanTranslationName(_ rawName: String) -> String {
+    let trimmedInput = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedInput.isEmpty else { return "По умолчанию" }
+
+    return TranslationCleaner.cache.value(for: trimmedInput) {
+        var name = trimmedInput
+
+        // 1. Убираем громоздкие сцен-теги релиза (2160p, WEB-DL, BDRip и т.д.)
+        name = TranslationCleaner.replacing(TranslationCleaner.releaseTagsRegex, in: name, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 1b. Убираем аудио-кодеки, каналы и битрейты (DD 51 @ 448 kbps, AC3 5.1 @ 640 kbps, AAC 2.0 и т.д.)
+        name = TranslationCleaner.replacing(TranslationCleaner.codecRegex, in: name, with: "")
+        name = TranslationCleaner.replacing(TranslationCleaner.atBitrateRegex, in: name, with: "")
+        name = TranslationCleaner.replacing(TranslationCleaner.bitrateRegex, in: name, with: "")
+        name = TranslationCleaner.replacing(TranslationCleaner.sourceTagRegex, in: name, with: "")
+        name = TranslationCleaner.replacing(TranslationCleaner.channelsRegex, in: name, with: "")
+        name = TranslationCleaner.replacing(TranslationCleaner.hdrezkaRegex, in: name, with: "HDrezka Studio")
+
+        // 2. Субтитры
+        if name.localizedCaseInsensitiveContains("субтитр") || name.localizedCaseInsensitiveContains("subtitle") {
+            return "💬 \(name)"
+        }
+
+        // 3. Динамическое извлечение языка из тегов вида (Russian), (English), [Ukrainian] или префиксов
+        var detectedFlag: String?
+        var detectedDefaultName: String = "Русский"
+        var cleanRemainder = name
+
+        for lang in TranslationCleaner.compiledLanguages {
+            for patternEntry in lang.patterns {
+                let parenRange = NSRange(location: 0, length: cleanRemainder.utf16.count)
+                if patternEntry.parenRegex.firstMatch(in: cleanRemainder, options: [], range: parenRange) != nil {
+                    detectedFlag = lang.flag
+                    detectedDefaultName = lang.defaultName
+                    cleanRemainder = patternEntry.parenRegex.stringByReplacingMatches(in: cleanRemainder, options: [], range: parenRange, withTemplate: " ")
+                    break
+                }
+
+                let prefixRange = NSRange(location: 0, length: cleanRemainder.utf16.count)
+                if patternEntry.prefixRegex.firstMatch(in: cleanRemainder, options: [], range: prefixRange) != nil {
+                    detectedFlag = lang.flag
+                    detectedDefaultName = lang.defaultName
+                    cleanRemainder = patternEntry.prefixRegex.stringByReplacingMatches(in: cleanRemainder, options: [], range: prefixRange, withTemplate: " ")
+                    break
+                }
+
+                if cleanRemainder.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == patternEntry.raw {
+                    detectedFlag = lang.flag
+                    detectedDefaultName = lang.defaultName
+                    cleanRemainder = ""
+                    break
+                }
+            }
+            if detectedFlag != nil { break }
+        }
+
+        // Очищаем оставшиеся скобки, спецсимволы и лишние пробелы
+        cleanRemainder = cleanRemainder
+            .replacingOccurrences(of: "(", with: " ")
+            .replacingOccurrences(of: ")", with: " ")
+            .replacingOccurrences(of: "[", with: " ")
+            .replacingOccurrences(of: "]", with: " ")
+            .replacingOccurrences(of: "|", with: " ")
+        cleanRemainder = TranslationCleaner.replacing(TranslationCleaner.whitespaceRegex, in: cleanRemainder, with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Очищаем тире и префиксы вида "Многоголосый - " при наличии названия студии,
+        // но сохраняем "Дубляж" если это дубляж!
+        cleanRemainder = TranslationCleaner.replacing(TranslationCleaner.dashNormalizeRegex, in: cleanRemainder, with: " - ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let dashRange = cleanRemainder.range(of: " - ") {
+            let prefix = String(cleanRemainder[..<dashRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let suffix = String(cleanRemainder[dashRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+            let lowerPrefix = prefix.lowercased()
+            if lowerPrefix.contains("дубл") {
+                cleanRemainder = suffix.isEmpty ? "Дубляж" : "Дубляж \(suffix)"
+            } else if lowerPrefix.contains("многоголос") || lowerPrefix.contains("двухголос") || lowerPrefix.contains("закадр") || lowerPrefix.contains("проф") || lowerPrefix.contains("люб") {
+                if !suffix.isEmpty {
+                    cleanRemainder = suffix
+                }
+            }
+        } else {
             let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
-            if let match = regex.firstMatch(in: cleanRemainder, options: [], range: range),
+            var matchedDub = false
+            if let match = TranslationCleaner.dubPrefixRegex.firstMatch(in: cleanRemainder, options: [], range: range),
                let groupRange = Range(match.range(at: 1), in: cleanRemainder) {
                 let studioPart = String(cleanRemainder[groupRange]).trimmingCharacters(in: .whitespaces)
                 if !studioPart.isEmpty {
@@ -302,53 +364,69 @@ func cleanTranslationName(_ rawName: String) -> String {
                     matchedDub = true
                 }
             }
-        }
 
-        if !matchedDub {
-            let prefixPattern = "(?i)^(?:профессиональный\\s+|проф[.]\\s+|любительский\\s+|люб[.]\\s+)?(?:многоголосый|двухголосый|одноголосый|закадровый)[:\\s-]+(.+)$"
-            if let regex = try? NSRegularExpression(pattern: prefixPattern, options: []) {
-                let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
-                if let match = regex.firstMatch(in: cleanRemainder, options: [], range: range),
-                   let groupRange = Range(match.range(at: 1), in: cleanRemainder) {
-                    let studioPart = String(cleanRemainder[groupRange]).trimmingCharacters(in: .whitespaces)
-                    if !studioPart.isEmpty {
-                        cleanRemainder = studioPart
-                    }
+            if !matchedDub,
+               let match = TranslationCleaner.voicePrefixRegex.firstMatch(in: cleanRemainder, options: [], range: range),
+               let groupRange = Range(match.range(at: 1), in: cleanRemainder) {
+                let studioPart = String(cleanRemainder[groupRange]).trimmingCharacters(in: .whitespaces)
+                if !studioPart.isEmpty {
+                    cleanRemainder = studioPart
                 }
             }
         }
-    }
 
-    if cleanRemainder.lowercased() == "дублированный" {
-        cleanRemainder = "Дубляж"
-    }
+        if cleanRemainder.lowercased() == "дублированный" {
+            cleanRemainder = "Дубляж"
+        }
 
-    while cleanRemainder.hasPrefix("-") || cleanRemainder.hasPrefix(",") || cleanRemainder.hasPrefix("–") || cleanRemainder.hasPrefix("—") {
-        cleanRemainder = String(cleanRemainder.dropFirst()).trimmingCharacters(in: .whitespaces)
-    }
-    while cleanRemainder.hasSuffix("-") || cleanRemainder.hasSuffix(",") || cleanRemainder.hasSuffix("–") || cleanRemainder.hasSuffix("—") {
-        cleanRemainder = String(cleanRemainder.dropLast()).trimmingCharacters(in: .whitespaces)
-    }
+        while cleanRemainder.hasPrefix("-") || cleanRemainder.hasPrefix(",") || cleanRemainder.hasPrefix("–") || cleanRemainder.hasPrefix("—") {
+            cleanRemainder = String(cleanRemainder.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        while cleanRemainder.hasSuffix("-") || cleanRemainder.hasSuffix(",") || cleanRemainder.hasSuffix("–") || cleanRemainder.hasSuffix("—") {
+            cleanRemainder = String(cleanRemainder.dropLast()).trimmingCharacters(in: .whitespaces)
+        }
 
-    let flag = detectedFlag ?? "🇷🇺"
-    
-    // Если осталась только цифра дорожки (например "(English) 8" -> "8") или строка пуста
-    if cleanRemainder.isEmpty || Int(cleanRemainder) != nil {
-        return "\(flag) \(detectedDefaultName)"
+        let flag = detectedFlag ?? "🇷🇺"
+
+        // Если осталась только цифра дорожки (например "(English) 8" -> "8") или строка пуста
+        if cleanRemainder.isEmpty || Int(cleanRemainder) != nil {
+            return "\(flag) \(detectedDefaultName)"
+        }
+
+        return "\(flag) \(cleanRemainder)"
     }
-    
-    return "\(flag) \(cleanRemainder)"
 }
 
-
+/// Возвращает уникальные понятные названия для всего списка озвучек за один O(N) проход
+func displayTranslationNames(for allRawNames: [String]) -> [String] {
+    guard !allRawNames.isEmpty else { return [] }
+    let cleaned = allRawNames.map(cleanTranslationName)
+    var totals: [String: Int] = [:]
+    totals.reserveCapacity(cleaned.count)
+    for name in cleaned {
+        totals[name, default: 0] += 1
+    }
+    var seen: [String: Int] = [:]
+    seen.reserveCapacity(totals.count)
+    return cleaned.map { name in
+        if (totals[name] ?? 0) > 1 {
+            let next = (seen[name] ?? 0) + 1
+            seen[name] = next
+            return "\(name) #\(next)"
+        }
+        return name
+    }
+}
 
 /// Возвращает уникальное понятное название для озвучки с учётом её индекса в общем списке
 func displayTranslationName(_ rawName: String, at indexInAll: Int, in allRawNames: [String]) -> String {
     let cleaned = cleanTranslationName(rawName)
-    
+
     // Посчитаем, сколько раз данное очищенное название встречается во ВСЁМ списке
-    let totalDuplicates = allRawNames.filter { cleanTranslationName($0) == cleaned }.count
-    
+    let totalDuplicates = allRawNames.reduce(into: 0) { count, item in
+        if cleanTranslationName(item) == cleaned { count += 1 }
+    }
+
     if totalDuplicates > 1 {
         // Посчитаем, каким по счёту является текущий элемент среди равных до индекса indexInAll включительно
         var occurrence = 0
@@ -362,6 +440,6 @@ func displayTranslationName(_ rawName: String, at indexInAll: Int, in allRawName
         }
         return "\(cleaned) #\(occurrence)"
     }
-    
+
     return cleaned
 }

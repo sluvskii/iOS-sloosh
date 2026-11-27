@@ -20,10 +20,14 @@ enum LanguageFlag: String, CaseIterable, Hashable {
     case it = "Flag-IT"
     case subtitles = "Flag-Subtitles"
 
+    private static let availableAssets: Set<LanguageFlag> = {
+        Set(allCases.filter { UIImage(named: $0.assetName) != nil })
+    }()
+
     var assetName: String { rawValue }
 
     var hasAsset: Bool {
-        UIImage(named: assetName) != nil
+        Self.availableAssets.contains(self)
     }
 
     /// Определяет флаг языка по тексту перевода или эмодзи

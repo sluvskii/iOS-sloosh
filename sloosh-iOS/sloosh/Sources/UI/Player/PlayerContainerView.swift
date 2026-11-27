@@ -39,11 +39,8 @@ struct PlayerContainerView: View {
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
             // Маскировка промо-врезки Collaps (баннер в начале seg-1) и точного начального сика
-            if vm.isCollapsStream && (vm.currentTime < 3.9 || vm.isInitialSeekPending || (vm.isBuffering && vm.currentTime < 4.5)) {
-                Color.black
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+            if vm.isCollapsStream {
+                CollapsIntroMaskView(vm: vm, timeTracker: vm.timeTracker)
                     .zIndex(1)
             }
 
@@ -574,5 +571,25 @@ private struct MultiSeekFeedbackView: View {
             }
         }
         .ignoresSafeArea() // Полностью игнорируем челку/островки для плотного прилегания
+    }
+}
+
+private struct CollapsIntroMaskView: View {
+    @ObservedObject var vm: PlayerViewModel
+    @ObservedObject var timeTracker: PlayerTimeTracker
+
+    private var shouldMask: Bool {
+        timeTracker.currentTime < 3.9 ||
+        vm.isInitialSeekPending ||
+        (vm.isBuffering && timeTracker.currentTime < 4.5)
+    }
+
+    var body: some View {
+        if shouldMask {
+            Color.black
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
     }
 }

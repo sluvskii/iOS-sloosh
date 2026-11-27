@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Seek Bar с нативным Liquid Glass (iOS 26)
 
 struct SeekBarView: View {
-    @ObservedObject var vm: PlayerViewModel
+    let vm: PlayerViewModel
     @ObservedObject var timeTracker: PlayerTimeTracker
     @Binding var isInteracting: Bool
     @State private var isDragging = false
@@ -15,12 +15,12 @@ struct SeekBarView: View {
 
     private var progress: Double {
         guard timeTracker.currentDuration > 0 else { return 0 }
-        if let scrub = vm.screenScrubTime { return scrub / timeTracker.currentDuration }
+        if let scrub = timeTracker.screenScrubTime { return scrub / timeTracker.currentDuration }
         return isDragging ? dragProgress : (timeTracker.currentTime / timeTracker.currentDuration)
     }
 
     private var displayTime: Double {
-        if let scrub = vm.screenScrubTime { return scrub }
+        if let scrub = timeTracker.screenScrubTime { return scrub }
         return isDragging ? (dragProgress * timeTracker.currentDuration) : timeTracker.currentTime
     }
 
@@ -36,8 +36,8 @@ struct SeekBarView: View {
         HStack(spacing: 12) {
             Text(formatTime(displayTime))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.65))
-                .blendMode(.plusLighter)
+                .foregroundStyle(.white.opacity(0.92))
+                .glassForeground()
 
             SystemUISliderView(
                 value: Binding(
@@ -46,7 +46,10 @@ struct SeekBarView: View {
                 ),
                 isDragging: $isDragging,
                 onSeek: { val in
-                    vm.seek(to: val * vm.currentDuration)
+                    let dur = timeTracker.currentDuration
+                    if dur > 0 {
+                        vm.seek(to: val * dur)
+                    }
                 }
             )
             .frame(height: 24)
@@ -62,12 +65,11 @@ struct SeekBarView: View {
 
             Text("-" + formatTime(max(0, timeTracker.currentDuration - displayTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.65))
-                .blendMode(.plusLighter)
+                .foregroundStyle(.white.opacity(0.92))
+                .glassForeground()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .clipShape(Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")
@@ -75,6 +77,9 @@ struct SeekBarView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 10)
                 .onChanged { value in
+                    if isDragging {
+                        return
+                    }
                     if abs(value.translation.height) > abs(value.translation.width) && !isHStackScrubbing {
                         return
                     }
@@ -97,17 +102,17 @@ struct SeekBarView: View {
                     let deltaSeconds = Double(value.translation.width) * baseMultiplier * speedFactor
                     
                     let target = max(0, min(timeTracker.currentDuration, screenScrubInitialTime + deltaSeconds))
-                    if vm.screenScrubTime == nil || abs((vm.screenScrubTime ?? 0) - target) >= 0.25 {
-                        vm.screenScrubTime = target
+                    if timeTracker.screenScrubTime == nil || abs((timeTracker.screenScrubTime ?? 0) - target) >= 0.1 {
+                        timeTracker.screenScrubTime = target
                     }
                 }
-                .onEnded { value in
+                .onEnded { _ in
                     guard isHStackScrubbing else { return }
                     isHStackScrubbing = false
                     isInteracting = false
-                    if let target = vm.screenScrubTime {
+                    if let target = timeTracker.screenScrubTime {
                         vm.seek(to: target)
-                        vm.screenScrubTime = nil
+                        timeTracker.screenScrubTime = nil
                     }
                 }
         )
@@ -160,7 +165,10 @@ struct SystemUISliderView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UISlider, context: Context) {
         if !context.coordinator.isEditing {
-            uiView.value = Float(value)
+            let nextVal = Float(value)
+            if abs(uiView.value - nextVal) > 0.0005 {
+                uiView.value = nextVal
+            }
         }
     }
 

@@ -58,9 +58,33 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    private enum KeywordMatcher {
+        case regex(NSRegularExpression)
+        case substring(String)
+    }
+
+    private static let compiledMatchers: [(studio: DubbingStudio, matchers: [KeywordMatcher])] = {
+        allCases.map { studio in
+            let matchers: [KeywordMatcher] = studio.searchKeywords.compactMap { keyword in
+                if keyword.count <= 4 {
+                    let pattern = "(?i)(^|[\\s(\\[_-])\(NSRegularExpression.escapedPattern(for: keyword))([\\s)\\]_.,:!?-]|$)"
+                    guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+                    return .regex(regex)
+                } else {
+                    return .substring(keyword)
+                }
+            }
+            return (studio, matchers)
+        }
+    }()
+
+    private static let availableAssets: Set<DubbingStudio> = {
+        Set(allCases.filter { UIImage(named: $0.assetName) != nil })
+    }()
+
     /// Проверяет наличие файла логотипа в бандле приложения
     var hasAsset: Bool {
-        UIImage(named: assetName) != nil
+        Self.availableAssets.contains(self)
     }
 
     /// Ключевые слова и паттерны для обнаружения студии в названии дорожки
@@ -98,18 +122,19 @@ enum DubbingStudio: String, CaseIterable, Identifiable, Hashable {
     /// Интеллектуальное определение студии дубляжа по сырому или очищенному названию перевода
     static func detect(from name: String) -> DubbingStudio? {
         let lower = name.lowercased()
-        
-        // 1. Проверяем прямые совпадения с ключевыми словами
-        for studio in Self.allCases {
-            for keyword in studio.searchKeywords {
-                // Если ключевое слово короткое (rhs, dms, rezka), проверяем границы слов
-                if keyword.count <= 4 {
-                    let pattern = "(?i)(^|[\\s(\\[_-])\(NSRegularExpression.escapedPattern(for: keyword))([\\s)\\]_.,:!?-]|$)"
-                    if (try? NSRegularExpression(pattern: pattern).firstMatch(in: lower, range: NSRange(location: 0, length: lower.utf16.count))) != nil {
-                        return studio
+        let range = NSRange(location: 0, length: lower.utf16.count)
+
+        for entry in compiledMatchers {
+            for matcher in entry.matchers {
+                switch matcher {
+                case .regex(let regex):
+                    if regex.firstMatch(in: lower, range: range) != nil {
+                        return entry.studio
                     }
-                } else if lower.contains(keyword) {
-                    return studio
+                case .substring(let keyword):
+                    if lower.contains(keyword) {
+                        return entry.studio
+                    }
                 }
             }
         }

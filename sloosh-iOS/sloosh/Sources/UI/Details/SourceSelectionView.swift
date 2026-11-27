@@ -44,6 +44,7 @@ struct SourceSelectionView: View {
     @State private var selectedQuality: VideoQualityPreference = .auto
     @State private var rememberQualityChoice: Bool = false
     @State private var pendingCommit: PendingPlaybackCommit? = nil
+    @StateObject private var catalogCache = SourceCatalogCache()
 
     private let availableQualities: [VideoQualityPreference] = [
         .auto,
@@ -365,6 +366,14 @@ struct SourceSelectionView: View {
     private var currentSourceContentView: some View {
         if selectedSource == .source1 {
             if let res1 = source1Result, (!res1.seasons.isEmpty || res1.movie != nil) {
+                let prepared = catalogCache.catalog(
+                    for: .source1,
+                    result: res1,
+                    kpId: kpId,
+                    details: details,
+                    initialSeason: initialSeason,
+                    initialEpisode: initialEpisode
+                )
                 SingleSourceContentView(
                     mode: mode,
                     source: .source1,
@@ -375,7 +384,8 @@ struct SourceSelectionView: View {
                     movieSubtitles: [],
                     customHeaders: [:],
                     initialSeason: initialSeason,
-                    initialEpisode: initialEpisode
+                    initialEpisode: initialEpisode,
+                    preparedCatalog: prepared
                 ) { translation, season, episode, subs, headers in
                     handleCommit(
                         translation: translation,
@@ -391,6 +401,14 @@ struct SourceSelectionView: View {
             }
         } else {
             if let res2 = source2Result?.apiResult, (!res2.seasons.isEmpty || res2.movie != nil) {
+                let prepared = catalogCache.catalog(
+                    for: .source2,
+                    result: res2,
+                    kpId: kpId,
+                    details: details,
+                    initialSeason: initialSeason,
+                    initialEpisode: initialEpisode
+                )
                 SingleSourceContentView(
                     mode: mode,
                     source: .source2,
@@ -401,7 +419,8 @@ struct SourceSelectionView: View {
                     movieSubtitles: source2Result?.movieSubtitles ?? [],
                     customHeaders: CollapsRepository.streamHeaders,
                     initialSeason: initialSeason,
-                    initialEpisode: initialEpisode
+                    initialEpisode: initialEpisode,
+                    preparedCatalog: prepared
                 ) { translation, season, episode, subs, headers in
                     handleCommit(
                         translation: translation,
@@ -607,6 +626,133 @@ struct SourceSelectionView: View {
     }
 }
 
+// MARK: - Precomputed Catalog & Cache
+
+private struct PreparedSourceCatalog {
+    let mediaKey: String
+    let isSerial: Bool
+    let index: AllohaSourceAvailabilityIndex
+    let allTranslations: [TranslationChipItem]
+    let translationAvailability: TranslationAvailabilityPolicy
+    let initialSeason: Int?
+    let initialEpisode: Int?
+    let initialTranslationName: String?
+
+    init(
+        source: MediaStreamSource,
+        result: AllohaApiResult,
+        kpId: Int?,
+        details: MediaDetailsDto?,
+        requestedSeason: Int?,
+        requestedEpisode: Int?
+    ) {
+        let effectiveIsSerial: Bool = {
+            if let type = details?.type?.lowercased() {
+                if type == "movie" { return false }
+                if type == "tv" || type == "serial" || type == "series" { return true }
+            }
+            if let seasons = details?.seasons, !seasons.isEmpty { return true }
+            return result.isSerial
+        }()
+
+        let index = AllohaSourceAvailabilityIndex(result: result, effectiveIsSerial: effectiveIsSerial)
+        let displayNames = displayTranslationNames(for: index.sortedNames)
+        let transItems = zip(index.sortedNames, displayNames).map { name, displayName in
+            TranslationChipItem(
+                id: name,
+                name: name,
+                displayName: displayName,
+                studio: DubbingStudio.detect(from: name),
+                flag: LanguageFlag.detect(from: name + " " + displayName)
+            )
+        }
+
+        self.mediaKey = Self.resolveMediaKey(kpId: kpId, details: details)
+        self.isSerial = effectiveIsSerial
+        self.index = index
+        self.allTranslations = transItems
+        self.translationAvailability = TranslationAvailabilityPolicy(
+            isSerial: effectiveIsSerial,
+            movieNames: index.movieNames,
+            seasonNames: index.exactNamesBySeason,
+            episodeNames: index.exactNamesByEpisode
+        )
+
+        let initial = SingleSourceContentView.computeInitialSelection(
+            result: result,
+            index: index,
+            kpId: kpId,
+            details: details,
+            sourceKey: source == .source2 ? "collaps" : "alloha",
+            requestedSeason: requestedSeason,
+            requestedEpisode: requestedEpisode
+        )
+        self.initialSeason = initial.season
+        self.initialEpisode = initial.episode
+        self.initialTranslationName = initial.translationName
+    }
+
+    static func resolveMediaKey(kpId: Int?, details: MediaDetailsDto?) -> String {
+        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
+        if validKp > 0 {
+            return "kp_\(validKp)"
+        }
+        if let detailsId = details?.id, !detailsId.isEmpty {
+            return detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
+        }
+        if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
+            return "tmdb_\(tmdb)"
+        }
+        return "unknown"
+    }
+}
+
+@MainActor
+private final class SourceCatalogCache: ObservableObject {
+    private struct Entry {
+        let result: AllohaApiResult
+        let kpId: Int?
+        let initialSeason: Int?
+        let initialEpisode: Int?
+        let catalog: PreparedSourceCatalog
+    }
+
+    private var entries: [MediaStreamSource: Entry] = [:]
+
+    func catalog(
+        for source: MediaStreamSource,
+        result: AllohaApiResult,
+        kpId: Int?,
+        details: MediaDetailsDto?,
+        initialSeason: Int?,
+        initialEpisode: Int?
+    ) -> PreparedSourceCatalog {
+        if let existing = entries[source],
+           existing.kpId == kpId,
+           existing.initialSeason == initialSeason,
+           existing.initialEpisode == initialEpisode,
+           existing.result == result {
+            return existing.catalog
+        }
+        let built = PreparedSourceCatalog(
+            source: source,
+            result: result,
+            kpId: kpId,
+            details: details,
+            requestedSeason: initialSeason,
+            requestedEpisode: initialEpisode
+        )
+        entries[source] = Entry(
+            result: result,
+            kpId: kpId,
+            initialSeason: initialSeason,
+            initialEpisode: initialEpisode,
+            catalog: built
+        )
+        return built
+    }
+}
+
 // MARK: - Single Source Content View
 
 struct SingleSourceContentView: View {
@@ -623,16 +769,9 @@ struct SingleSourceContentView: View {
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
     @State private var selectedTranslationName: String?
-    @State private var mediaStats: MediaAnalyticsStats? = nil
+    @State private var topTranslationNames: Set<String> = []
 
-    // Precomputed immutable caches (calculated once on init)
-    let allTranslations: [TranslationChipItem]
-    let allSeasons: [Int]
-    let seasonEpisodes: [Int: [Int]]
-    let seasonTranslationsMap: [Int: Set<String>]
-    let episodeTranslationsMap: [EpisodeKey: Set<String>]
-    let movieTranslationNames: Set<String>
-    let translationAvailability: TranslationAvailabilityPolicy
+    private let catalog: PreparedSourceCatalog
     let initialSeason: Int?
     let initialEpisode: Int?
 
@@ -647,12 +786,12 @@ struct SingleSourceContentView: View {
 
     private var isSerial: Bool {
         if isProjectMovie { return false }
-        if let type = details?.type?.lowercased() {
-            if type == "tv" || type == "serial" || type == "series" { return true }
-        }
-        if let seasons = details?.seasons, !seasons.isEmpty { return true }
-        return result.isSerial
+        return catalog.isSerial
     }
+
+    var allTranslations: [TranslationChipItem] { catalog.allTranslations }
+    var allSeasons: [Int] { catalog.index.sortedSeasons }
+    var seasonEpisodes: [Int: [Int]] { catalog.index.episodesBySeason }
 
     init(
         mode: SourceSelectionMode,
@@ -665,6 +804,7 @@ struct SingleSourceContentView: View {
         customHeaders: [String: String],
         initialSeason: Int? = nil,
         initialEpisode: Int? = nil,
+        preparedCatalog: PreparedSourceCatalog? = nil,
         onCommit: @escaping (AllohaTranslation, Int?, Int?, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
@@ -679,130 +819,19 @@ struct SingleSourceContentView: View {
         self.initialEpisode = initialEpisode
         self.onCommit = onCommit
 
-        var transItems: [TranslationChipItem] = []
-        var seasonsList: [Int] = []
-        var sEpisodes: [Int: [Int]] = [:]
-        var sTransMap: [Int: Set<String>] = [:]
-        var epTransMap: [EpisodeKey: Set<String>] = [:]
-        var movieNames = Set<String>()
-
-        let effectiveIsSerial: Bool = {
-            if let type = details?.type?.lowercased() {
-                if type == "movie" { return false }
-                if type == "tv" || type == "serial" || type == "series" { return true }
-            }
-            if let seasons = details?.seasons, !seasons.isEmpty { return true }
-            return result.isSerial
-        }()
-
-        if effectiveIsSerial {
-            var allNames = Set<String>()
-            for season in result.seasons {
-                let epNums = season.episodes.map { $0.episode }.sorted()
-                sEpisodes[season.season] = epNums
-
-                for ep in season.episodes {
-                    let epNames = ep.translations.map { $0.name }
-                    allNames.formUnion(epNames)
-                }
-            }
-
-            // Exclude subtitles from voiceovers list (subtitles belong in player subtitles menu)
-            let nonSubNames = allNames.filter { name in
-                let lower = name.lowercased()
-                return !lower.contains("субтитр") && !lower.contains("subtitle")
-            }
-            let effectiveNames = nonSubNames.isEmpty ? allNames.map { name -> String in
-                let lower = name.lowercased()
-                return (lower.contains("субтитр") || lower.contains("subtitle")) ? "Оригинал" : name
-            } : Array(nonSubNames)
-            let sortedNames = Array(Set(effectiveNames)).sorted()
-            transItems = sortedNames.enumerated().map { idx, name in
-                let displayName = displayTranslationName(name, at: idx, in: sortedNames)
-                return TranslationChipItem(
-                    id: name,
-                    name: name,
-                    displayName: displayName,
-                    studio: DubbingStudio.detect(from: name),
-                    flag: LanguageFlag.detect(from: name + " " + displayName)
-                )
-            }
-            seasonsList = result.seasons.map { $0.season }.sorted()
-
-            // Precompute canonical Set<String> for each episode and season
-            // This turns every runtime check into a pure O(1) set lookup
-            for season in result.seasons {
-                var seasonMatchedNames = Set<String>()
-                for ep in season.episodes {
-                    let rawEpNames = Set(ep.translations.map { t in
-                        let lower = t.name.lowercased()
-                        return (nonSubNames.isEmpty && (lower.contains("субтитр") || lower.contains("subtitle"))) ? "Оригинал" : t.name
-                    })
-                    var availableForEp = Set<String>()
-                    for name in sortedNames {
-                        if rawEpNames.contains(name) || rawEpNames.contains(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) }) {
-                            availableForEp.insert(name)
-                        }
-                    }
-                    epTransMap[EpisodeKey(season: season.season, episode: ep.episode)] = availableForEp
-                    seasonMatchedNames.formUnion(availableForEp)
-                }
-                sTransMap[season.season] = seasonMatchedNames
-            }
-        } else {
-            let movieTranslations = result.movie?.translations ?? result.seasons.first?.episodes.first?.translations ?? []
-            let allMovieNames = movieTranslations.map { $0.name }
-            let nonSubNames = allMovieNames.filter { name in
-                let lower = name.lowercased()
-                return !lower.contains("субтитр") && !lower.contains("subtitle")
-            }
-            let effectiveNames = nonSubNames.isEmpty ? allMovieNames.map { name -> String in
-                let lower = name.lowercased()
-                return (lower.contains("субтитр") || lower.contains("subtitle")) ? "Оригинал" : name
-            } : allMovieNames
-            let sortedNames = Array(Set(effectiveNames)).sorted()
-            movieNames = Set(sortedNames)
-            transItems = sortedNames.enumerated().map { idx, name in
-                let displayName = displayTranslationName(name, at: idx, in: sortedNames)
-                return TranslationChipItem(
-                    id: name,
-                    name: name,
-                    displayName: displayName,
-                    studio: DubbingStudio.detect(from: name),
-                    flag: LanguageFlag.detect(from: name + " " + displayName)
-                )
-            }
-        }
-
-        self.allTranslations = transItems
-        self.allSeasons = seasonsList
-        self.seasonEpisodes = sEpisodes
-        self.seasonTranslationsMap = sTransMap
-        self.episodeTranslationsMap = epTransMap
-        self.movieTranslationNames = movieNames
-
-        var nestedEpisodeNames: [Int: [Int: Set<String>]] = [:]
-        for (key, names) in epTransMap {
-            nestedEpisodeNames[key.season, default: [:]][key.episode] = names
-        }
-        self.translationAvailability = TranslationAvailabilityPolicy(
-            isSerial: effectiveIsSerial,
-            movieNames: movieNames,
-            seasonNames: sTransMap,
-            episodeNames: nestedEpisodeNames
-        )
-
-        let initial = Self.computeInitialSelection(
+        let builtCatalog = preparedCatalog ?? PreparedSourceCatalog(
+            source: source,
             result: result,
             kpId: kpId,
             details: details,
-            sourceKey: source == .source2 ? "collaps" : "alloha",
             requestedSeason: initialSeason,
             requestedEpisode: initialEpisode
         )
-        _selectedSeason = State(initialValue: initial.season)
-        _selectedEpisode = State(initialValue: initial.episode)
-        _selectedTranslationName = State(initialValue: initial.translationName)
+        self.catalog = builtCatalog
+
+        _selectedSeason = State(initialValue: builtCatalog.initialSeason)
+        _selectedEpisode = State(initialValue: builtCatalog.initialEpisode)
+        _selectedTranslationName = State(initialValue: builtCatalog.initialTranslationName)
     }
 
     var allEpisodes: [Int] {
@@ -812,17 +841,15 @@ struct SingleSourceContentView: View {
 
     // Instant O(1) Available checking
     func isTranslationAvailable(_ name: String) -> Bool {
-        translationAvailability.isAvailable(name: name, season: selectedSeason, episode: selectedEpisode)
+        catalog.translationAvailability.isAvailable(name: name, season: selectedSeason, episode: selectedEpisode)
     }
 
     func seasonHasTranslation(season: Int, name: String) -> Bool {
-        guard let names = seasonTranslationsMap[season] else { return false }
-        return names.contains(name) || names.contains(where: { allohaTranslationNamesMatch($0, name) })
+        catalog.index.seasonHasTranslation(season: season, name: name)
     }
 
     func episodeHasTranslation(season: Int, episode: Int, name: String) -> Bool {
-        guard let names = episodeTranslationsMap[EpisodeKey(season: season, episode: episode)] else { return false }
-        return names.contains(name) || names.contains(where: { allohaTranslationNamesMatch($0, name) })
+        catalog.index.episodeHasTranslation(season: season, episode: episode, name: name)
     }
 
     func isSeasonAvailable(_ seasonNum: Int) -> Bool {
@@ -869,73 +896,45 @@ struct SingleSourceContentView: View {
             e = episodes.first ?? 1
             selectedEpisode = e
         }
-        if let currentE = e {
-            if let currentT = selectedTranslationName, !episodeHasTranslation(season: s, episode: currentE, name: currentT) {
-                if let seasonObj = result.seasons.first(where: { $0.season == s }),
-                   let epObj = seasonObj.episodes.first(where: { $0.episode == currentE }),
-                   let bestT = bestTranslation(in: epObj.translations, preferredName: currentT) {
-                    selectedTranslationName = bestT.name
-                }
-            }
+        if let currentE = e,
+           let currentT = selectedTranslationName,
+           !episodeHasTranslation(season: s, episode: currentE, name: currentT),
+           let epObj = catalog.index.episode(season: s, episode: currentE),
+           let bestT = bestTranslation(in: epObj.translations, preferredName: currentT) {
+            selectedTranslationName = bestT.name
         }
     }
 
     func selectEpisode(_ e: Int) {
         selectedEpisode = e
         if let s = selectedSeason {
-            let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)] ?? []
             if let currentT = selectedTranslationName {
-                let matchesCurrent = epNames.contains(currentT) || epNames.contains(where: { allohaTranslationNamesMatch($0, currentT) })
-                if !matchesCurrent {
-                    if let seasonObj = result.seasons.first(where: { $0.season == s }),
-                       let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                       let bestT = bestTranslation(in: epObj.translations, preferredName: currentT) {
-                        selectedTranslationName = bestT.name
-                    }
-                }
-            } else {
-                if let seasonObj = result.seasons.first(where: { $0.season == s }),
-                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                   let bestT = bestTranslation(in: epObj.translations, preferredName: nil) {
+                if !episodeHasTranslation(season: s, episode: e, name: currentT),
+                   let epObj = catalog.index.episode(season: s, episode: e),
+                   let bestT = bestTranslation(in: epObj.translations, preferredName: currentT) {
                     selectedTranslationName = bestT.name
                 }
+            } else if let epObj = catalog.index.episode(season: s, episode: e),
+                      let bestT = bestTranslation(in: epObj.translations, preferredName: nil) {
+                selectedTranslationName = bestT.name
             }
         }
     }
 
     var mediaKey: String {
-        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
-        if validKp > 0 {
-            return "kp_\(validKp)"
-        }
-        if let detailsId = details?.id, !detailsId.isEmpty {
-            return detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
-        }
-        if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
-            return "tmdb_\(tmdb)"
-        }
-        return "unknown"
+        catalog.mediaKey
     }
 
     static func computeInitialSelection(
         result: AllohaApiResult,
+        index: AllohaSourceAvailabilityIndex,
         kpId: Int?,
         details: MediaDetailsDto?,
         sourceKey: String,
         requestedSeason: Int? = nil,
         requestedEpisode: Int? = nil
     ) -> (season: Int?, episode: Int?, translationName: String?) {
-        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
-        let currentKey: String
-        if validKp > 0 {
-            currentKey = "kp_\(validKp)"
-        } else if let detailsId = details?.id, !detailsId.isEmpty {
-            currentKey = detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
-        } else if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
-            currentKey = "tmdb_\(tmdb)"
-        } else {
-            currentKey = "unknown"
-        }
+        let currentKey = PreparedSourceCatalog.resolveMediaKey(kpId: kpId, details: details)
 
         var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey, source: sourceKey)
         if savedVoiceover == nil, let kpId, kpId > 0 {
@@ -947,22 +946,13 @@ struct SingleSourceContentView: View {
             savedVoiceover = globalVoiceover
         }
 
-        let effectiveIsSerial: Bool = {
-            if let type = details?.type?.lowercased() {
-                if type == "movie" { return false }
-                if type == "tv" || type == "serial" || type == "series" { return true }
-            }
-            if let seasons = details?.seasons, !seasons.isEmpty { return true }
-            return result.isSerial
-        }()
-
-        if effectiveIsSerial {
+        if index.isSerial {
             var initialSeason = requestedSeason ?? result.seasons.first?.season
             var initialEpisode: Int? = requestedEpisode
 
             if requestedSeason == nil {
                 if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
-                   result.seasons.contains(where: { $0.season == lastSeason }) {
+                   index.episodesBySeason[lastSeason] != nil {
                     initialSeason = lastSeason
                 }
             }
@@ -973,34 +963,34 @@ struct SingleSourceContentView: View {
 
                     let sNum = initialSeason ?? 1
                     let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
-                if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
-                    let allEpisodes = result.seasons
-                        .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
-                        .sorted {
-                            if $0.0 != $1.0 { return $0.0 < $1.0 }
-                            return $0.1 < $1.1
+                    if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
+                        var foundCurrent = false
+                        var nextPair: (Int, Int)?
+                        outerLoop: for s in index.sortedSeasons {
+                            for epNum in index.episodesBySeason[s] ?? [] {
+                                if foundCurrent {
+                                    nextPair = (s, epNum)
+                                    break outerLoop
+                                }
+                                if s == initialSeason && epNum == lastEpisode {
+                                    foundCurrent = true
+                                }
+                            }
                         }
-
-                        if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
-                           currentIdx + 1 < allEpisodes.count {
-                            let nextEp = allEpisodes[currentIdx + 1]
-                            initialSeason = nextEp.0
-                            initialEpisode = nextEp.1
+                        if let nextPair {
+                            initialSeason = nextPair.0
+                            initialEpisode = nextPair.1
                         }
                     }
                 }
             }
 
-            if let seasonNum = initialSeason, let season = result.seasons.first(where: { $0.season == seasonNum }) {
-                let episodeToSelect = initialEpisode.flatMap { epNum in
-                    season.episodes.first(where: { $0.episode == epNum })
-                } ?? season.episodes.first
-
-                let epNum = episodeToSelect?.episode
-                let tName = episodeToSelect.flatMap { ep in
-                    bestTranslation(in: ep.translations, preferredName: savedVoiceover)?.name
-                }
-                return (seasonNum, epNum, tName)
+            if let seasonNum = initialSeason,
+               let epNums = index.episodesBySeason[seasonNum], !epNums.isEmpty {
+                let resolvedEpNum = initialEpisode.flatMap { index.episode(season: seasonNum, episode: $0) != nil ? $0 : nil } ?? epNums.first
+                let epObj = resolvedEpNum.flatMap { index.episode(season: seasonNum, episode: $0) }
+                let tName = epObj.flatMap { bestTranslation(in: $0.translations, preferredName: savedVoiceover)?.name }
+                return (seasonNum, resolvedEpNum, tName)
             }
             return (initialSeason, initialEpisode, nil)
         } else {
@@ -1020,11 +1010,10 @@ struct SingleSourceContentView: View {
 
         if isSerial {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
-            guard let seasonObj = result.seasons.first(where: { $0.season == s }),
-                  let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
+            guard let epObj = catalog.index.episode(season: s, episode: e),
+                  let translation = epObj.translations.first(where: { $0.name == tName })
+                      ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
                       ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
-                      ?? epObj.translations.first(where: { $0.name == tName })
                       ?? bestTranslation(in: epObj.translations, preferredName: tName) else { return }
 
             if mode == .play {
@@ -1092,21 +1081,20 @@ struct SingleSourceContentView: View {
         }
         .task {
             let key = mediaKey
-            if key != "unknown" {
-                mediaStats = await PlaybackAnalyticsService.shared.fetchMediaStats(mediaKey: key)
+            if key != "unknown",
+               let stats = await PlaybackAnalyticsService.shared.fetchMediaStats(mediaKey: key),
+               allTranslations.count > 1,
+               let top = stats.topTranslation,
+               top.count >= 2 {
+                topTranslationNames = Set(
+                    allTranslations.map(\.name).filter { allohaTranslationNamesMatch($0, top.translation) }
+                )
             }
         }
     }
 
     private func translationBadge(for name: String) -> String? {
-        guard allTranslations.count > 1,
-              let stats = mediaStats,
-              let top = stats.topTranslation,
-              top.count >= 2,
-              allohaTranslationNamesMatch(name, top.translation) else {
-            return nil
-        }
-        return "🔥 Топ"
+        topTranslationNames.contains(name) ? "🔥 Топ" : nil
     }
 
     @ViewBuilder

@@ -234,11 +234,17 @@ struct PlayerView: View {
 }
 
 
+public struct PlayerSeasonSummary: Equatable, Hashable, Sendable {
+    public let season: Int
+    public let episodes: [Int]
+}
+
 @MainActor
 public final class PlayerTimeTracker: ObservableObject {
     @Published public var currentTime: Double = 0
     @Published public var currentDuration: Double = 0
     @Published public var bufferedProgress: Double = 0
+    @Published public var screenScrubTime: Double? = nil
 }
 
 @MainActor
@@ -299,7 +305,10 @@ class PlayerViewModel: ObservableObject {
 
     private var lastProgressSaveSecond: Int = -1
 
-    @Published var screenScrubTime: Double?
+    var screenScrubTime: Double? {
+        get { timeTracker.screenScrubTime }
+        set { timeTracker.screenScrubTime = newValue }
+    }
     @Published var introRange: ClosedRange<Double>?
     @Published var outroRange: ClosedRange<Double>?
     @Published var showSkipIntro = false
@@ -537,13 +546,27 @@ class PlayerViewModel: ObservableObject {
     }
 
     var targetQualityPreference: VideoQualityPreference?
+    @Published private(set) var sortedSeasonSummaries: [PlayerSeasonSummary] = []
     var seriesResult: AllohaApiResult? {
         didSet {
+            sortedSeasonSummaries = Self.buildSortedSeasonSummaries(from: seriesResult)
             if let pending = pendingRemoteEpisode {
                 pendingRemoteEpisode = nil
                 selectEpisode(season: pending.season, episode: pending.episode, isRemote: true)
             }
         }
+    }
+
+    private static func buildSortedSeasonSummaries(from result: AllohaApiResult?) -> [PlayerSeasonSummary] {
+        guard let result else { return [] }
+        return result.seasons
+            .sorted { $0.season < $1.season }
+            .map { season in
+                PlayerSeasonSummary(
+                    season: season.season,
+                    episodes: season.episodes.map(\.episode).sorted()
+                )
+            }
     }
     private var pendingRemoteEpisode: (season: Int, episode: Int)?
     private var hasStartedLoading = false
@@ -1246,34 +1269,84 @@ class PlayerViewModel: ObservableObject {
         }
         
         let targetKey = targetQuality.rawValue
-        
-        // Exact match (1080p -> 1080p)
-        if let exact = availableQualities.first(where: { $0.key.hasPrefix(targetKey) }) {
-            logDebug("applyInitialQuality: exact match found for targetKey '\(targetKey)' -> '\(exact.key)'")
-            changeQuality(to: exact.key)
-            return
-        }
-        
-        // Find closest resolution
-        let prefVal = normalizedQualityHeight(targetKey)
-        guard prefVal > 0 else { return }
-        
-        var closest: String?
-        var minDiff = Int.max
-        for q in availableQualities {
-            let val = normalizedQualityHeight(q.key)
-            if val > 0 {
-                let diff = abs(val - prefVal)
-                if diff < minDiff {
-                    minDiff = diff
-                    closest = q.key
+        let resolvedOption: PlaybackQualityOption? = {
+            if let exact = availableQualities.first(where: { $0.key.hasPrefix(targetKey) }) {
+                return exact
+            }
+            let prefVal = normalizedQualityHeight(targetKey)
+            guard prefVal > 0 else { return nil }
+            var closest: PlaybackQualityOption?
+            var minDiff = Int.max
+            for q in availableQualities where !q.isAuto {
+                let val = normalizedQualityHeight(q.key)
+                if val > 0 {
+                    let diff = abs(val - prefVal)
+                    if diff < minDiff {
+                        minDiff = diff
+                        closest = q
+                    }
                 }
             }
+            return closest
+        }()
+
+        guard let resolvedOption else { return }
+
+        // If the active proxied AVPlayerItem already locks the manifest to this effective quality
+        // (for instance, playVideo sent &q=1080p and PlaybackHlsRewriter capped it to the max 720p tier),
+        // sync metadata and item caps in place instead of tearing down and re-seeking the player.
+        if let activeEffectiveKey = effectiveProxyQualityKey(from: currentPlaybackSourceURL, in: availableQualities),
+           activeEffectiveKey == resolvedOption.key {
+            self.currentQualityKey = resolvedOption.key
+            if let newPref = VideoQualityPreference(rawValue: resolvedOption.key) {
+                self.targetQualityPreference = newPref
+            }
+            let targetRes = targetResolution(for: resolvedOption.key)
+            if targetRes != .zero {
+                player?.currentItem?.preferredMaximumResolution = targetRes
+            }
+            let targetBitrate = resolvedBitrate(for: resolvedOption)
+            if targetBitrate > 0 {
+                player?.currentItem?.preferredPeakBitRate = targetBitrate
+            }
+            NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+            logDebug("applyInitialQuality: active proxy stream already serves '\(resolvedOption.key)', synced without reload.")
+            return
         }
-        
-        if let closestKey = closest {
-            changeQuality(to: closestKey)
+
+        logDebug("applyInitialQuality: applying '\(resolvedOption.key)' for targetKey '\(targetKey)'")
+        changeQuality(to: resolvedOption.key)
+    }
+
+    private func effectiveProxyQualityKey(from url: URL?, in qualities: [PlaybackQualityOption]) -> String? {
+        guard let url,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let requestedQ = components.queryItems?.first(where: { $0.name == "q" })?.value?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !requestedQ.isEmpty,
+              requestedQ != "Авто",
+              requestedQ.lowercased() != "auto" else {
+            return nil
         }
+
+        let nonAuto = qualities.filter { !$0.isAuto }
+        guard !nonAuto.isEmpty else { return nil }
+
+        let requestedHeight = normalizedQualityHeight(requestedQ)
+        if let exact = nonAuto.first(where: {
+            $0.key.lowercased() == requestedQ.lowercased() ||
+            (requestedHeight > 0 && normalizedQualityHeight($0.key) == requestedHeight)
+        }) {
+            return exact.key
+        }
+
+        if let maxOption = nonAuto.max(by: { normalizedQualityHeight($0.key) < normalizedQualityHeight($1.key) }) {
+            let maxHeight = normalizedQualityHeight(maxOption.key)
+            if requestedHeight >= maxHeight || maxHeight > 0 {
+                return maxOption.key
+            }
+        }
+        return nil
     }
 
     
@@ -1432,6 +1505,7 @@ class PlayerViewModel: ObservableObject {
                     voiceover: finalVoiceover,
                     forceDiskSave: true
                 )
+                PlaybackProgressStore.shared.scheduleCloudProgressPush(force: true)
             }
 
             HlsProxyServer.shared.stop()
@@ -2085,8 +2159,21 @@ class PlayerViewModel: ObservableObject {
                         self.currentHeaders = headers
 
                         let resolvedSubs = self.resolvedSubtitles(from: resolved)
-                        if !resolvedSubs.isEmpty {
-                            self.availableSubtitles = resolvedSubs
+                        self.availableSubtitles = resolvedSubs
+                        if let activeSub = self.currentSubtitle {
+                            if let matchingSub = resolvedSubs.first(where: { $0.url == activeSub.url })
+                                ?? resolvedSubs.first(where: {
+                                    $0.lang.lowercased() == activeSub.lang.lowercased() &&
+                                    $0.label.lowercased() == activeSub.label.lowercased()
+                                })
+                                ?? resolvedSubs.first(where: { $0.lang.lowercased() == activeSub.lang.lowercased() }) {
+                                self.currentSubtitle = matchingSub
+                                self.loadSubtitles(matchingSub)
+                            } else {
+                                self.currentSubtitle = nil
+                                self.activeSubtitleCues = []
+                                self.currentSubtitleText = nil
+                            }
                         }
 
                         if let intro = resolved["introRange"] as? [String: Double],
@@ -3226,6 +3313,7 @@ class PlayerViewModel: ObservableObject {
                 let wasPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
                 UserDefaults.standard.set(wasPlaying, forKey: "sloosh_was_playing_before_bg")
                 self.saveCurrentProgress()
+                PlaybackProgressStore.shared.scheduleCloudProgressPush(force: true)
             }
         }
         
@@ -3744,17 +3832,28 @@ class PlayerViewModel: ObservableObject {
 
     private func resolvedSubtitles(from resolved: [String: Any]) -> [PlaybackSubtitle] {
         let subtitles = (resolved["subtitles"] as? [[String: Any]]) ?? []
+        var seenUrls = Set<String>()
+        var seenLangLabels = Set<String>()
         return subtitles.compactMap { item in
             let url = ((item["url"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !url.isEmpty else { return nil }
-            let label = ((item["label"] as? String) ?? (item["name"] as? String) ?? "Субтитры")
+            let rawLabel = ((item["label"] as? String) ?? (item["name"] as? String) ?? "Субтитры")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let language = ((item["language"] as? String) ?? (item["lang"] as? String) ?? "ru")
+            let rawLanguage = ((item["language"] as? String) ?? (item["lang"] as? String) ?? "ru")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = rawLabel.isEmpty ? "Субтитры" : rawLabel
+            let language = rawLanguage.isEmpty ? "ru" : rawLanguage
+
+            let normalizedUrlKey = url.lowercased()
+            let langLabelKey = "\(language.lowercased())|\(label.lowercased())"
+            guard seenUrls.insert(normalizedUrlKey).inserted,
+                  seenLangLabels.insert(langLabelKey).inserted else {
+                return nil
+            }
             return PlaybackSubtitle(
                 url: url,
-                label: label.isEmpty ? "Субтитры" : label,
-                lang: language.isEmpty ? "ru" : language
+                label: label,
+                lang: language
             )
         }
     }
@@ -3974,11 +4073,14 @@ class PlayerViewModel: ObservableObject {
         }
 
         if !nativeOptions.isEmpty {
+            var skippedDummyCount = 0
+            var skippedExternalLangs = Set<String>()
+            var addedCount = 0
             for (index, opt) in nativeOptions.enumerated() {
                 // Skip dummy Closed-Captions tracks (e.g. Alloha's empty "CC" track)
                 let upperName = opt.displayName.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
                 if upperName == "CC" || upperName == "CLOSED CAPTIONS" {
-                    logDebug("syncNativeSubtitleTracks: skipping dummy CC track '\(opt.displayName)'")
+                    skippedDummyCount += 1
                     continue
                 }
                 // Skip if we already have an external VTT track covering the same language
@@ -3986,16 +4088,19 @@ class PlayerViewModel: ObservableObject {
                 if self.availableSubtitles.contains(where: {
                     !$0.url.hasPrefix("native_") && ($0.lang.lowercased() == lang.lowercased())
                 }) {
-                    logDebug("syncNativeSubtitleTracks: skipping native track '\(opt.displayName)' — external VTT for lang '\(lang)' already present")
+                    skippedExternalLangs.insert(lang.lowercased())
                     continue
                 }
                 let label = opt.displayName.isEmpty ? "Субтитры \(index + 1)" : opt.displayName
                 let nativeId = "native_\(index)"
                 if !self.availableSubtitles.contains(where: { $0.url == nativeId || $0.label.lowercased() == label.lowercased() }) {
                     self.availableSubtitles.append(PlaybackSubtitle(url: nativeId, label: label, lang: lang))
+                    addedCount += 1
                 }
             }
-            logDebug("syncNativeSubtitleTracks: updated availableSubtitles count=\(self.availableSubtitles.count)")
+            if skippedDummyCount > 0 || !skippedExternalLangs.isEmpty || addedCount > 0 {
+                logDebug("syncNativeSubtitleTracks: availableSubtitles=\(self.availableSubtitles.count), added=\(addedCount), skippedCC=\(skippedDummyCount), skippedExternalLangs=\(Array(skippedExternalLangs).sorted())")
+            }
         }
 
         // Apply current subtitle selection if user previously chose one, or ensure subtitles stay off

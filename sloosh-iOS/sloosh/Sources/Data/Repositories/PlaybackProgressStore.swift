@@ -124,6 +124,7 @@ public final class PlaybackProgressStore: ObservableObject {
 
     // MARK: - In-Memory High-Performance Caches
     private var recordMemoryCache: [String: PlaybackProgressRecord] = [:]
+    private var recordModelCache: [String: ProgressRecordModel] = [:]
     private var isRecordCacheLoaded = false
 
     private var lastPlayedCache: [String: (season: Int?, episode: Int?)] = [:]
@@ -135,8 +136,12 @@ public final class PlaybackProgressStore: ObservableObject {
     private var metadataCache: [String: PlaybackMediaMetadata] = [:]
     private var isMetadataCacheLoaded = false
 
+    private var tombstonesCache: [String: TimeInterval]? = nil
+    private var cloudPushTask: Task<Void, Never>?
+
     public func invalidateMemoryCaches() {
         recordMemoryCache.removeAll()
+        recordModelCache.removeAll()
         isRecordCacheLoaded = false
         lastPlayedCache.removeAll()
         isLastPlayedCacheLoaded = false
@@ -152,7 +157,11 @@ public final class PlaybackProgressStore: ObservableObject {
         let descriptor = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.userId == activeUserId })
         let models = (try? context.fetch(descriptor)) ?? []
         var cache: [String: PlaybackProgressRecord] = [:]
+        var modelsByKey: [String: ProgressRecordModel] = [:]
+        cache.reserveCapacity(models.count)
+        modelsByKey.reserveCapacity(models.count)
         for model in models {
+            modelsByKey[model.userMediaIdKey] = model
             cache[model.userMediaIdKey] = PlaybackProgressRecord(
                 mediaId: model.mediaId,
                 kpId: model.kpId,
@@ -167,6 +176,7 @@ public final class PlaybackProgressStore: ObservableObject {
             )
         }
         recordMemoryCache = cache
+        recordModelCache = modelsByKey
         isRecordCacheLoaded = true
     }
 
@@ -195,10 +205,18 @@ public final class PlaybackProgressStore: ObservableObject {
     }
 
     private func getRecordModel(mediaId: String) -> ProgressRecordModel? {
+        ensureRecordCacheLoaded()
         let activeUserId = currentUserId
         let compositeKey = "\(activeUserId)_\(mediaId)"
+        if let cached = recordModelCache[compositeKey] {
+            return cached
+        }
         let descriptor = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.userMediaIdKey == compositeKey })
-        return try? context.fetch(descriptor).first
+        if let fetched = try? context.fetch(descriptor).first {
+            recordModelCache[compositeKey] = fetched
+            return fetched
+        }
+        return nil
     }
     
     private func getRecord(mediaId: String) -> PlaybackProgressRecord? {
@@ -215,14 +233,25 @@ public final class PlaybackProgressStore: ObservableObject {
     private let tombstoneRetentionSeconds: TimeInterval = 14 * 86400 // 14 days
 
     private func loadTombstones() -> [String: TimeInterval] {
+        let now = Date().timeIntervalSince1970
+        if let cached = tombstonesCache {
+            if cached.values.contains(where: { now - $0 >= tombstoneRetentionSeconds }) {
+                let valid = cached.filter { now - $0.value < tombstoneRetentionSeconds }
+                tombstonesCache = valid
+                UserDefaults.standard.set(valid, forKey: tombstonesKey)
+                return valid
+            }
+            return cached
+        }
         guard let dict = UserDefaults.standard.dictionary(forKey: tombstonesKey) as? [String: TimeInterval] else {
+            tombstonesCache = [:]
             return [:]
         }
-        let now = Date().timeIntervalSince1970
         let valid = dict.filter { now - $0.value < tombstoneRetentionSeconds }
         if valid.count != dict.count {
             UserDefaults.standard.set(valid, forKey: tombstonesKey)
         }
+        tombstonesCache = valid
         return valid
     }
 
@@ -233,6 +262,7 @@ public final class PlaybackProgressStore: ObservableObject {
         for k in keys where !k.isEmpty {
             current[k] = now
         }
+        tombstonesCache = current
         UserDefaults.standard.set(current, forKey: tombstonesKey)
     }
 
@@ -262,6 +292,7 @@ public final class PlaybackProgressStore: ObservableObject {
             if current.removeValue(forKey: "\(tmdb)") != nil { changed = true }
         }
         if changed {
+            tombstonesCache = current
             UserDefaults.standard.set(current, forKey: tombstonesKey)
         }
     }
@@ -451,13 +482,15 @@ public final class PlaybackProgressStore: ObservableObject {
                 updatedAtMs: record.updatedAtMs
             )
             context.insert(newModel)
+            recordModelCache[compositeKey] = newModel
         }
 
         let now = Date()
         if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 15.0 {
             lastDiskSaveDate = now
             try? context.save()
-            scheduleCloudProgressPush(force: forceDiskSave)
+            // Never bypass the cloud push throttle just because local disk persistence was requested
+            scheduleCloudProgressPush(force: false)
         }
     }
 
@@ -465,12 +498,41 @@ public final class PlaybackProgressStore: ObservableObject {
 
     public func scheduleCloudProgressPush(force: Bool = false) {
         guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
-        
-        let now = Date()
-        if !force, let lastPush = lastCloudProgressPushDate, now.timeIntervalSince(lastPush) < 30.0 {
+
+        if force {
+            cloudPushTask?.cancel()
+            cloudPushTask = nil
+            lastCloudProgressPushDate = Date()
+            let allRecords = self.listProgressRecords()
+            Task {
+                await CloudSyncService.shared.pushRemoteProgress(allRecords, userId: user.id, idToken: user.idToken)
+            }
             return
         }
-        
+
+        let now = Date()
+        let minInterval: TimeInterval = 30.0
+        if let lastPush = lastCloudProgressPushDate {
+            let elapsed = now.timeIntervalSince(lastPush)
+            if elapsed < minInterval {
+                if cloudPushTask == nil {
+                    let delay = max(2.0, minInterval - elapsed)
+                    cloudPushTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .seconds(delay))
+                        guard let self, !Task.isCancelled else { return }
+                        self.cloudPushTask = nil
+                        guard AuthRepository.shared.isAuthenticated, let activeUser = AuthRepository.shared.currentUser else { return }
+                        self.lastCloudProgressPushDate = Date()
+                        let allRecords = self.listProgressRecords()
+                        await CloudSyncService.shared.pushRemoteProgress(allRecords, userId: activeUser.id, idToken: activeUser.idToken)
+                    }
+                }
+                return
+            }
+        }
+
+        cloudPushTask?.cancel()
+        cloudPushTask = nil
         lastCloudProgressPushDate = now
         let allRecords = self.listProgressRecords()
         Task {
@@ -657,6 +719,7 @@ public final class PlaybackProgressStore: ObservableObject {
         let root = mediaId.components(separatedBy: "_s")[0]
         addTombstones([mediaId, root])
         if let model = getRecordModel(mediaId: mediaId) {
+            recordModelCache.removeValue(forKey: compositeKey)
             context.delete(model)
             try? context.save()
             scheduleCloudProgressPush(force: true)
@@ -724,6 +787,7 @@ public final class PlaybackProgressStore: ObservableObject {
             if matches {
                 keysToTombstone.insert(model.mediaId)
                 addTombstones([model.mediaId])
+                recordModelCache.removeValue(forKey: model.userMediaIdKey)
                 context.delete(model)
                 didDelete = true
             }
@@ -1325,6 +1389,7 @@ public final class PlaybackProgressStore: ObservableObject {
         try? context.save()
 
         // Refresh in-memory caches from the newly synced database state
+        self.recordModelCache.removeAll()
         self.isRecordCacheLoaded = false
         self.isLastPlayedCacheLoaded = false
         self.isLastVoiceoverCacheLoaded = false

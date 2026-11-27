@@ -141,7 +141,7 @@ struct PlayerControlsView: View {
                     .ignoresSafeArea()
             }
             .opacity(showControls ? 1 : 0)
-            .blur(radius: showControls ? 0 : 16)
+            .scaleEffect(showControls ? 1.0 : 0.98)
             .animation(.easeInOut(duration: 0.24), value: showControls)
             .tint(.white)
         }
@@ -163,19 +163,21 @@ struct PlayerTitleInfoView: View, Equatable {
     }
 
     var body: some View {
-        if let info = activeVoiceoverInfo {
-            voiceoverCapsule(info: info)
+        let displayTitles = displayTranslationNames(for: availableVoiceovers)
+        let activeIdx = resolveActiveVoiceoverIndex()
+        if let info = buildActiveVoiceoverInfo(displayTitles: displayTitles, activeIndex: activeIdx) {
+            voiceoverCapsule(info: info, displayTitles: displayTitles, activeIndex: activeIdx)
         }
     }
 
     // MARK: - Капсула озвучки
 
     @ViewBuilder
-    private func voiceoverCapsule(info: VoiceoverDisplayInfo) -> some View {
+    private func voiceoverCapsule(info: VoiceoverDisplayInfo, displayTitles: [String], activeIndex: Int?) -> some View {
         if availableVoiceovers.count > 1 {
             Menu {
                 Picker("Озвучка", selection: Binding(
-                    get: { activeVoiceoverIndex ?? -1 },
+                    get: { activeIndex ?? -1 },
                     set: { idx in
                         if idx >= 0 && idx < availableVoiceovers.count {
                             vm.switchVoiceover(to: availableVoiceovers[idx], at: idx)
@@ -185,7 +187,7 @@ struct PlayerTitleInfoView: View, Equatable {
                 )) {
                     ForEach(Array(availableVoiceovers.enumerated()), id: \.offset) { idx, name in
                         let itemStudio = DubbingStudio.detect(from: name)
-                        let itemTitle = displayTranslationName(name, at: idx, in: availableVoiceovers)
+                        let itemTitle = idx < displayTitles.count ? displayTitles[idx] : name
                         let itemFlag = LanguageFlag.detect(from: name + " " + itemTitle)
                         if let itemStudio, itemStudio.hasAsset {
                             Label(LanguageFlag.stripLeadingEmoji(from: itemTitle), image: itemStudio.assetName).tag(idx)
@@ -268,19 +270,19 @@ struct PlayerTitleInfoView: View, Equatable {
         let flag: LanguageFlag
     }
 
-    private var activeVoiceoverInfo: VoiceoverDisplayInfo? {
+    private func buildActiveVoiceoverInfo(displayTitles: [String], activeIndex: Int?) -> VoiceoverDisplayInfo? {
         guard let raw = currentTranslationName ?? availableVoiceovers.first, !raw.isEmpty else {
             return nil
         }
-        let idx = activeVoiceoverIndex ?? 0
-        let formatted = displayTranslationName(raw, at: idx, in: availableVoiceovers)
+        let idx = activeIndex ?? 0
+        let formatted = idx < displayTitles.count ? displayTitles[idx] : cleanTranslationName(raw)
         let studio = DubbingStudio.detect(from: raw)
         let flag = LanguageFlag.detect(from: raw + " " + formatted)
         let title = LanguageFlag.stripLeadingEmoji(from: formatted)
         return VoiceoverDisplayInfo(title: title, studio: studio, flag: flag)
     }
 
-    private var activeVoiceoverIndex: Int? {
+    private func resolveActiveVoiceoverIndex() -> Int? {
         if let current = currentTranslationName {
             if let directIdx = availableVoiceovers.firstIndex(of: current) {
                 return directIdx
