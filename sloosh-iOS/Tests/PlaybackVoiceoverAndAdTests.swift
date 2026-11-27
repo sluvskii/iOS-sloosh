@@ -145,7 +145,7 @@ struct PlaybackVoiceoverAndAdTests {
         // 8. Large multi-season / multi-dub AllohaSourceAvailabilityIndex correctness & speed
         var seasonsFixture: [AllohaSeason] = []
         let baseDubs: [String] = [
-            "Дубляж Red Head Sound", "HDrezka Studio", "LostFilm", "Kubik v Kube (18+)",
+            "Red Head Sound", "HDrezka Studio", "LostFilm", "Kubik v Kube (18+)",
             "TVShows", "NewStudio", "Jaskier", "AlexFilm", "RuDub", "ColdFilm",
             "LE-Production", "Dragon Money Studio", "Оригинал", "Український"
         ] + (1...26).map { "Озвучка Студия \($0) (Russian) AC3 5.1" }
@@ -154,7 +154,7 @@ struct PlaybackVoiceoverAndAdTests {
             var epsFixture: [AllohaEpisode] = []
             for e in 1...8 {
                 var epTranslations: [AllohaTranslation] = baseDubs.enumerated().map { idx, name in
-                    let effectiveName = (s == 5 && name == "Дубляж Red Head Sound") ? "RHS" : name
+                    let effectiveName = (s == 5 && name == "Red Head Sound") ? "RHS" : name
                     return AllohaTranslation(
                         id: "\(s)_\(e)_\(idx)",
                         name: effectiveName,
@@ -186,7 +186,7 @@ struct PlaybackVoiceoverAndAdTests {
         var availableChecks = 0
         for s in index.sortedSeasons {
             _ = index.seasonHasTranslation(season: s, name: "Пифагор Дубляж")
-            _ = index.seasonHasTranslation(season: s, name: "Дубляж Red Head Sound")
+            _ = index.seasonHasTranslation(season: s, name: "Red Head Sound")
             for e in index.episodesBySeason[s] ?? [] {
                 if index.episodeHasTranslation(season: s, episode: e, name: "LostFilm") {
                     availableChecks += 1
@@ -198,7 +198,7 @@ struct PlaybackVoiceoverAndAdTests {
         check(!index.sortedNames.contains("Русские субтитры"), "Subtitles must be excluded from voiceovers list")
         check(index.seasonHasTranslation(season: 1, name: "Пифагор Дубляж"), "Season 1 includes Пифагор Дубляж")
         check(!index.seasonHasTranslation(season: 5, name: "Пифагор Дубляж"), "Season 5 excludes missing Пифагор Дубляж")
-        check(index.seasonHasTranslation(season: 5, name: "Дубляж Red Head Sound"), "Season 5 fuzzy-matches RHS alias to Дубляж Red Head Sound")
+        check(index.seasonHasTranslation(season: 5, name: "Red Head Sound"), "Season 5 fuzzy-matches RHS alias to Red Head Sound")
         check(index.episode(season: 3, episode: 5)?.episode == 5, "O(1) episode lookup returns matching episode")
         check(availableChecks == 40, "All 40 episodes report LostFilm available")
         check(elapsed < 1.0, "40-episode x 40-dub index build and queries must complete fast (took \(elapsed)s)")
