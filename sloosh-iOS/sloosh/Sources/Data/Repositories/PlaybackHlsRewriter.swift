@@ -291,6 +291,75 @@ class PlaybackHlsRewriter {
         return output.joined(separator: "\n")
     }
     
+    /// Extracts failover CDN hostnames from duplicate/failover master playlist entries (e.g. `x-bc.interkh.com`)
+    /// before `filterFailoverDuplicates` strips them out, so `HlsProxyServer` can bypass poisoned primary segments.
+    static func extractFailoverHosts(from master: String, primaryHost: String? = nil) -> [String] {
+        let lines = master.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+
+        var failoverHosts: [String] = []
+        var secondaryHosts: [String] = []
+        let primaryLower = primaryHost?.lowercased()
+
+        func record(_ rawUri: String?, isFailoverGroup: Bool) {
+            guard let rawUri = rawUri?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !rawUri.isEmpty,
+                  let host = URL(string: rawUri)?.host?.lowercased(),
+                  host != "127.0.0.1",
+                  host != primaryLower else {
+                return
+            }
+            if isFailoverGroup {
+                if !failoverHosts.contains(host) { failoverHosts.append(host) }
+            } else {
+                if !secondaryHosts.contains(host) { secondaryHosts.append(host) }
+            }
+        }
+
+        var idx = 0
+        while idx < lines.count {
+            let line = lines[idx].trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix("#EXT-X-MEDIA") {
+                let groupId = extractQuotedAttr(line, key: "GROUP-ID")?.lowercased() ?? ""
+                let uri = extractQuotedAttr(line, key: "URI")
+                record(uri, isFailoverGroup: groupId.hasPrefix("failover-"))
+            } else if line.hasPrefix("#EXT-X-STREAM-INF") {
+                let audioGroup = extractQuotedAttr(line, key: "AUDIO")?.lowercased() ?? ""
+                var nextIdx = idx + 1
+                while nextIdx < lines.count {
+                    let uri = lines[nextIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !uri.isEmpty && !uri.hasPrefix("#") {
+                        record(uri, isFailoverGroup: audioGroup.hasPrefix("failover-"))
+                        break
+                    }
+                    nextIdx += 1
+                }
+            }
+            idx += 1
+        }
+
+        for h in secondaryHosts where !failoverHosts.contains(h) {
+            failoverHosts.append(h)
+        }
+        return failoverHosts
+    }
+
+    /// Extracts the maximum declared stream frame rate from `#EXT-X-STREAM-INF` tags (e.g. `FRAME-RATE=23.974`).
+    static func extractMaxFrameRate(from master: String) -> Double? {
+        let lines = master.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+        var maxFps: Double? = nil
+        for line in lines where line.hasPrefix("#EXT-X-STREAM-INF") {
+            if let fpsStr = extractAttrValue(line, key: "FRAME-RATE"),
+               let fps = Double(fpsStr), fps > 0 {
+                maxFps = max(maxFps ?? 0, fps)
+            }
+        }
+        return maxFps
+    }
+
     private static func filterFailoverDuplicates(lines: [String]) -> [String] {
         var filtered: [String] = []
         var seenVariantKeys = Set<String>()

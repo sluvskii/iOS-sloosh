@@ -9,6 +9,7 @@ swiftc -parse-as-library -target "$(uname -m)-apple-macosx15.0" \
   sloosh/Sources/Data/Models/PlaybackSubtitle.swift \
   sloosh/Sources/Data/Repositories/CollapsParser.swift \
   sloosh/Sources/Data/Repositories/PlaybackHlsRewriter.swift \
+  sloosh/Sources/Data/Repositories/HlsSegmentShield.swift \
   Tests/PlaybackVoiceoverAndAdTests.swift \
   -o "$test_dir/playback-voiceover-tests"
 "$test_dir/playback-voiceover-tests"
