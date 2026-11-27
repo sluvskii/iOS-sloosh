@@ -434,8 +434,9 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         onPrepareHeader?()
 
         let wasOverride = overridePreviewCategory != nil
-        let applyStateOnly = { [weak self] in
-            self?.commitCategoryState(
+        let applyStateOnly: () -> Void = { [weak self] in
+            guard let self else { return }
+            self.commitCategoryState(
                 metrics: metrics,
                 outgoingCategory: outgoingCategory,
                 targetCategory: targetCategory,
