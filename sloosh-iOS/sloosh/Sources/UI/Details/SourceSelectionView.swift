@@ -628,7 +628,7 @@ struct SourceSelectionView: View {
 
 // MARK: - Precomputed Catalog & Cache
 
-private struct PreparedSourceCatalog {
+struct PreparedSourceCatalog {
     let mediaKey: String
     let isSerial: Bool
     let index: AllohaSourceAvailabilityIndex
