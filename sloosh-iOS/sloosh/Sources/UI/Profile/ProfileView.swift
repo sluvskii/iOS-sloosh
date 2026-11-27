@@ -454,17 +454,31 @@ private struct ProfileGalleryStageView: View {
                 onBegan: { translationX in
                     swipe.handlePanBegan(
                         translationX,
+                        metrics: metrics,
                         current: selectedCategory,
                         in: all,
-                        pageWidth: pageWidth
+                        pageWidth: pageWidth,
+                        isStillCurrent: { target in
+                            selectedCategory == target
+                        },
+                        onCommitState: { target in
+                            selectedCategory = target
+                        }
                     )
                 },
                 onChanged: { translationX in
                     swipe.handlePanChanged(
                         translationX,
+                        metrics: metrics,
                         current: selectedCategory,
                         in: all,
-                        pageWidth: pageWidth
+                        pageWidth: pageWidth,
+                        isStillCurrent: { target in
+                            selectedCategory == target
+                        },
+                        onCommitState: { target in
+                            selectedCategory = target
+                        }
                     )
                 },
                 onEnded: { translationX, velocityX, didFinish in

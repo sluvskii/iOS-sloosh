@@ -398,11 +398,12 @@ private struct HomeGalleryStageView: View {
                 onBegan: { translationX in
                     swipe.handlePanBegan(
                         translationX,
+                        metrics: metrics,
                         current: viewModel.selectedCategory,
                         in: all,
                         pageWidth: pageWidth,
                         preloadIfNeeded: preloadIfNeeded,
-                        onPreviewCandidate: { candidate, totalX in
+                        onPreviewCandidate: { candidate, _ in
                             if let candidate {
                                 if headerCategory != candidate {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
@@ -414,18 +415,25 @@ private struct HomeGalleryStageView: View {
                                     headerCategory = nil
                                 }
                             }
-                            _ = totalX
+                        },
+                        isStillCurrent: { target in
+                            viewModel.selectedCategory == target
+                        },
+                        onCommitState: { target in
+                            headerCategory = nil
+                            viewModel.selectedCategory = target
                         }
                     )
                 },
                 onChanged: { translationX in
                     swipe.handlePanChanged(
                         translationX,
+                        metrics: metrics,
                         current: viewModel.selectedCategory,
                         in: all,
                         pageWidth: pageWidth,
                         preloadIfNeeded: preloadIfNeeded,
-                        onPreviewCandidate: { candidate, totalX in
+                        onPreviewCandidate: { candidate, _ in
                             if let candidate {
                                 if headerCategory != candidate {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
@@ -437,7 +445,13 @@ private struct HomeGalleryStageView: View {
                                     headerCategory = nil
                                 }
                             }
-                            _ = totalX
+                        },
+                        isStillCurrent: { target in
+                            viewModel.selectedCategory == target
+                        },
+                        onCommitState: { target in
+                            headerCategory = nil
+                            viewModel.selectedCategory = target
                         }
                     )
                 },
@@ -618,13 +632,12 @@ struct MovieDetailsNavigationLink<Label: View>: View {
             destination: DetailsView(
                 movieId: movieId,
                 mediaType: mediaType,
-                navigationTransitionID: transitionID,
-                navigationTransitionNamespace: navigationTransition,
+                navigationTransitionID: nil,
+                navigationTransitionNamespace: nil,
                 initialStudio: studio
             )
         ) {
             label()
-                .matchedTransitionSource(id: transitionID, in: navigationTransition)
         }
         .buttonStyle(.cardPress)
     }

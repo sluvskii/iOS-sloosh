@@ -873,10 +873,6 @@ struct DetailsView: View {
         ZStack {
             detailsContent
         }
-            .optionalMovieNavigationTransition(
-                sourceID: navigationTransitionID,
-                in: navigationTransitionNamespace
-            )
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1870,26 +1866,6 @@ struct DetailsView: View {
                 .ignoresSafeArea()
         }
         .ignoresSafeArea(edges: [.horizontal, .bottom])
-    }
-}
-
-private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
-    let sourceID: String?
-    let namespace: Namespace.ID?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let sourceID, let namespace {
-            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
-        } else {
-            content
-        }
-    }
-}
-
-private extension View {
-    func optionalMovieNavigationTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
-        modifier(OptionalMovieNavigationTransitionModifier(sourceID: sourceID, namespace: namespace))
     }
 }
 
@@ -3960,22 +3936,16 @@ private struct CrewSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(crew) { member in
-                        let transitionID = "crew_\(member.id)"
                         NavigationLink(
                             destination: PersonDetailView(
                                 personId: member.id,
                                 initialName: member.name,
                                 initialPhoto: member.photo,
-                                navigationTransitionID: transitionID,
-                                navigationTransitionNamespace: namespace
+                                navigationTransitionID: nil,
+                                navigationTransitionNamespace: nil
                             )
                         ) {
-                            if let namespace {
-                                CrewCardView(member: member)
-                                    .matchedTransitionSource(id: transitionID, in: namespace)
-                            } else {
-                                CrewCardView(member: member)
-                            }
+                            CrewCardView(member: member)
                         }
                         .buttonStyle(.plain)
                     }
@@ -4069,22 +4039,16 @@ private struct ActorsSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(cast) { actor in
-                        let transitionID = "actor_\(actor.id)"
                         NavigationLink(
                             destination: PersonDetailView(
                                 personId: actor.id,
                                 initialName: actor.name,
                                 initialPhoto: actor.photo,
-                                navigationTransitionID: transitionID,
-                                navigationTransitionNamespace: namespace
+                                navigationTransitionID: nil,
+                                navigationTransitionNamespace: nil
                             )
                         ) {
-                            if let namespace {
-                                ActorCardView(actor: actor)
-                                    .matchedTransitionSource(id: transitionID, in: namespace)
-                            } else {
-                                ActorCardView(actor: actor)
-                            }
+                            ActorCardView(actor: actor)
                         }
                         .buttonStyle(.plain)
                     }

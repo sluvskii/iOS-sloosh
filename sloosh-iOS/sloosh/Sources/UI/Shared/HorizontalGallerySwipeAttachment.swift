@@ -67,7 +67,7 @@ private final class DisplayLinkProxy: NSObject {
     }
 }
 
-/// Shared 120Hz CADisplayLink spring driver and unblockable swipe state machine for horizontal
+/// Shared 120Hz CADisplayLink spring driver and unblockable continuous swipe engine for horizontal
 /// category paging inside a single native vertical ScrollView.
 @MainActor
 final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObject {
@@ -79,6 +79,14 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
 
     static var pageGap: CGFloat { 16 }
 
+    private struct ActiveCommitContext {
+        let outgoingCategory: Category
+        let targetCategory: Category
+        let targetOffset: CGFloat
+        let wasOverride: Bool
+        let applyStateOnly: () -> Void
+    }
+
     nonisolated(unsafe) private var displayLink: CADisplayLink?
     private var displayLinkProxy: DisplayLinkProxy?
     private var springTargetOffset: CGFloat = 0
@@ -86,7 +94,9 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
     private var springStartTime: CFTimeInterval = 0
     private var springCompletion: (() -> Void)?
     private var springGeneration: Int = 0
+    private var activeCommit: ActiveCommitContext?
     private var dragBaseOffset: CGFloat = 0
+    private var suppressPreviewUntilCenterCross: Bool = false
 
     deinit {
         displayLink?.invalidate()
@@ -131,75 +141,146 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
 
     func handlePanBegan(
         _ translationX: CGFloat,
+        metrics: HorizontalGalleryMetricsBox<Category>,
         current: Category,
         in all: [Category],
         pageWidth: CGFloat,
         preloadIfNeeded: ((Category?) -> Void)? = nil,
-        onPreviewCandidate: ((Category?, CGFloat) -> Void)? = nil
+        onPreviewCandidate: ((Category?, CGFloat) -> Void)? = nil,
+        isStillCurrent: @escaping (Category) -> Bool,
+        onCommitState: @escaping (Category) -> Void
     ) {
-        if let completion = springCompletion,
-           springTargetOffset != 0,
-           abs(dragOffset - springTargetOffset) < 2 {
+        var effectiveCurrent = current
+        suppressPreviewUntilCenterCross = false
+
+        if let commit = activeCommit, springTargetOffset != 0 {
+            let shiftedOffset = dragOffset - commit.targetOffset
             stopSpringOnly()
-            completion()
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                commit.applyStateOnly()
+                dragOffset = shiftedOffset
+                overridePreviewCategory = commit.wasOverride ? commit.outgoingCategory : nil
+                slideDirection = shiftedOffset < -0.5 ? 1 : (shiftedOffset > 0.5 ? -1 : 0)
+            }
+            dragBaseOffset = shiftedOffset
+            effectiveCurrent = commit.targetCategory
+            suppressPreviewUntilCenterCross = abs(shiftedOffset) > 1
         } else {
             stopSpringOnly()
+            dragBaseOffset = dragOffset
         }
-        dragBaseOffset = dragOffset
+
         updateDrag(
-            totalX: dragBaseOffset + translationX,
-            current: current,
+            rawTranslationX: translationX,
+            metrics: metrics,
+            current: effectiveCurrent,
             in: all,
             pageWidth: pageWidth,
             preloadIfNeeded: preloadIfNeeded,
-            onPreviewCandidate: onPreviewCandidate
+            onPreviewCandidate: onPreviewCandidate,
+            isStillCurrent: isStillCurrent,
+            onCommitState: onCommitState
         )
     }
 
     func handlePanChanged(
         _ translationX: CGFloat,
+        metrics: HorizontalGalleryMetricsBox<Category>,
         current: Category,
         in all: [Category],
         pageWidth: CGFloat,
         preloadIfNeeded: ((Category?) -> Void)? = nil,
-        onPreviewCandidate: ((Category?, CGFloat) -> Void)? = nil
+        onPreviewCandidate: ((Category?, CGFloat) -> Void)? = nil,
+        isStillCurrent: @escaping (Category) -> Bool,
+        onCommitState: @escaping (Category) -> Void
     ) {
         updateDrag(
-            totalX: dragBaseOffset + translationX,
+            rawTranslationX: translationX,
+            metrics: metrics,
             current: current,
             in: all,
             pageWidth: pageWidth,
             preloadIfNeeded: preloadIfNeeded,
-            onPreviewCandidate: onPreviewCandidate
+            onPreviewCandidate: onPreviewCandidate,
+            isStillCurrent: isStillCurrent,
+            onCommitState: onCommitState
         )
     }
 
     private func updateDrag(
-        totalX: CGFloat,
+        rawTranslationX: CGFloat,
+        metrics: HorizontalGalleryMetricsBox<Category>,
         current: Category,
         in all: [Category],
         pageWidth: CGFloat,
         preloadIfNeeded: ((Category?) -> Void)?,
-        onPreviewCandidate: ((Category?, CGFloat) -> Void)?
+        onPreviewCandidate: ((Category?, CGFloat) -> Void)?,
+        isStillCurrent: @escaping (Category) -> Bool,
+        onCommitState: @escaping (Category) -> Void
     ) {
+        var active = current
+        var totalX = dragBaseOffset + rawTranslationX
+        let stepStride = pageWidth + Self.pageGap
+
+        // Allow continuous multi-page swiping without releasing the finger when dragging past a full page.
+        while overridePreviewCategory == nil, abs(totalX) >= stepStride {
+            let step = totalX < 0 ? 1 : -1
+            guard let neighbor = relativeCategory(from: active, in: all, step: step) else { break }
+            let shift = step > 0 ? stepStride : -stepStride
+            dragBaseOffset += shift
+            totalX += shift
+
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                commitCategoryState(
+                    metrics: metrics,
+                    outgoingCategory: active,
+                    targetCategory: neighbor,
+                    isStillCurrent: isStillCurrent,
+                    onCommitState: { onCommitState(neighbor) }
+                )
+            }
+            active = neighbor
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+
+        if suppressPreviewUntilCenterCross {
+            if (slideDirection < 0 && totalX <= 0) || (slideDirection > 0 && totalX >= 0) || abs(totalX) < 1 {
+                suppressPreviewUntilCenterCross = false
+                if overridePreviewCategory != nil {
+                    overridePreviewCategory = nil
+                }
+            }
+        }
+
         if overridePreviewCategory == nil {
             if totalX < -2 {
                 slideDirection = 1
-                preloadIfNeeded?(relativeCategory(from: current, in: all, step: 1))
+                preloadIfNeeded?(relativeCategory(from: active, in: all, step: 1))
             } else if totalX > 2 {
                 slideDirection = -1
-                preloadIfNeeded?(relativeCategory(from: current, in: all, step: -1))
+                preloadIfNeeded?(relativeCategory(from: active, in: all, step: -1))
             }
+        } else if (slideDirection < 0 && totalX < -2) || (slideDirection > 0 && totalX > 2) {
+            overridePreviewCategory = nil
+            slideDirection = totalX < 0 ? 1 : -1
+            preloadIfNeeded?(relativeCategory(from: active, in: all, step: slideDirection))
         }
+
         dragOffset = totalX
 
         let candidate: Category?
-        if let override = overridePreviewCategory {
+        if suppressPreviewUntilCenterCross {
+            candidate = nil
+        } else if let override = overridePreviewCategory {
             candidate = abs(totalX) > pageWidth * 0.42 ? override : nil
         } else {
             let rawCandidate = totalX < 0
-                ? relativeCategory(from: current, in: all, step: 1)
-                : relativeCategory(from: current, in: all, step: -1)
+                ? relativeCategory(from: active, in: all, step: 1)
+                : relativeCategory(from: active, in: all, step: -1)
             candidate = abs(totalX) > pageWidth * 0.42 ? rawCandidate : nil
         }
         onPreviewCandidate?(candidate, totalX)
@@ -221,6 +302,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
     ) {
         let totalX = dragBaseOffset + translationX
         dragBaseOffset = 0
+        suppressPreviewUntilCenterCross = false
 
         guard didFinish else {
             cancelSwipe(velocityX: 0, onPrepareHeader: onPrepareCancelHeader)
@@ -233,7 +315,9 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
 
         if let override = overridePreviewCategory {
             let isForward = slideDirection > 0
-            let signMatches = isForward ? (projectedX < -threshold || velocityX < -320) : (projectedX > threshold || velocityX > 320)
+            let signMatches = isForward
+                ? ((projectedX < -threshold && velocityX <= 120) || (projectedX < pageWidth * 0.15 && velocityX < -320) || velocityX < -1050)
+                : ((projectedX > threshold && velocityX >= -120) || (projectedX > -pageWidth * 0.15 && velocityX > 320) || velocityX > 1050)
             if signMatches {
                 commitSwitch(
                     metrics: metrics,
@@ -251,8 +335,14 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
             return
         }
 
-        if let next = relativeCategory(from: current, in: all, step: 1),
-           ((projectedX < -threshold && velocityX <= 120) || velocityX < -320) {
+        let wantsNext = (projectedX < -threshold && velocityX <= 120)
+            || (projectedX < pageWidth * 0.15 && velocityX < -320)
+            || velocityX < -1050
+        let wantsPrev = (projectedX > threshold && velocityX >= -120)
+            || (projectedX > -pageWidth * 0.15 && velocityX > 320)
+            || velocityX > 1050
+
+        if wantsNext, let next = relativeCategory(from: current, in: all, step: 1) {
             slideDirection = 1
             preloadIfNeeded?(next)
             commitSwitch(
@@ -265,8 +355,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
                 isStillCurrent: isStillCurrent,
                 onCommitState: { onCommitState(next) }
             )
-        } else if let prev = relativeCategory(from: current, in: all, step: -1),
-                  ((projectedX > threshold && velocityX >= -120) || velocityX > 320) {
+        } else if wantsPrev, let prev = relativeCategory(from: current, in: all, step: -1) {
             slideDirection = -1
             preloadIfNeeded?(prev)
             commitSwitch(
@@ -297,6 +386,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
     ) {
         stopSpringOnly()
         dragBaseOffset = 0
+        suppressPreviewUntilCenterCross = false
 
         if target == current && dragOffset == 0 {
             metrics.savedScrollOffsets[target] = 0
@@ -343,50 +433,43 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         onPrepareHeader?()
 
-        startSpring(to: finalOffset, initialVelocity: velocityX) { [weak self] in
+        let wasOverride = overridePreviewCategory != nil
+        let applyStateOnly = { [weak self] in
+            self?.commitCategoryState(
+                metrics: metrics,
+                outgoingCategory: outgoingCategory,
+                targetCategory: targetCategory,
+                isStillCurrent: isStillCurrent,
+                onCommitState: onCommitState
+            )
+        }
+
+        let finalizeFullCommit = { [weak self] in
             guard let self else { return }
-            let outgoingTop = metrics.topOffset
-            metrics.savedScrollOffsets[outgoingCategory] = outgoingTop
-            let targetY = metrics.savedScrollOffsets[targetCategory] ?? 0
-
-            if abs(targetY - outgoingTop) > 0.5, let sv = self.attachedScrollView {
-                let topY = -sv.adjustedContentInset.top
-                let desiredY = topY + targetY
-                if abs(sv.contentOffset.y - desiredY) > 0.5 {
-                    sv.setContentOffset(CGPoint(x: 0, y: desiredY), animated: false)
-                }
-            }
-
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
                 self.dragOffset = 0
                 self.slideDirection = 0
                 self.overridePreviewCategory = nil
-                metrics.topOffset = targetY
-                onCommitState()
-            }
-
-            if abs(targetY - outgoingTop) > 0.5, targetY > 0, let sv = self.attachedScrollView {
-                DispatchQueue.main.async { [weak sv] in
-                    guard let sv,
-                          isStillCurrent(targetCategory),
-                          !sv.isTracking,
-                          !sv.isDragging,
-                          !sv.isDecelerating else { return }
-                    let topY = -sv.adjustedContentInset.top
-                    let maxY = max(topY, sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom)
-                    let clampedY = min(topY + targetY, maxY)
-                    if abs(sv.contentOffset.y - clampedY) > 1 {
-                        sv.setContentOffset(CGPoint(x: 0, y: clampedY), animated: false)
-                    }
-                }
+                applyStateOnly()
             }
         }
+
+        activeCommit = ActiveCommitContext(
+            outgoingCategory: outgoingCategory,
+            targetCategory: targetCategory,
+            targetOffset: finalOffset,
+            wasOverride: wasOverride,
+            applyStateOnly: applyStateOnly
+        )
+
+        startSpring(to: finalOffset, initialVelocity: velocityX, completion: finalizeFullCommit)
     }
 
     func cancelSwipe(velocityX: CGFloat = 0, onPrepareHeader: (() -> Void)? = nil) {
         onPrepareHeader?()
+        activeCommit = nil
         startSpring(to: 0, initialVelocity: velocityX) { [weak self] in
             guard let self else { return }
             var tx = Transaction()
@@ -402,6 +485,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
     func resetImmediately(onResetHeader: (() -> Void)? = nil) {
         stopSpringOnly()
         dragBaseOffset = 0
+        suppressPreviewUntilCenterCross = false
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
@@ -412,19 +496,62 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         }
     }
 
+    private func commitCategoryState(
+        metrics: HorizontalGalleryMetricsBox<Category>,
+        outgoingCategory: Category,
+        targetCategory: Category,
+        isStillCurrent: @escaping (Category) -> Bool,
+        onCommitState: () -> Void
+    ) {
+        let outgoingTop = metrics.topOffset
+        metrics.savedScrollOffsets[outgoingCategory] = outgoingTop
+        let targetY = metrics.savedScrollOffsets[targetCategory] ?? 0
+
+        if abs(targetY - outgoingTop) > 0.5, let sv = attachedScrollView {
+            let topY = -sv.adjustedContentInset.top
+            let desiredY = topY + targetY
+            if abs(sv.contentOffset.y - desiredY) > 0.5 {
+                sv.setContentOffset(CGPoint(x: 0, y: desiredY), animated: false)
+            }
+        }
+
+        metrics.topOffset = targetY
+        onCommitState()
+
+        if abs(targetY - outgoingTop) > 0.5, targetY > 0, let sv = attachedScrollView {
+            DispatchQueue.main.async { [weak sv] in
+                guard let sv,
+                      isStillCurrent(targetCategory),
+                      !sv.isTracking,
+                      !sv.isDragging,
+                      !sv.isDecelerating else { return }
+                let topY = -sv.adjustedContentInset.top
+                let maxY = max(topY, sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom)
+                let clampedY = min(topY + targetY, maxY)
+                if abs(sv.contentOffset.y - clampedY) > 1 {
+                    sv.setContentOffset(CGPoint(x: 0, y: clampedY), animated: false)
+                }
+            }
+        }
+    }
+
     private func stopSpringOnly() {
         springGeneration += 1
         displayLink?.invalidate()
         displayLink = nil
         displayLinkProxy = nil
         springCompletion = nil
+        activeCommit = nil
     }
 
     private func startSpring(to target: CGFloat, initialVelocity: CGFloat, completion: @escaping () -> Void) {
+        let commitContext = activeCommit
         stopSpringOnly()
+        activeCommit = commitContext
 
         if abs(dragOffset - target) < 0.35 && abs(initialVelocity) < 10 {
             dragOffset = target
+            activeCommit = nil
             completion()
             return
         }
@@ -475,6 +602,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.springGeneration == generation else { return }
                 self.springCompletion = nil
+                self.activeCommit = nil
                 done?()
             }
         } else {
@@ -615,7 +743,7 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
                   view.window != nil else { return false }
             if let sv = attachedScrollView, sv.isDragging {
                 let svTy = abs(sv.panGestureRecognizer.translation(in: sv).y)
-                if svTy > 10 {
+                if svTy > 12 {
                     return false
                 }
             }

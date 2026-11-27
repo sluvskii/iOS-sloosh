@@ -237,7 +237,6 @@ struct PersonDetailView: View {
                     .ignoresSafeArea()
             }
         }
-        .optionalZoomTransition(sourceID: navigationTransitionID, in: navigationTransitionNamespace)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1432,17 +1431,15 @@ private struct PersonFilmographySection: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(items, id: \.artworkIdentifier) { movie in
-                        let transitionID = "filmography_\(movie.id)"
                         NavigationLink(
                             destination: DetailsView(
                                 movieId: movie.id,
                                 mediaType: movie.type,
-                                navigationTransitionID: transitionID,
-                                navigationTransitionNamespace: namespace
+                                navigationTransitionID: nil,
+                                navigationTransitionNamespace: nil
                             )
                         ) {
                             MoviePosterCard(movie: movie)
-                                .matchedTransitionSource(id: transitionID, in: namespace)
                         }
                         .buttonStyle(.cardPress)
                         .contextMenu {
@@ -1450,8 +1447,8 @@ private struct PersonFilmographySection: View {
                                 destination: DetailsView(
                                     movieId: movie.id,
                                     mediaType: movie.type,
-                                    navigationTransitionID: transitionID,
-                                    navigationTransitionNamespace: namespace
+                                    navigationTransitionID: nil,
+                                    navigationTransitionNamespace: nil
                                 )
                             ) {
                                 Label("Подробнее", systemImage: "info.circle")
@@ -1567,28 +1564,6 @@ final class PersonDetailViewModel: ObservableObject {
         case .series:
             return list.filter { $0.type == "tv" }
         }
-    }
-}
-
-// MARK: - Zoom Navigation Transition Modifier
-
-private struct OptionalZoomTransitionModifier: ViewModifier {
-    let sourceID: String?
-    let namespace: Namespace.ID?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let sourceID, let namespace {
-            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
-        } else {
-            content
-        }
-    }
-}
-
-private extension View {
-    func optionalZoomTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
-        modifier(OptionalZoomTransitionModifier(sourceID: sourceID, namespace: namespace))
     }
 }
 
