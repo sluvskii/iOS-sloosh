@@ -2167,12 +2167,9 @@ class PlayerViewModel: ObservableObject {
                                     $0.label.lowercased() == activeSub.label.lowercased()
                                 })
                                 ?? resolvedSubs.first(where: { $0.lang.lowercased() == activeSub.lang.lowercased() }) {
-                                self.currentSubtitle = matchingSub
-                                self.loadSubtitles(matchingSub)
+                                self.setSubtitle(matchingSub)
                             } else {
-                                self.currentSubtitle = nil
-                                self.activeSubtitleCues = []
-                                self.currentSubtitleText = nil
+                                self.setSubtitle(nil)
                             }
                         }
 
