@@ -44,6 +44,8 @@ struct ProfileView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
     @State private var selectedCategory: FavoriteCategory = .all
+    @State private var requestedCategory: FavoriteCategory? = nil
+    @State private var headerCategory: FavoriteCategory? = nil
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @SceneStorage("profileShowsDownloads") private var showsDownloads = false
     @SceneStorage("profileShowsTierLists") private var showsTierLists = false
@@ -93,7 +95,8 @@ struct ProfileView: View {
         NavigationStack {
             ProfileCategoryContentView(
                 selectedCategory: $selectedCategory,
-                categoryCounts: categoryCounts,
+                requestedCategory: $requestedCategory,
+                headerCategory: $headerCategory,
                 favoritesRepo: favoritesRepo,
                 favorites: filteredFavorites,
                 navigationTransition: navigationTransition,
@@ -124,12 +127,51 @@ struct ProfileView: View {
                 }
 
                 ToolbarItem(placement: .principal) {
-                    Text(profileHeaderTitle)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    let counts = categoryCounts
+                    let displayedCategory = headerCategory ?? selectedCategory
+                    Menu {
+                        ForEach(FavoriteCategory.allCases, id: \.self) { category in
+                            let count = counts[category] ?? 0
+                            let menuTitle = count > 0 ? "\(category.title) · \(count)" : category.title
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                requestedCategory = category
+                            } label: {
+                                if selectedCategory == category {
+                                    Label(menuTitle, systemImage: "checkmark")
+                                } else {
+                                    Text(menuTitle)
+                                }
+                            }
+                        }
+                    } label: {
+                        VStack(spacing: 1) {
+                            Text(profileHeaderTitle)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+
+                            HStack(spacing: 3) {
+                                Text(displayedCategory.title)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                    .contentTransition(.numericText())
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8.5, weight: .bold))
+                                    .foregroundStyle(.secondary.opacity(0.85))
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .tint(.primary)
+                    .accessibilityLabel("\(profileHeaderTitle), избранное: \(displayedCategory.title)")
                 }
+                .sharedBackgroundVisibility(.hidden)
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -338,7 +380,8 @@ private struct ProfileAvatarButton: View {
 
 struct ProfileCategoryContentView: View {
     @Binding var selectedCategory: FavoriteCategory
-    let categoryCounts: [FavoriteCategory: Int]
+    @Binding var requestedCategory: FavoriteCategory?
+    @Binding var headerCategory: FavoriteCategory?
     @ObservedObject var favoritesRepo: FavoritesRepository
     let favorites: [FavoriteDto]
     let navigationTransition: Namespace.ID
@@ -346,7 +389,6 @@ struct ProfileCategoryContentView: View {
     let cardDensity: CardDensity
     @Binding var directPlaybackMovie: MediaDto?
 
-    @State private var requestedCategory: FavoriteCategory? = nil
     @State private var metrics = HorizontalGalleryMetricsBox<FavoriteCategory>()
 
     var body: some View {
@@ -357,7 +399,7 @@ struct ProfileCategoryContentView: View {
                 ProfileGalleryStageView(
                     selectedCategory: $selectedCategory,
                     requestedCategory: $requestedCategory,
-                    categoryCounts: categoryCounts,
+                    headerCategory: $headerCategory,
                     favoritesRepo: favoritesRepo,
                     activeFavorites: favorites,
                     navigationTransition: navigationTransition,
@@ -367,7 +409,7 @@ struct ProfileCategoryContentView: View {
                     scrollProxy: scrollProxy,
                     directPlaybackMovie: $directPlaybackMovie
                 )
-                .padding(.top, 4)
+                .padding(.top, 8)
                 .padding(.bottom, 16)
             }
             .onScrollGeometryChange(for: HorizontalGalleryScrollMetrics.self) { geometry in
@@ -388,7 +430,7 @@ struct ProfileCategoryContentView: View {
 private struct ProfileGalleryStageView: View {
     @Binding var selectedCategory: FavoriteCategory
     @Binding var requestedCategory: FavoriteCategory?
-    let categoryCounts: [FavoriteCategory: Int]
+    @Binding var headerCategory: FavoriteCategory?
     @ObservedObject var favoritesRepo: FavoritesRepository
     let activeFavorites: [FavoriteDto]
     let navigationTransition: Namespace.ID
@@ -415,7 +457,7 @@ private struct ProfileGalleryStageView: View {
                 let hasContent = !favoritesRepo.favorites.isEmpty && !catFavorites.isEmpty
                 let rawSavedY = isActive ? 0 : (metrics.savedScrollOffsets[cat] ?? 0)
                 let savedY = hasContent ? rawSavedY : 0
-                let topBleed = metrics.topBleed(isActive: isActive, savedY: savedY, extraTopMargin: 6)
+                let topBleed = metrics.topBleed(isActive: isActive, savedY: savedY, extraTopMargin: 10)
                 let xPos = isActive ? offset : (offset + (swipe.slideDirection > 0 ? stepStride : -stepStride))
                 let yPos = isActive ? 0 : (metrics.topOffset - topBleed)
                 let clipHeight: CGFloat? = isActive ? nil : (fullPageHeight + topBleed)
@@ -423,15 +465,11 @@ private struct ProfileGalleryStageView: View {
                 EquatableView(
                     content: ProfileFavoritePageView(
                         category: cat,
-                        categoryCounts: categoryCounts,
                         hasAnyFavorites: !favoritesRepo.favorites.isEmpty,
                         favorites: catFavorites,
                         columns: columns,
                         cardDensity: cardDensity,
                         navigationTransition: navigationTransition,
-                        onSelectCategory: { tapped in
-                            requestedCategory = tapped
-                        },
                         onDirectPlay: { media in
                             directPlaybackMovie = media
                         },
@@ -458,10 +496,24 @@ private struct ProfileGalleryStageView: View {
                         current: selectedCategory,
                         in: all,
                         pageWidth: pageWidth,
+                        onPreviewCandidate: { candidate, _ in
+                            if let candidate {
+                                if headerCategory != candidate {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                        headerCategory = candidate
+                                    }
+                                }
+                            } else if headerCategory != nil {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                    headerCategory = nil
+                                }
+                            }
+                        },
                         isStillCurrent: { target in
                             selectedCategory == target
                         },
                         onCommitState: { target in
+                            headerCategory = nil
                             selectedCategory = target
                         }
                     )
@@ -473,10 +525,24 @@ private struct ProfileGalleryStageView: View {
                         current: selectedCategory,
                         in: all,
                         pageWidth: pageWidth,
+                        onPreviewCandidate: { candidate, _ in
+                            if let candidate {
+                                if headerCategory != candidate {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                        headerCategory = candidate
+                                    }
+                                }
+                            } else if headerCategory != nil {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                    headerCategory = nil
+                                }
+                            }
+                        },
                         isStillCurrent: { target in
                             selectedCategory == target
                         },
                         onCommitState: { target in
+                            headerCategory = nil
                             selectedCategory = target
                         }
                     )
@@ -490,10 +556,25 @@ private struct ProfileGalleryStageView: View {
                         current: selectedCategory,
                         in: all,
                         pageWidth: pageWidth,
+                        onPrepareCommitHeader: { target in
+                            if headerCategory != target {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                                    headerCategory = target
+                                }
+                            }
+                        },
+                        onPrepareCancelHeader: {
+                            if headerCategory != nil {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                    headerCategory = nil
+                                }
+                            }
+                        },
                         isStillCurrent: { target in
                             selectedCategory == target
                         },
                         onCommitState: { target in
+                            headerCategory = nil
                             selectedCategory = target
                         }
                     )
@@ -505,7 +586,9 @@ private struct ProfileGalleryStageView: View {
                 },
                 onWindowDismiss: {
                     if swipe.dragOffset != 0 || swipe.slideDirection != 0 {
-                        swipe.resetImmediately()
+                        swipe.resetImmediately {
+                            headerCategory = nil
+                        }
                     }
                 }
             )
@@ -523,10 +606,18 @@ private struct ProfileGalleryStageView: View {
                         scrollProxy.scrollTo("profile-scroll-top", anchor: .top)
                     }
                 },
+                onPrepareCommitHeader: { next in
+                    if headerCategory != next {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                            headerCategory = next
+                        }
+                    }
+                },
                 isStillCurrent: { next in
                     selectedCategory == next
                 },
                 onCommitState: { next in
+                    headerCategory = nil
                     selectedCategory = next
                 }
             )
@@ -536,13 +627,11 @@ private struct ProfileGalleryStageView: View {
 
 private struct ProfileFavoritePageView: View, Equatable {
     let category: FavoriteCategory
-    let categoryCounts: [FavoriteCategory: Int]
     let hasAnyFavorites: Bool
     let favorites: [FavoriteDto]
     let columns: [GridItem]
     let cardDensity: CardDensity
     let navigationTransition: Namespace.ID
-    let onSelectCategory: (FavoriteCategory) -> Void
     let onDirectPlay: (MediaDto) -> Void
     let onDeleteFavorite: (FavoriteDto) -> Void
 
@@ -550,24 +639,20 @@ private struct ProfileFavoritePageView: View, Equatable {
 
     init(
         category: FavoriteCategory,
-        categoryCounts: [FavoriteCategory: Int],
         hasAnyFavorites: Bool,
         favorites: [FavoriteDto],
         columns: [GridItem],
         cardDensity: CardDensity,
         navigationTransition: Namespace.ID,
-        onSelectCategory: @escaping (FavoriteCategory) -> Void,
         onDirectPlay: @escaping (MediaDto) -> Void,
         onDeleteFavorite: @escaping (FavoriteDto) -> Void
     ) {
         self.category = category
-        self.categoryCounts = categoryCounts
         self.hasAnyFavorites = hasAnyFavorites
         self.favorites = favorites
         self.columns = columns
         self.cardDensity = cardDensity
         self.navigationTransition = navigationTransition
-        self.onSelectCategory = onSelectCategory
         self.onDirectPlay = onDirectPlay
         self.onDeleteFavorite = onDeleteFavorite
         self.itemIds = favorites.map(\.artworkIdentifier)
@@ -575,35 +660,28 @@ private struct ProfileFavoritePageView: View, Equatable {
 
     static func == (lhs: ProfileFavoritePageView, rhs: ProfileFavoritePageView) -> Bool {
         lhs.category == rhs.category &&
-        lhs.categoryCounts == rhs.categoryCounts &&
         lhs.hasAnyFavorites == rhs.hasAnyFavorites &&
         lhs.cardDensity == rhs.cardDensity &&
         lhs.itemIds == rhs.itemIds
     }
 
     var body: some View {
-        VStack(spacing: 14) {
-            ProfileCategoryPillStrip(
-                selectedCategory: category,
-                categoryCounts: categoryCounts,
-                onSelect: onSelectCategory
-            )
-
+        Group {
             if !hasAnyFavorites {
                 ProfileEmptyState(
                     icon: "heart.slash",
                     title: "Пока ничего не добавлено",
                     message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
                 )
-                .padding(.top, 56)
+                .padding(.top, 72)
                 .padding(.bottom, 48)
             } else if favorites.isEmpty {
                 ProfileEmptyState(
                     icon: "film.stack",
                     title: "В этой подборке пока пусто",
-                    message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
+                    message: "Попробуйте выбрать другую категорию или добавьте что-нибудь в избранное."
                 )
-                .padding(.top, 56)
+                .padding(.top, 72)
                 .padding(.bottom, 48)
             } else {
                 let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -637,6 +715,7 @@ private struct ProfileFavoritePageView: View, Equatable {
                 .padding(.horizontal, padding)
             }
         }
+        .sensoryFeedback(.selection, trigger: category)
     }
 }
 
@@ -651,66 +730,5 @@ private struct ProfileEmptyState: View {
             title: title,
             description: message
         )
-    }
-}
-
-private struct ProfileCategoryPillStrip: View {
-    let selectedCategory: FavoriteCategory
-    let categoryCounts: [FavoriteCategory: Int]
-    let onSelect: (FavoriteCategory) -> Void
-
-    var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(FavoriteCategory.allCases, id: \.self) { category in
-                        let isSelected = selectedCategory == category
-                        let count = categoryCounts[category] ?? 0
-                        Button {
-                            onSelect(category)
-                        } label: {
-                            HStack(spacing: 5) {
-                                Text(category.title)
-                                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-
-                                if count > 0 {
-                                    Text("\(count)")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(isSelected ? Color.secondary : Color.secondary.opacity(0.65))
-                                }
-                            }
-                            .lineLimit(1)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background {
-                                if isSelected {
-                                    Capsule()
-                                        .fill(Color.primary.opacity(0.14))
-                                }
-                            }
-                            .contentShape(.capsule)
-                            .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                        .buttonStyle(.glassPress)
-                        .id(category)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            }
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .scrollClipDisabled()
-            .onAppear {
-                scrollProxy.scrollTo(selectedCategory, anchor: .center)
-            }
-            .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                    scrollProxy.scrollTo(newCategory, anchor: .center)
-                }
-            }
-        }
-        .sensoryFeedback(.selection, trigger: selectedCategory)
     }
 }
