@@ -55,42 +55,15 @@ struct HomeView: View {
     @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @Namespace private var navigationTransition
     @State private var pendingPlayerConfig: PlayerConfig? = nil
+    @State private var requestedCategory: HomeCategory? = nil
 
     var body: some View {
         NavigationStack {
-            GeometryReader { outerGeometry in
-                let topInset = outerGeometry.safeAreaInsets.top
-                let bottomInset = outerGeometry.safeAreaInsets.bottom
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            HomeCategoryContentView(
-                                viewModel: viewModel,
-                                category: category,
-                                navigationTransition: navigationTransition
-                            )
-                            .containerRelativeFrame([.horizontal, .vertical])
-                            .safeAreaPadding(.top, topInset)
-                            .safeAreaPadding(.bottom, bottomInset)
-                            .id(category)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: Binding(
-                    get: { viewModel.selectedCategory },
-                    set: { newValue in
-                        if let newValue, newValue != viewModel.selectedCategory {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            viewModel.selectedCategory = newValue
-                        }
-                    }
-                ))
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-                .ignoresSafeArea()
-            }
+            HomeCategoryContentView(
+                viewModel: viewModel,
+                navigationTransition: navigationTransition,
+                requestedCategory: $requestedCategory
+            )
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -125,9 +98,7 @@ struct HomeView: View {
                         ForEach(HomeCategory.allCases, id: \.self) { category in
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
-                                    viewModel.selectedCategory = category
-                                }
+                                requestedCategory = category
                             } label: {
                                 if viewModel.selectedCategory == category {
                                     Label(category.title, systemImage: "checkmark")
@@ -235,12 +206,23 @@ struct HomeView: View {
     }
 }
 
+private struct HomeScrollMetrics: Equatable {
+    var topOffset: CGFloat
+    var width: CGFloat
+}
+
 struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
-    let category: HomeCategory
     let navigationTransition: Namespace.ID
+    @Binding var requestedCategory: HomeCategory?
 
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
+    @State private var scrollMetrics = HomeScrollMetrics(topOffset: 0, width: UIScreen.main.bounds.width)
+    @State private var dragOffset: CGFloat = 0
+    @State private var slideDirection: Int = 0
+    @State private var overridePreviewCategory: HomeCategory? = nil
+    @State private var isAnimatingSnap: Bool = false
+    @State private var attachedScrollView: UIScrollView? = nil
 
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -248,11 +230,167 @@ struct HomeCategoryContentView: View {
         return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
     }
 
-    var body: some View {
-        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
-        let items = viewModel.cachedItems[key]
+    private func relativeCategory(step: Int) -> HomeCategory? {
+        let all = HomeCategory.allCases
+        guard let currentIndex = all.firstIndex(of: viewModel.selectedCategory) else { return nil }
+        let targetIndex = currentIndex + step
+        guard targetIndex >= 0 && targetIndex < all.count else { return nil }
+        return all[targetIndex]
+    }
+
+    private var incomingCategory: HomeCategory? {
+        if let overridePreviewCategory {
+            return overridePreviewCategory
+        }
+        guard slideDirection != 0 else { return nil }
+        return relativeCategory(step: slideDirection > 0 ? 1 : -1)
+    }
+
+    private var effectiveOffset: CGFloat {
+        if overridePreviewCategory != nil {
+            return dragOffset
+        }
+        guard dragOffset != 0 else { return 0 }
+        let step = dragOffset < 0 ? 1 : -1
+        if relativeCategory(step: step) != nil {
+            return dragOffset
+        }
+        let sign: CGFloat = dragOffset >= 0 ? 1 : -1
+        let absX = abs(dragOffset)
+        let limit = max(240, scrollMetrics.width * 0.75)
+        return sign * (absX * 0.25 / (1 + absX / limit))
+    }
+
+    private func preloadIfNeeded(_ cat: HomeCategory?) {
+        guard let cat else { return }
+        let key = HomeCacheKey(category: cat, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
+        guard viewModel.cachedItems[key] == nil, !(viewModel.isLoading[key] ?? false) else { return }
+        Task { await viewModel.loadData(for: cat) }
+    }
+
+    private func commitSwitch(to targetCategory: HomeCategory, finalOffset: CGFloat) {
+        isAnimatingSnap = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.90)) {
+            dragOffset = finalOffset
+        } completion: {
+            if let sv = attachedScrollView {
+                let topY = -sv.adjustedContentInset.top
+                if abs(sv.contentOffset.y - topY) > 0.5 {
+                    sv.setContentOffset(CGPoint(x: 0, y: topY), animated: false)
+                }
+            }
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                dragOffset = 0
+                slideDirection = 0
+                overridePreviewCategory = nil
+                scrollMetrics.topOffset = 0
+                viewModel.selectedCategory = targetCategory
+            }
+            isAnimatingSnap = false
+        }
+    }
+
+    private func cancelSwipe() {
+        isAnimatingSnap = true
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+            dragOffset = 0
+        } completion: {
+            slideDirection = 0
+            overridePreviewCategory = nil
+            isAnimatingSnap = false
+        }
+    }
+
+    private func handleRequestedCategoryChange(_ target: HomeCategory, proxy: ScrollViewProxy) {
+        guard !isAnimatingSnap else { return }
+        if target == viewModel.selectedCategory {
+            withAnimation(.easeOut(duration: 0.24)) {
+                proxy.scrollTo("home-scroll-top", anchor: .top)
+            }
+            return
+        }
+        let all = HomeCategory.allCases
+        guard let currentIndex = all.firstIndex(of: viewModel.selectedCategory),
+              let targetIndex = all.firstIndex(of: target) else {
+            viewModel.selectedCategory = target
+            return
+        }
+        let isForward = targetIndex > currentIndex
+        overridePreviewCategory = target
+        slideDirection = isForward ? 1 : -1
+        preloadIfNeeded(target)
+        let width = max(1, scrollMetrics.width)
+        commitSwitch(to: target, finalOffset: isForward ? -width : width)
+    }
+
+    @ViewBuilder
+    private func categoryGrid(for cat: HomeCategory, isPreview: Bool, spacing: CGFloat, padding: CGFloat) -> some View {
+        let key = HomeCacheKey(category: cat, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
+        let rawItems = viewModel.cachedItems[key]
+        let items = isPreview ? rawItems.map { Array($0.prefix(15)) } : rawItems
         let isLoading = viewModel.isLoading[key] ?? false
-        let isLoadingMore = viewModel.isLoadingMore[key] ?? false
+        let isLoadingMore = !isPreview && (viewModel.isLoadingMore[key] ?? false)
+
+        Group {
+            if let items = items, !items.isEmpty {
+                LazyVGrid(columns: columns, spacing: spacing) {
+                    ForEach(items, id: \.artworkIdentifier) { movie in
+                        MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                            .contextMenu {
+                                Group {
+                                    Button {
+                                        viewModel.directPlaybackMovie = movie
+                                    } label: {
+                                        Label("Смотреть", systemImage: "play.fill")
+                                    }
+                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+                                }
+                                .tint(nil)
+                            }
+                        .onAppear {
+                            if !isPreview && movie.id == items.last?.id {
+                                Task { await viewModel.loadData(for: cat) }
+                            }
+                        }
+                    }
+
+                    if isLoadingMore {
+                        ForEach(0..<3, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
+                    }
+                }
+                .padding(.horizontal, padding)
+            } else if isLoading || items == nil {
+                LazyVGrid(columns: columns, spacing: spacing) {
+                    ForEach(0..<12, id: \.self) { _ in
+                        MoviePosterCardPlaceholder()
+                    }
+                }
+                .padding(.horizontal, padding)
+                .padding(.bottom, padding)
+            } else {
+                HomeEmptyState(
+                    category: cat,
+                    filter: viewModel.selectedFilter
+                )
+                .padding(.top, 72)
+                .padding(.bottom, 48)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    var body: some View {
+        let category = viewModel.selectedCategory
+        let offset = effectiveOffset
+        let pageWidth = max(1, scrollMetrics.width)
 
         ScrollViewReader { proxy in
             ScrollView {
@@ -260,7 +398,52 @@ struct HomeCategoryContentView: View {
                 let padding: CGFloat = cardDensity == .compact ? 12 : 16
 
                 // Invisible anchor used to scroll-to-top on sort/filter switch
-                Color.clear.frame(height: 0).id("home-scroll-top")
+                Color.clear
+                    .frame(height: 0)
+                    .id("home-scroll-top")
+                    .background(
+                        HomeSwipeAttachmentView(
+                            isLocked: isAnimatingSnap,
+                            onChanged: { translationX in
+                                guard !isAnimatingSnap else { return }
+                                if translationX < -4 {
+                                    slideDirection = 1
+                                    preloadIfNeeded(relativeCategory(step: 1))
+                                } else if translationX > 4 {
+                                    slideDirection = -1
+                                    preloadIfNeeded(relativeCategory(step: -1))
+                                }
+                                dragOffset = translationX
+                            },
+                            onEnded: { translationX, velocityX, didFinish in
+                                guard !isAnimatingSnap else { return }
+                                guard didFinish else {
+                                    cancelSwipe()
+                                    return
+                                }
+                                let threshold = pageWidth * 0.28
+                                let projectedX = translationX + velocityX * 0.14
+                                if let next = relativeCategory(step: 1),
+                                   ((projectedX < -threshold && velocityX <= 120) || velocityX < -360) {
+                                    slideDirection = 1
+                                    preloadIfNeeded(next)
+                                    commitSwitch(to: next, finalOffset: -pageWidth)
+                                } else if let prev = relativeCategory(step: -1),
+                                          ((projectedX > threshold && velocityX >= -120) || velocityX > 360) {
+                                    slideDirection = -1
+                                    preloadIfNeeded(prev)
+                                    commitSwitch(to: prev, finalOffset: pageWidth)
+                                } else {
+                                    cancelSwipe()
+                                }
+                            },
+                            onScrollViewFound: { sv in
+                                if attachedScrollView !== sv {
+                                    attachedScrollView = sv
+                                }
+                            }
+                        )
+                    )
 
                 VStack(alignment: .leading, spacing: 12) {
                     if !viewModel.searchFilters.isEmpty {
@@ -268,80 +451,212 @@ struct HomeCategoryContentView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
-                    Group {
-                        if let items = items, !items.isEmpty {
-                            LazyVGrid(columns: columns, spacing: spacing) {
-                                ForEach(items, id: \.artworkIdentifier) { movie in
-                                    MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                                        .contextMenu {
-                                            Group {
-                                                Button {
-                                                    viewModel.directPlaybackMovie = movie
-                                                } label: {
-                                                    Label("Смотреть", systemImage: "play.fill")
-                                                }
-                                                NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                                    Label("Подробнее", systemImage: "info.circle")
-                                                }
-                                            }
-                                            .tint(nil)
-                                        }
-                                    .onAppear {
-                                        if movie.id == items.last?.id {
-                                            Task { await viewModel.loadData(for: category) }
-                                        }
-                                    }
-                                }
-
-                                if isLoadingMore {
-                                    ForEach(0..<3, id: \.self) { _ in
-                                        MoviePosterCardPlaceholder()
-                                    }
-                                }
+                    categoryGrid(for: category, isPreview: false, spacing: spacing, padding: padding)
+                        .offset(x: offset)
+                        .animation(.easeInOut(duration: 0.18), value: viewModel.selectedFilter)
+                        .overlay(alignment: .topLeading) {
+                            if let incoming = incomingCategory, slideDirection != 0 {
+                                let incomingX = offset + (slideDirection > 0 ? pageWidth : -pageWidth)
+                                categoryGrid(for: incoming, isPreview: true, spacing: spacing, padding: padding)
+                                    .frame(width: pageWidth, alignment: .top)
+                                    .offset(x: incomingX, y: scrollMetrics.topOffset)
+                                    .allowsHitTesting(false)
                             }
-                            .padding(.horizontal, padding)
-                        } else if isLoading || items == nil {
-                            LazyVGrid(columns: columns, spacing: spacing) {
-                                ForEach(0..<12, id: \.self) { _ in
-                                    MoviePosterCardPlaceholder()
-                                }
-                            }
-                            .padding(.horizontal, padding)
-                            .padding(.bottom, padding)
-                        } else {
-                            HomeEmptyState(
-                                category: category,
-                                filter: viewModel.selectedFilter
-                            )
-                            .padding(.top, 72)
-                            .padding(.bottom, 48)
-                            .padding(.horizontal, 20)
-                            .frame(maxWidth: .infinity)
                         }
-                    }
-                    .animation(.easeInOut(duration: 0.18), value: viewModel.selectedFilter)
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 16)
                 .animation(.spring(response: 0.32, dampingFraction: 0.85), value: viewModel.searchFilters.isEmpty)
+            }
+            .onScrollGeometryChange(for: HomeScrollMetrics.self) { geometry in
+                HomeScrollMetrics(
+                    topOffset: max(0, geometry.contentOffset.y + geometry.contentInsets.top),
+                    width: max(1, geometry.containerSize.width)
+                )
+            } action: { _, newMetrics in
+                if dragOffset == 0 && !isAnimatingSnap {
+                    scrollMetrics = newMetrics
+                } else if abs(scrollMetrics.width - newMetrics.width) > 1 {
+                    scrollMetrics.width = newMetrics.width
+                }
             }
             .scrollIndicators(.hidden)
             .scrollEdgeEffectStyle(.soft, for: .all)
             .refreshable {
                 await viewModel.refresh(category: category)
             }
-            .task(id: key) {
-                guard category != viewModel.selectedCategory else { return }
-                if viewModel.cachedItems[key] == nil, !(viewModel.isLoading[key] ?? false) {
-                    await viewModel.loadData(for: category)
-                }
+            .onChange(of: requestedCategory) { _, target in
+                guard let target else { return }
+                requestedCategory = nil
+                handleRequestedCategoryChange(target, proxy: proxy)
             }
             .onChange(of: viewModel.selectedFilter) { _, _ in
-                proxy.scrollTo("home-scroll-top", anchor: .top)
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo("home-scroll-top", anchor: .top)
+                }
             }
             .onChange(of: viewModel.searchFilters) { _, _ in
-                proxy.scrollTo("home-scroll-top", anchor: .top)
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo("home-scroll-top", anchor: .top)
+                }
             }
+        }
+    }
+}
+
+private struct HomeSwipeAttachmentView: UIViewRepresentable {
+    let isLocked: Bool
+    let onChanged: (CGFloat) -> Void
+    let onEnded: (CGFloat, CGFloat, Bool) -> Void
+    let onScrollViewFound: (UIScrollView) -> Void
+
+    func makeUIView(context: Context) -> AnchorView {
+        let view = AnchorView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        view.onMovedToWindow = { anchor in
+            context.coordinator.attachIfNeeded(from: anchor)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: AnchorView, context: Context) {
+        context.coordinator.isLocked = isLocked
+        context.coordinator.onChanged = onChanged
+        context.coordinator.onEnded = onEnded
+        context.coordinator.onScrollViewFound = onScrollViewFound
+        context.coordinator.attachIfNeeded(from: uiView)
+    }
+
+    static func dismantleUIView(_ uiView: AnchorView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            isLocked: isLocked,
+            onChanged: onChanged,
+            onEnded: onEnded,
+            onScrollViewFound: onScrollViewFound
+        )
+    }
+
+    final class AnchorView: UIView {
+        var onMovedToWindow: ((AnchorView) -> Void)?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil {
+                onMovedToWindow?(self)
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var isLocked: Bool
+        var onChanged: (CGFloat) -> Void
+        var onEnded: (CGFloat, CGFloat, Bool) -> Void
+        var onScrollViewFound: (UIScrollView) -> Void
+
+        weak var attachedScrollView: UIScrollView?
+        private var panGesture: UIPanGestureRecognizer?
+
+        init(
+            isLocked: Bool,
+            onChanged: @escaping (CGFloat) -> Void,
+            onEnded: @escaping (CGFloat, CGFloat, Bool) -> Void,
+            onScrollViewFound: @escaping (UIScrollView) -> Void
+        ) {
+            self.isLocked = isLocked
+            self.onChanged = onChanged
+            self.onEnded = onEnded
+            self.onScrollViewFound = onScrollViewFound
+        }
+
+        func attachIfNeeded(from view: UIView) {
+            guard let sv = Self.findVerticalScrollView(from: view) else { return }
+            if attachedScrollView !== sv {
+                detach()
+                let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+                pan.maximumNumberOfTouches = 1
+                pan.cancelsTouchesInView = true
+                pan.delegate = self
+                sv.addGestureRecognizer(pan)
+                panGesture = pan
+                attachedScrollView = sv
+                onScrollViewFound(sv)
+            }
+        }
+
+        func detach() {
+            if let pan = panGesture, let owner = pan.view {
+                owner.removeGestureRecognizer(pan)
+            }
+            panGesture = nil
+            attachedScrollView = nil
+        }
+
+        @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            let tx = gesture.translation(in: view).x
+            switch gesture.state {
+            case .began, .changed:
+                onChanged(tx)
+            case .ended:
+                onEnded(tx, gesture.velocity(in: view).x, true)
+            case .cancelled, .failed:
+                onEnded(tx, 0, false)
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard !isLocked else { return false }
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
+                  let view = pan.view else { return false }
+            let velocity = pan.velocity(in: view)
+            guard abs(velocity.x) > abs(velocity.y) * 1.15, abs(velocity.x) > 15 else {
+                return false
+            }
+            if let hit = view.hitTest(pan.location(in: view), with: nil),
+               Self.isInsideHorizontalScrollView(hit, root: view) {
+                return false
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            false
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            otherGestureRecognizer === attachedScrollView?.panGestureRecognizer
+        }
+
+        private static func findVerticalScrollView(from view: UIView) -> UIScrollView? {
+            var cursor = view.superview
+            while let current = cursor {
+                if let sv = current as? UIScrollView,
+                   !sv.alwaysBounceHorizontal,
+                   sv.contentSize.width <= sv.bounds.width + 2 {
+                    return sv
+                }
+                cursor = current.superview
+            }
+            return nil
+        }
+
+        private static func isInsideHorizontalScrollView(_ hitView: UIView, root: UIView) -> Bool {
+            var cursor: UIView? = hitView
+            while let current = cursor, current !== root {
+                if let sv = current as? UIScrollView,
+                   sv.contentSize.width > sv.bounds.width + 2 {
+                    return true
+                }
+                cursor = current.superview
+            }
+            return false
         }
     }
 }
