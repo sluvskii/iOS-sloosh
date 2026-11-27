@@ -170,7 +170,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         let isAppActive = scenePhase == .active
         let canAutoScroll = isHeaderVisible && isAppActive && !isPaused
         if !canAutoScroll {
-            coordinator.stopTimer()
+            coordinator.stopTimer(deferBindingUpdate: true)
         } else if coordinator.timerTask == nil && !coordinator.isUserDragging && !coordinator.isTransitioning {
             DispatchQueue.main.async { [weak coordinator] in
                 coordinator?.startTimer()
@@ -309,13 +309,25 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         }
 
         // MARK: - Timer & Progress
-        func stopTimer() {
+        func stopTimer(deferBindingUpdate: Bool = false) {
             timerTask?.cancel()
             timerTask = nil
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                parent.timerProgress = 0.0
+            guard parent.timerProgress != 0 else { return }
+            if deferBindingUpdate {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.parent.timerProgress != 0 else { return }
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        self.parent.timerProgress = 0.0
+                    }
+                }
+            } else {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    parent.timerProgress = 0.0
+                }
             }
         }
 
@@ -381,7 +393,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         }
 
         deinit {
-            stopTimer()
+            timerTask?.cancel()
         }
     }
 }
