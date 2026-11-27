@@ -22,18 +22,25 @@ struct HorizontalGalleryScrollMetrics: Equatable {
 
 /// Non-publishing reference box holding live scroll metrics and per-category scroll offsets
 /// so vertical scrolling never invalidates the gallery swipe state tree on every frame.
+@MainActor
 final class HorizontalGalleryMetricsBox<Category: Hashable> {
     var topOffset: CGFloat = 0
     var width: CGFloat = UIScreen.main.bounds.width
     var fullHeight: CGFloat = UIScreen.main.bounds.height
     var topInset: CGFloat = 0
     var savedScrollOffsets: [Category: CGFloat] = [:]
+    let swipe = HorizontalGallerySwipeController<Category>()
 
     func apply(_ newMetrics: HorizontalGalleryScrollMetrics) {
         topOffset = newMetrics.topOffset
         width = newMetrics.width
         fullHeight = newMetrics.fullHeight
         topInset = newMetrics.topInset
+        if newMetrics.topOffset <= 4,
+           swipe.isTopBlurHandoverMounted,
+           swipe.attachedScrollView?.isDragging == true || swipe.attachedScrollView?.isTracking == true {
+            swipe.clearTopBlurHandover()
+        }
     }
 
     /// Computes how far an incoming scrolled pane must bleed upward behind the translucent top bar
@@ -74,6 +81,8 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
     @Published var dragOffset: CGFloat = 0
     @Published var slideDirection: Int = 0
     @Published var overridePreviewCategory: Category? = nil
+    @Published var handoverTopBlurOpacity: Double = 0
+    @Published var isTopBlurHandoverMounted: Bool = false
 
     weak var attachedScrollView: UIScrollView? = nil
 
@@ -94,6 +103,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
     private var springStartTime: CFTimeInterval = 0
     private var springCompletion: (() -> Void)?
     private var springGeneration: Int = 0
+    private var handoverGeneration: Int = 0
     private var activeCommit: ActiveCommitContext?
     private var dragBaseOffset: CGFloat = 0
     private var suppressPreviewUntilCenterCross: Bool = false
@@ -115,6 +125,49 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         }
         guard slideDirection != 0 else { return nil }
         return relativeCategory(from: current, in: all, step: slideDirection > 0 ? 1 : -1)
+    }
+
+    func incomingBlurX(
+        current: Category,
+        in all: [Category],
+        pageWidth: CGFloat,
+        metrics: HorizontalGalleryMetricsBox<Category>,
+        hasContent: (Category) -> Bool = { _ in true }
+    ) -> CGFloat? {
+        guard metrics.topOffset <= 4 else { return nil }
+        guard let incoming = incomingCategory(current: current, in: all),
+              incoming != current,
+              hasContent(incoming) else {
+            return nil
+        }
+        let savedY = metrics.savedScrollOffsets[incoming] ?? 0
+        guard savedY > 4 else { return nil }
+        let stepStride = pageWidth + Self.pageGap
+        let offset = effectiveOffset(current: current, in: all, pageWidth: pageWidth)
+        return offset + (slideDirection > 0 ? stepStride : -stepStride)
+    }
+
+    func clearTopBlurHandover() {
+        handoverGeneration += 1
+        handoverTopBlurOpacity = 0
+        isTopBlurHandoverMounted = false
+    }
+
+    func triggerTopBlurHandover() {
+        handoverGeneration += 1
+        let gen = handoverGeneration
+        handoverTopBlurOpacity = 1.0
+        isTopBlurHandoverMounted = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+            guard let self, self.handoverGeneration == gen else { return }
+            withAnimation(.easeOut(duration: 0.42)) {
+                self.handoverTopBlurOpacity = 0
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
+            guard let self, self.handoverGeneration == gen else { return }
+            self.isTopBlurHandoverMounted = false
+        }
     }
 
     func visibleCategories(current: Category, in all: [Category]) -> [Category] {
@@ -159,6 +212,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
+                clearTopBlurHandover()
                 commit.applyStateOnly()
                 dragOffset = shiftedOffset
                 overridePreviewCategory = commit.wasOverride ? commit.outgoingCategory : nil
@@ -490,6 +544,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
+            clearTopBlurHandover()
             dragOffset = 0
             slideDirection = 0
             overridePreviewCategory = nil
@@ -510,13 +565,22 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
 
         if abs(targetY - outgoingTop) > 0.5, let sv = attachedScrollView {
             let topY = -sv.adjustedContentInset.top
+            let maxY = max(topY, sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom)
             let desiredY = topY + targetY
             if abs(sv.contentOffset.y - desiredY) > 0.5 {
                 sv.setContentOffset(CGPoint(x: 0, y: desiredY), animated: false)
+                if desiredY <= maxY + 1 {
+                    sv.layoutIfNeeded()
+                }
             }
         }
 
         metrics.topOffset = targetY
+        if targetY > 4 && outgoingTop <= 4 {
+            triggerTopBlurHandover()
+        } else if targetY <= 4 {
+            clearTopBlurHandover()
+        }
         onCommitState()
 
         if abs(targetY - outgoingTop) > 0.5, targetY > 0, let sv = attachedScrollView {
@@ -532,6 +596,7 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
                 if abs(sv.contentOffset.y - clampedY) > 1 {
                     sv.setContentOffset(CGPoint(x: 0, y: clampedY), animated: false)
                 }
+                sv.layoutIfNeeded()
             }
         }
     }
@@ -793,5 +858,58 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
             }
             return false
         }
+    }
+}
+
+/// Provides instant iOS-26-matched progressive top blur when sliding or jumping from an
+/// unscrolled category onto a previously scrolled category, then hands off smoothly once UIKit's
+/// native scroll edge effect finishes engaging.
+struct HorizontalGalleryTopBlurOverlay<Category: Hashable>: View {
+    let metrics: HorizontalGalleryMetricsBox<Category>
+    @ObservedObject var swipe: HorizontalGallerySwipeController<Category>
+    let current: Category
+    let all: [Category]
+    var hasContent: (Category) -> Bool = { _ in true }
+
+    var body: some View {
+        let pageWidth = max(1, metrics.width)
+        let incomingX = swipe.incomingBlurX(
+            current: current,
+            in: all,
+            pageWidth: pageWidth,
+            metrics: metrics,
+            hasContent: hasContent
+        )
+        let activeX: CGFloat? = incomingX ?? (swipe.isTopBlurHandoverMounted ? 0 : nil)
+        let effectiveOpacity: Double = incomingX != nil ? 1.0 : swipe.handoverTopBlurOpacity
+
+        Color.clear
+            .allowsHitTesting(false)
+            .overlay(alignment: .topLeading) {
+                if let activeX {
+                    let topSafeBand = max(96, metrics.topInset + 28)
+                    ZStack(alignment: .topLeading) {
+                        VariableBlurView(
+                            maxBlurRadius: 3.0,
+                            direction: .blurredTopClearBottom,
+                            tintColor: Color(uiColor: .systemBackground),
+                            tintOpacity: 0.84,
+                            style: .systemMaterial,
+                            haloIntensity: 0.35,
+                            haloSpread: 0.2,
+                            haloRadiusBoost: 2.0
+                        )
+                        .frame(width: pageWidth, height: topSafeBand)
+                        .clipped()
+                        .offset(x: activeX)
+                        .opacity(effectiveOpacity)
+                    }
+                    .frame(width: pageWidth, height: topSafeBand, alignment: .topLeading)
+                    .clipped()
+                    .allowsHitTesting(false)
+                }
+            }
+            .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
     }
 }

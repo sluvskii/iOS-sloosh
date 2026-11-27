@@ -419,6 +419,7 @@ struct ProfileCategoryContentView: View {
                     columns: columns,
                     cardDensity: cardDensity,
                     metrics: metrics,
+                    swipe: metrics.swipe,
                     scrollProxy: scrollProxy,
                     directPlaybackMovie: $directPlaybackMovie
                 )
@@ -437,6 +438,17 @@ struct ProfileCategoryContentView: View {
                 favoritesRepo.reloadFromDb()
             }
         }
+        .overlay {
+            HorizontalGalleryTopBlurOverlay(
+                metrics: metrics,
+                swipe: metrics.swipe,
+                current: selectedCategory,
+                all: FavoriteCategory.allCases,
+                hasContent: { cat in
+                    cat == selectedCategory ? !favorites.isEmpty : true
+                }
+            )
+        }
     }
 }
 
@@ -450,10 +462,9 @@ private struct ProfileGalleryStageView: View {
     let columns: [GridItem]
     let cardDensity: CardDensity
     let metrics: HorizontalGalleryMetricsBox<FavoriteCategory>
+    @ObservedObject var swipe: HorizontalGallerySwipeController<FavoriteCategory>
     let scrollProxy: ScrollViewProxy
     @Binding var directPlaybackMovie: MediaDto?
-
-    @StateObject private var swipe = HorizontalGallerySwipeController<FavoriteCategory>()
 
     var body: some View {
         let all = FavoriteCategory.allCases

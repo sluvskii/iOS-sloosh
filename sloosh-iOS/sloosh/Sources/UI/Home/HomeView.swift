@@ -346,11 +346,10 @@ private struct HomeGalleryStageView: View {
     let padding: CGFloat
     let extraTopBleedMargin: CGFloat
     let metrics: HorizontalGalleryMetricsBox<HomeCategory>
+    @ObservedObject var swipe: HorizontalGallerySwipeController<HomeCategory>
     let scrollProxy: ScrollViewProxy
     @Binding var requestedCategory: HomeCategory?
     @Binding var headerCategory: HomeCategory?
-
-    @StateObject private var swipe = HorizontalGallerySwipeController<HomeCategory>()
 
     private func preloadIfNeeded(_ cat: HomeCategory?) {
         guard let cat else { return }
@@ -583,6 +582,7 @@ struct HomeCategoryContentView: View {
                         padding: padding,
                         extraTopBleedMargin: viewModel.searchFilters.isEmpty ? 10 : 58,
                         metrics: metrics,
+                        swipe: metrics.swipe,
                         scrollProxy: proxy,
                         requestedCategory: $requestedCategory,
                         headerCategory: $headerCategory
@@ -614,6 +614,18 @@ struct HomeCategoryContentView: View {
                     proxy.scrollTo("home-scroll-top", anchor: .top)
                 }
             }
+        }
+        .overlay {
+            HorizontalGalleryTopBlurOverlay(
+                metrics: metrics,
+                swipe: metrics.swipe,
+                current: viewModel.selectedCategory,
+                all: HomeCategory.allCases,
+                hasContent: { cat in
+                    let key = HomeCacheKey(category: cat, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
+                    return !(viewModel.cachedItems[key]?.isEmpty ?? false)
+                }
+            )
         }
     }
 }
