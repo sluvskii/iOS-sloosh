@@ -62,22 +62,27 @@ struct HomeView: View {
                 viewModel: viewModel,
                 navigationTransition: navigationTransition
             )
-            .navigationTitle("")
+            .tint(.primary)
+            .navigationTitle(viewModel.selectedCategory.title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        Text("Главная")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.primary)
-                        Text(viewModel.selectedFilter.title)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .contentTransition(.numericText())
+            .toolbarTitleMenu {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                            viewModel.selectedCategory = category
+                        }
+                    } label: {
+                        if viewModel.selectedCategory == category {
+                            Label(category.title, systemImage: "checkmark")
+                        } else {
+                            Text(category.title)
+                        }
                     }
                 }
-
-                ToolbarItem(placement: .topBarTrailing) {
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
                     Menu {
                         ForEach(HomeFilter.allCases) { filter in
                             Button {
@@ -217,14 +222,10 @@ struct HomeCategoryContentView: View {
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HomeCategoryPillStrip(selectedCategory: $viewModel.selectedCategory)
-                        if !viewModel.searchFilters.isEmpty {
-                            HomeActiveFiltersStrip(searchFilters: $viewModel.searchFilters)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
+                    if !viewModel.searchFilters.isEmpty {
+                        HomeActiveFiltersStrip(searchFilters: $viewModel.searchFilters)
+                            .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    .animation(.spring(response: 0.32, dampingFraction: 0.85), value: viewModel.searchFilters.isEmpty)
 
                     Group {
                         if let items = items, !items.isEmpty {
@@ -291,8 +292,9 @@ struct HomeCategoryContentView: View {
                             }
                     )
                 }
-                .padding(.top, 2)
+                .padding(.top, 8)
                 .padding(.bottom, 16)
+                .animation(.spring(response: 0.32, dampingFraction: 0.85), value: viewModel.searchFilters.isEmpty)
             }
             .scrollIndicators(.hidden)
             .scrollEdgeEffectStyle(.soft, for: .all)
@@ -345,50 +347,6 @@ struct MovieDetailsNavigationLink<Label: View>: View {
                 .matchedTransitionSource(id: transitionID, in: navigationTransition)
         }
         .buttonStyle(.cardPress)
-    }
-}
-
-private struct HomeCategoryPillStrip: View {
-    @Binding var selectedCategory: HomeCategory
-    @Namespace private var selectionNamespace
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(HomeCategory.allCases, id: \.self) { category in
-                let isSelected = selectedCategory == category
-                Button {
-                    guard !isSelected else { return }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                        selectedCategory = category
-                    }
-                } label: {
-                    Text(category.segmentedTitle)
-                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.15))
-                                    .matchedGeometryEffect(id: "homeCategoryPill", in: selectionNamespace)
-                            }
-                        }
-                        .contentShape(.capsule)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-            }
-        }
-        .padding(4)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 16)
-        .padding(.top, 2)
-        .sensoryFeedback(.selection, trigger: selectedCategory)
     }
 }
 
