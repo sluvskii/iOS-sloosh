@@ -873,6 +873,11 @@ struct DetailsView: View {
         ZStack {
             detailsContent
         }
+            .geometryGroup()
+            .optionalZoomNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1051,6 +1056,7 @@ struct DetailsView: View {
                     }
                 }
                 .presentationDetents([.fraction(0.62)])
+                .preferredColorScheme(.dark)
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 showPlayer = false
@@ -1195,7 +1201,8 @@ struct DetailsView: View {
         }
 
         .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarVisibility(.hidden, for: .tabBar)
     }
 
 
@@ -3936,16 +3943,18 @@ private struct CrewSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(crew) { member in
+                        let transitionID = "crew_\(member.id)"
                         NavigationLink(
                             destination: PersonDetailView(
                                 personId: member.id,
                                 initialName: member.name,
                                 initialPhoto: member.photo,
-                                navigationTransitionID: nil,
-                                navigationTransitionNamespace: nil
+                                navigationTransitionID: transitionID,
+                                navigationTransitionNamespace: namespace
                             )
                         ) {
                             CrewCardView(member: member)
+                                .optionalCardZoomTransitionSource(id: transitionID, in: namespace, cornerRadius: 14)
                         }
                         .buttonStyle(.plain)
                     }
@@ -4039,16 +4048,18 @@ private struct ActorsSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(cast) { actor in
+                        let transitionID = "actor_\(actor.id)"
                         NavigationLink(
                             destination: PersonDetailView(
                                 personId: actor.id,
                                 initialName: actor.name,
                                 initialPhoto: actor.photo,
-                                navigationTransitionID: nil,
-                                navigationTransitionNamespace: nil
+                                navigationTransitionID: transitionID,
+                                navigationTransitionNamespace: namespace
                             )
                         ) {
                             ActorCardView(actor: actor)
+                                .optionalCardZoomTransitionSource(id: transitionID, in: namespace, cornerRadius: 14)
                         }
                         .buttonStyle(.plain)
                     }

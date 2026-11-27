@@ -632,12 +632,13 @@ struct MovieDetailsNavigationLink<Label: View>: View {
             destination: DetailsView(
                 movieId: movieId,
                 mediaType: mediaType,
-                navigationTransitionID: nil,
-                navigationTransitionNamespace: nil,
+                navigationTransitionID: transitionID,
+                navigationTransitionNamespace: navigationTransition,
                 initialStudio: studio
             )
         ) {
             label()
+                .cardZoomTransitionSource(id: transitionID, in: navigationTransition, cornerRadius: 12)
         }
         .buttonStyle(.cardPress)
     }

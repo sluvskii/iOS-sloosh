@@ -237,6 +237,8 @@ struct PersonDetailView: View {
                     .ignoresSafeArea()
             }
         }
+        .geometryGroup()
+        .optionalZoomNavigationTransition(sourceID: navigationTransitionID, in: navigationTransitionNamespace)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -278,7 +280,8 @@ struct PersonDetailView: View {
             }
         }
         .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarVisibility(.hidden, for: .tabBar)
     }
 
     // MARK: - Person Content
@@ -1431,15 +1434,17 @@ private struct PersonFilmographySection: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(items, id: \.artworkIdentifier) { movie in
+                        let transitionID = "filmography_\(movie.id)"
                         NavigationLink(
                             destination: DetailsView(
                                 movieId: movie.id,
                                 mediaType: movie.type,
-                                navigationTransitionID: nil,
-                                navigationTransitionNamespace: nil
+                                navigationTransitionID: transitionID,
+                                navigationTransitionNamespace: namespace
                             )
                         ) {
                             MoviePosterCard(movie: movie)
+                                .cardZoomTransitionSource(id: transitionID, in: namespace, cornerRadius: 12)
                         }
                         .buttonStyle(.cardPress)
                         .contextMenu {
@@ -1447,8 +1452,8 @@ private struct PersonFilmographySection: View {
                                 destination: DetailsView(
                                     movieId: movie.id,
                                     mediaType: movie.type,
-                                    navigationTransitionID: nil,
-                                    navigationTransitionNamespace: nil
+                                    navigationTransitionID: transitionID,
+                                    navigationTransitionNamespace: namespace
                                 )
                             ) {
                                 Label("Подробнее", systemImage: "info.circle")
