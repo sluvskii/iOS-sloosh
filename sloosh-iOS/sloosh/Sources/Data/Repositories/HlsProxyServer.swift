@@ -798,7 +798,7 @@ class HlsProxyServer {
         let initialAttempt: ProxySegmentAttempt
         if initialHost.isEmpty || initialHost == originalHost {
             initialAttempt = ProxySegmentAttempt(request: originalRequest, useFailoverSession: false, delayMs: 0)
-        } else if let promotedReq = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: initialHost, stripRefererOrigin: false, forceCloseConnection: false) {
+        } else if let promotedReq = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: initialHost, stripRefererOrigin: false) {
             initialAttempt = ProxySegmentAttempt(request: promotedReq, useFailoverSession: true, delayMs: 0)
         } else {
             initialAttempt = ProxySegmentAttempt(request: originalRequest, useFailoverSession: false, delayMs: 0)
@@ -806,15 +806,15 @@ class HlsProxyServer {
 
         var fallbacks: [ProxySegmentAttempt] = []
         for host in orderedHosts.dropFirst() {
-            if let req = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: host, stripRefererOrigin: false, forceCloseConnection: true) {
+            if let req = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: host, stripRefererOrigin: false) {
                 fallbacks.append(ProxySegmentAttempt(request: req, useFailoverSession: true, delayMs: 0))
             }
         }
         if let retryHost = healthy.first ?? failoverHosts.first ?? (isCollaps || originalHost.contains("interkh") ? "x-bc.interkh.com" : nil),
-           let pacedReq = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: retryHost, stripRefererOrigin: false, forceCloseConnection: true) {
+           let pacedReq = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: retryHost, stripRefererOrigin: false) {
             fallbacks.append(ProxySegmentAttempt(request: pacedReq, useFailoverSession: true, delayMs: 250))
         }
-        if let stripped = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: nil, stripRefererOrigin: true, forceCloseConnection: true) {
+        if let stripped = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: nil, stripRefererOrigin: true) {
             fallbacks.append(ProxySegmentAttempt(request: stripped, useFailoverSession: true, delayMs: 150))
         }
 

@@ -283,8 +283,7 @@ enum HlsSegmentShield {
     static func buildFailoverRequest(
         from originalRequest: URLRequest,
         failoverHost: String?,
-        stripRefererOrigin: Bool = false,
-        forceCloseConnection: Bool = false
+        stripRefererOrigin: Bool = false
     ) -> URLRequest? {
         guard let originalUrl = originalRequest.url else { return nil }
         var request = originalRequest
@@ -298,9 +297,6 @@ enum HlsSegmentShield {
         }
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        if forceCloseConnection {
-            request.setValue("close", forHTTPHeaderField: "Connection")
-        }
         if stripRefererOrigin {
             request.setValue(nil, forHTTPHeaderField: "Referer")
             request.setValue(nil, forHTTPHeaderField: "Origin")
@@ -310,16 +306,48 @@ enum HlsSegmentShield {
 
     // MARK: - Clean Black MPEG-TS Replacement (Zero-Ad Guarantee)
 
-    private static let black360KeyDeflateB64 = "Y2BgYEx3OiDXk8HF9H9aHpMUEz9HSxYDAwNjxjmbBhCduoOBhdX+/z+5Lga2mjlEgbml12NH0SgaTCgOAA=="
-    private static let black360DeltaDeflateB64 = "Y2BgYEx8wFDnENxgOQMA"
-    private static let black720KeyDeflateB64 = "Y2BgYExP4ZFfI3GBi2G77wFnB8eHAr0ODAwMjBnnbBpAdOoOBhZW+f//2xc1MM5Xpy6ILb0+ikbRoEKQRM9QocfAyOj+///DFwsY0k9SF4yG8igabOgBJNnbcDcwOAT+//+jSoNB8lMRVcFoKI+iwYYqIMlerOkBg4BI/f9/cl0MbDVzqArmjobysEZxAA=="
-    private static let black720DeltaDeflateB64 = "Y2BgYEx8wFDnEPiAn40BxGGosGCQnyBSwXywAcK34WNgf8Iqx/AhAcIXa25g/Mno3qArAQA="
-    private static let black1080KeyDeflateB64 = "Y2BgYExP4dFYI3GBn8Hlz+YCgQsCFS7KAQwMDIwZ52waQHTqDgYWVvn//9sXNTDOVx8YEFt6fRSNolE0ikYR2QhSnDPYcDcwOAT+//+jSoNB8lPRgIDR6BhFo2gUjSJKUAWkQJdjesAgIFL//59cFwNbzZwBAXNHY2MUjaJRNIooQHGQAp3bYXTMZRSNolE0ikbRKCJmbAsA"
-    private static let black1080DeltaDeflateB64 = "Y2BgYEx8wFDnEPiAbWIDA4jHYNLHwP6EVY5B8RiEL8fcwPiT0b1BrA3C5wqAaGC6kAAA"
+    private static let black360KeyRle = "000000016742c01e8c680a02ff966e021a020f08846a0000000168ce3c800000000165b80004053ffffe1e8a00067c,38*9c,9d,219*75d75d,75d75e"
+    private static let black360DeltaRle = "0000000161e0007e4053803998"
+    private static let black720KeyRle = "0000000167640c1fac18d00a00b74dc0434041e1108d400000000168ce3c800000000165b80004051fffff87a280019f,79*27,220*5d75d7,80000000016500782e00010147ffffe1e8a00067,79*c9,220*d75d75,e00000000165003c0b80004051fffff87a280019f2,78*72,220*75d75d,780000000165001682e00010147ffffe1e8a00067c,78*9c,9d,159*75d75d,75d75e"
+    private static let black720DeltaRle = "0000000161e0007e4051e00f060000000161007838001f90147803c1800000000161003c0e0007e4051e00f06000000001610016838001f90147802d18"
+    private static let black1080KeyRle = "0000000167640c28ac18d00f0044fcb37010d010784423500000000168ce3c800000000165b80004051fffff87a280019f,119*27,450*5d75d7,800000000165003c0b80004051fffff87a280019f2,118*72,450*75d75d,780000000165001e02e00010147ffffe1e8a00067c,118*9c,9d,449*75d75d,75d75e0000000165000b40b80004051fffff87a280019f,119*27,570*5d75d7,80"
+    private static let black1080DeltaRle = "0000000161e0007e4051e0069180000000016100348e0007e4051e0021c60000000161001e038001f901478016860000000161000a50e0007e4051e002d060"
 
-    private static func decompressRawDeflate(_ base64: String) -> Data? {
-        guard let compressed = Data(base64Encoded: base64) else { return nil }
-        return try? (compressed as NSData).decompressed(using: .zlib) as Data
+    private static func decodePatternRle(_ spec: String) -> Data? {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(4096)
+
+        func parseHexBytes(_ hex: Substring) -> [UInt8]? {
+            guard hex.count % 2 == 0 else { return nil }
+            var result: [UInt8] = []
+            result.reserveCapacity(hex.count / 2)
+            var idx = hex.startIndex
+            while idx < hex.endIndex {
+                let next = hex.index(idx, offsetBy: 2)
+                guard let byte = UInt8(hex[idx..<next], radix: 16) else { return nil }
+                result.append(byte)
+                idx = next
+            }
+            return result
+        }
+
+        for token in spec.split(separator: ",") {
+            if let star = token.firstIndex(of: "*") {
+                guard let count = Int(token[..<star]),
+                      count > 0,
+                      let pat = parseHexBytes(token[token.index(after: star)...]) else {
+                    return nil
+                }
+                for _ in 0..<count {
+                    bytes.append(contentsOf: pat)
+                }
+            } else if let lit = parseHexBytes(token) {
+                bytes.append(contentsOf: lit)
+            } else {
+                return nil
+            }
+        }
+        return bytes.isEmpty ? nil : Data(bytes)
     }
 
     static func resolveStreamDimensions(fromBaselineSps baselineSps: Data?) -> (width: Int, height: Int) {
@@ -336,21 +364,21 @@ enum HlsSegmentShield {
         ptsStart90k: UInt64,
         durationSeconds: Double
     ) -> Data? {
-        let keyB64: String
-        let dltB64: String
+        let keyRle: String
+        let dltRle: String
         if width > 1440 || height > 900 {
-            keyB64 = black1080KeyDeflateB64
-            dltB64 = black1080DeltaDeflateB64
+            keyRle = black1080KeyRle
+            dltRle = black1080DeltaRle
         } else if width <= 800 && height <= 500 {
-            keyB64 = black360KeyDeflateB64
-            dltB64 = black360DeltaDeflateB64
+            keyRle = black360KeyRle
+            dltRle = black360DeltaRle
         } else {
-            keyB64 = black720KeyDeflateB64
-            dltB64 = black720DeltaDeflateB64
+            keyRle = black720KeyRle
+            dltRle = black720DeltaRle
         }
 
-        guard let keyAnnexB = decompressRawDeflate(keyB64),
-              let deltaAnnexB = decompressRawDeflate(dltB64) else {
+        guard let keyAnnexB = decodePatternRle(keyRle),
+              let deltaAnnexB = decodePatternRle(dltRle) else {
             return nil
         }
 

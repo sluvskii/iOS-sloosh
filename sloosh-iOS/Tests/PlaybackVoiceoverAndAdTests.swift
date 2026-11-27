@@ -5,6 +5,9 @@ struct PlaybackVoiceoverAndAdTests {
     static func main() {
         var count = 0
         func check(_ condition: Bool, _ message: String) {
+            if !condition {
+                fputs("FAIL: \(message)\n", stderr)
+            }
             precondition(condition, message)
             count += 1
         }
@@ -356,10 +359,10 @@ struct PlaybackVoiceoverAndAdTests {
         var origReq = URLRequest(url: v1SegmentUrl)
         origReq.setValue("https://api.example.com/", forHTTPHeaderField: "Referer")
         origReq.setValue("https://api.example.com", forHTTPHeaderField: "Origin")
-        let switchedReq = HlsSegmentShield.buildFailoverRequest(from: origReq, failoverHost: "x-bc.interkh.com", stripRefererOrigin: false, forceCloseConnection: true)
+        let switchedReq = HlsSegmentShield.buildFailoverRequest(from: origReq, failoverHost: "x-bc.interkh.com", stripRefererOrigin: false)
         check(switchedReq?.url?.absoluteString == "https://x-bc.interkh.com/hls/seg-59-v1.ts", "Failover request swaps host preserving path")
         check(switchedReq?.value(forHTTPHeaderField: "Referer") == "https://api.example.com/", "Failover request preserves Referer by default")
-        check(switchedReq?.value(forHTTPHeaderField: "Connection") == "close", "Failover request sets Connection: close when requested")
+        check(switchedReq?.value(forHTTPHeaderField: "Cache-Control") == "no-cache", "Failover request sets Cache-Control: no-cache")
         let strippedReq = HlsSegmentShield.buildFailoverRequest(from: origReq, failoverHost: nil, stripRefererOrigin: true)
         check(strippedReq?.value(forHTTPHeaderField: "Referer") == nil && strippedReq?.value(forHTTPHeaderField: "Origin") == nil, "Stripped fallback clears Referer and Origin")
 
