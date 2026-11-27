@@ -11,15 +11,16 @@ final class CollapsParser {
     static func parseCatalog(embedHtml: String, defaultTitle: String) -> ParseResult? {
         let trimmed = embedHtml.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        let vpToken = extractVpToken(from: trimmed)
 
         // 1. Try parsing as TV series
         if let seasonsJson = extractSeasonsJson(from: trimmed),
-           let seriesData = parseSeries(seasonsJson: seasonsJson, title: defaultTitle) {
+           let seriesData = parseSeries(seasonsJson: seasonsJson, title: defaultTitle, vpToken: vpToken) {
             return seriesData
         }
 
         // 2. Try parsing as movie
-        if let movieData = parseMovie(from: trimmed, title: defaultTitle) {
+        if let movieData = parseMovie(from: trimmed, title: defaultTitle, vpToken: vpToken) {
             return movieData
         }
 
@@ -139,7 +140,39 @@ final class CollapsParser {
         return nil
     }
 
-    private static func parseSeries(seasonsJson: String, title: String) -> ParseResult? {
+    static func extractVpToken(from html: String) -> String {
+        let cleaned = html.replacingOccurrences(
+            of: #"lol\s*=\s*(['"])(?:\\.|(?!\1).)*\1"#,
+            with: "",
+            options: .regularExpression
+        )
+        let addPatterns = [
+            #"add\([^)]+\)[^{]*\{[\s\S]*?([a-zA-Z_$][\w$]*)\s*;?\s*\}\s*\}"#,
+            #"\+\s*['"]&['"]\s*\+\s*([a-zA-Z_$][\w$]{6,})"#
+        ]
+        for pat in addPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pat, options: []),
+                  let match = regex.firstMatch(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned)),
+                  match.numberOfRanges > 1,
+                  let varRange = Range(match.range(at: 1), in: cleaned) else {
+                continue
+            }
+            let varName = NSRegularExpression.escapedPattern(for: String(cleaned[varRange]))
+            let assignPat = #"(?:var|let|const|,)\s*"# + varName + #"\s*=\s*['"]([a-zA-Z0-9_-]{2,20})['"]"#
+            if let assignRegex = try? NSRegularExpression(pattern: assignPat, options: []),
+               let assignMatch = assignRegex.firstMatch(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned)),
+               assignMatch.numberOfRanges > 1,
+               let tokRange = Range(assignMatch.range(at: 1), in: cleaned) {
+                let token = String(cleaned[tokRange])
+                if !token.isEmpty {
+                    return token
+                }
+            }
+        }
+        return "vp"
+    }
+
+    private static func parseSeries(seasonsJson: String, title: String, vpToken: String = "vp") -> ParseResult? {
         guard let jsonData = seasonsJson.data(using: .utf8),
               let seasonsArray = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] else {
             return nil
@@ -182,8 +215,8 @@ final class CollapsParser {
                 let rawDash = (epObj["dash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let rawMpd = rawDasha ?? rawDash
 
-                let hls = rawHls.flatMap { $0.isEmpty ? nil : normalizeStreamUrl($0) }
-                let mpd = rawMpd.flatMap { $0.isEmpty ? nil : normalizeStreamUrl($0) }
+                let hls = rawHls.flatMap { $0.isEmpty ? nil : normalizeStreamUrl($0, vpToken: vpToken) }
+                let mpd = rawMpd.flatMap { $0.isEmpty ? nil : normalizeStreamUrl($0, vpToken: vpToken) }
                 let primaryUrl = hls ?? mpd ?? ""
 
                 var voices: [String] = []
@@ -272,14 +305,15 @@ final class CollapsParser {
         )
     }
 
-    private static func normalizeStreamUrl(_ urlString: String) -> String {
+    private static func normalizeStreamUrl(_ urlString: String, vpToken: String = "vp") -> String {
         var str = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         if str.hasPrefix("//") {
             str = "https:" + str
         }
         str = str.replacingOccurrences(of: "\\/", with: "/")
-        if !str.isEmpty && !str.contains("vp") && !str.contains("&vp") && !str.contains("?vp") {
-            str += str.contains("?") ? "&vp" : "?vp"
+        let token = vpToken.isEmpty ? "vp" : vpToken
+        if !str.isEmpty && !str.contains("&\(token)") && !str.contains("?\(token)") && !str.contains("&vp") && !str.contains("?vp") {
+            str += str.contains("?") ? "&\(token)" : "?\(token)"
         }
         return str
     }
@@ -304,7 +338,7 @@ final class CollapsParser {
 
     // MARK: - Movie Extraction
 
-    private static func parseMovie(from html: String, title: String) -> ParseResult? {
+    private static func parseMovie(from html: String, title: String, vpToken: String = "vp") -> ParseResult? {
         var hlsUrl: String?
         var dashUrl: String?
 
@@ -336,10 +370,10 @@ final class CollapsParser {
         }
 
         if let rawHls = hlsUrl {
-            hlsUrl = normalizeStreamUrl(rawHls)
+            hlsUrl = normalizeStreamUrl(rawHls, vpToken: vpToken)
         }
         if let rawDash = dashUrl {
-            dashUrl = normalizeStreamUrl(rawDash)
+            dashUrl = normalizeStreamUrl(rawDash, vpToken: vpToken)
         }
 
         guard let primaryUrl = hlsUrl ?? dashUrl, !primaryUrl.isEmpty else { return nil }

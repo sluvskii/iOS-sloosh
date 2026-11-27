@@ -128,8 +128,16 @@ enum HlsSegmentShield {
     }
 
     static func inspectVideoPrefix(_ data: Data, isComplete: Bool = false) -> HlsPrefixInspectionResult {
+        scanVideoPrefix(data, isComplete: isComplete).inspection
+    }
+
+    static func extractFirstVideoPts90k(from data: Data) -> UInt64? {
+        scanVideoPrefix(data, isComplete: false).firstPts90k
+    }
+
+    private static func scanVideoPrefix(_ data: Data, isComplete: Bool) -> (inspection: HlsPrefixInspectionResult, firstPts90k: UInt64?) {
         guard data.count >= 188 else {
-            return isComplete ? .notTransportStream : .pending
+            return (isComplete ? .notTransportStream : .pending, nil)
         }
 
         let maxSyncSearch = min(data.count - 188, 188 * 4)
@@ -141,7 +149,7 @@ enum HlsSegmentShield {
             }
         }
         guard syncOffset >= 0 else {
-            return .notTransportStream
+            return (.notTransportStream, nil)
         }
 
         var pmtPid: Int? = nil
@@ -150,6 +158,7 @@ enum HlsSegmentShield {
         var sawPmtStreams = false
         var videoEsBuffer = Data()
         var collectingVideoPes = false
+        var firstPts90k: UInt64? = nil
 
         var offset = syncOffset
         while offset + 188 <= data.count {
@@ -215,11 +224,8 @@ enum HlsSegmentShield {
                         }
                         p += 5 + esInfoLen
                     }
-                    if sawPmtStreams && videoPid == nil && !sawNonH264Video {
-                        return .audioOnlyOrNonH264
-                    }
-                    if sawNonH264Video && videoPid == nil {
-                        return .audioOnlyOrNonH264
+                    if (sawPmtStreams || sawNonH264Video) && videoPid == nil {
+                        return (.audioOnlyOrNonH264, nil)
                     }
                 }
             } else if let videoPid, pid == videoPid {
@@ -228,6 +234,21 @@ enum HlsSegmentShield {
                        data[payloadPos] == 0x00,
                        data[payloadPos + 1] == 0x00,
                        data[payloadPos + 2] == 0x01 {
+                        if firstPts90k == nil {
+                            let ptsDtsFlags = (data[payloadPos + 7] >> 6) & 0x03
+                            if (ptsDtsFlags & 0x02) != 0, payloadPos + 14 <= packetEnd {
+                                let b0 = UInt64(data[payloadPos + 9])
+                                let b1 = UInt64(data[payloadPos + 10])
+                                let b2 = UInt64(data[payloadPos + 11])
+                                let b3 = UInt64(data[payloadPos + 12])
+                                let b4 = UInt64(data[payloadPos + 13])
+                                firstPts90k = ((b0 & 0x0E) << 29)
+                                    | ((b1 & 0xFF) << 22)
+                                    | ((b2 & 0xFE) << 14)
+                                    | ((b3 & 0xFF) << 7)
+                                    | ((b4 & 0xFE) >> 1)
+                            }
+                        }
                         let pesHdrLen = Int(data[payloadPos + 8])
                         let esStart = payloadPos + 9 + pesHdrLen
                         collectingVideoPes = true
@@ -243,9 +264,9 @@ enum HlsSegmentShield {
 
                 if let spsData = extractCompleteFirstSps(fromAnnexB: videoEsBuffer, allowAtEnd: false) {
                     if let parsed = parseH264Sps(spsData) {
-                        return .videoSps(parsed)
+                        return (.videoSps(parsed), firstPts90k)
                     }
-                    return .audioOnlyOrNonH264
+                    return (.audioOnlyOrNonH264, firstPts90k)
                 }
             }
 
@@ -254,15 +275,16 @@ enum HlsSegmentShield {
 
         if isComplete, let spsData = extractCompleteFirstSps(fromAnnexB: videoEsBuffer, allowAtEnd: true),
            let parsed = parseH264Sps(spsData) {
-            return .videoSps(parsed)
+            return (.videoSps(parsed), firstPts90k)
         }
-        return .pending
+        return (.pending, firstPts90k)
     }
 
     static func buildFailoverRequest(
         from originalRequest: URLRequest,
         failoverHost: String?,
-        stripRefererOrigin: Bool = false
+        stripRefererOrigin: Bool = false,
+        forceCloseConnection: Bool = false
     ) -> URLRequest? {
         guard let originalUrl = originalRequest.url else { return nil }
         var request = originalRequest
@@ -273,16 +295,168 @@ enum HlsSegmentShield {
             if let swappedUrl = components.url {
                 request.url = swappedUrl
             }
-        } else if !stripRefererOrigin && failoverHost != nil {
-            // Even when targeting same failover host on second pass, preserve URL
         }
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        if forceCloseConnection {
+            request.setValue("close", forHTTPHeaderField: "Connection")
+        }
         if stripRefererOrigin {
             request.setValue(nil, forHTTPHeaderField: "Referer")
             request.setValue(nil, forHTTPHeaderField: "Origin")
         }
         return request
+    }
+
+    // MARK: - Clean Black MPEG-TS Replacement (Zero-Ad Guarantee)
+
+    private static let black360KeyDeflateB64 = "Y2BgYEx3OiDXk8HF9H9aHpMUEz9HSxYDAwNjxjmbBhCduoOBhdX+/z+5Lga2mjlEgbml12NH0SgaTCgOAA=="
+    private static let black360DeltaDeflateB64 = "Y2BgYEx8wFDnENxgOQMA"
+    private static let black720KeyDeflateB64 = "Y2BgYExP4ZFfI3GBi2G77wFnB8eHAr0ODAwMjBnnbBpAdOoOBhZW+f//2xc1MM5Xpy6ILb0+ikbRoEKQRM9QocfAyOj+///DFwsY0k9SF4yG8igabOgBJNnbcDcwOAT+//+jSoNB8lMRVcFoKI+iwYYqIMlerOkBg4BI/f9/cl0MbDVzqArmjobysEZxAA=="
+    private static let black720DeltaDeflateB64 = "Y2BgYEx8wFDnEPiAn40BxGGosGCQnyBSwXywAcK34WNgf8Iqx/AhAcIXa25g/Mno3qArAQA="
+    private static let black1080KeyDeflateB64 = "Y2BgYExP4dFYI3GBn8Hlz+YCgQsCFS7KAQwMDIwZ52waQHTqDgYWVvn//9sXNTDOVx8YEFt6fRSNolE0ikYR2QhSnDPYcDcwOAT+//+jSoNB8lPRgIDR6BhFo2gUjSJKUAWkQJdjesAgIFL//59cFwNbzZwBAXNHY2MUjaJRNIooQHGQAp3bYXTMZRSNolE0ikbRKCJmbAsA"
+    private static let black1080DeltaDeflateB64 = "Y2BgYEx8wFDnEPiAbWIDA4jHYNLHwP6EVY5B8RiEL8fcwPiT0b1BrA3C5wqAaGC6kAAA"
+
+    private static func decompressRawDeflate(_ base64: String) -> Data? {
+        guard let compressed = Data(base64Encoded: base64) else { return nil }
+        return try? (compressed as NSData).decompressed(using: .zlib) as Data
+    }
+
+    static func resolveStreamDimensions(fromBaselineSps baselineSps: Data?) -> (width: Int, height: Int) {
+        guard let baselineSps, let parsed = parseH264Sps(baselineSps) else {
+            return (1280, 720)
+        }
+        return (parsed.width, parsed.height)
+    }
+
+    /// Synthesizes a valid, zero-banner black H.264 MPEG-TS segment aligned to the replaced segment's PTS & duration.
+    static func buildBlackReplacementTs(
+        width: Int,
+        height: Int,
+        ptsStart90k: UInt64,
+        durationSeconds: Double
+    ) -> Data? {
+        let keyB64: String
+        let dltB64: String
+        if width > 1440 || height > 900 {
+            keyB64 = black1080KeyDeflateB64
+            dltB64 = black1080DeltaDeflateB64
+        } else if width <= 800 && height <= 500 {
+            keyB64 = black360KeyDeflateB64
+            dltB64 = black360DeltaDeflateB64
+        } else {
+            keyB64 = black720KeyDeflateB64
+            dltB64 = black720DeltaDeflateB64
+        }
+
+        guard let keyAnnexB = decompressRawDeflate(keyB64),
+              let deltaAnnexB = decompressRawDeflate(dltB64) else {
+            return nil
+        }
+
+        func crc32Mpeg2(_ bytes: [UInt8]) -> UInt32 {
+            var crc: UInt32 = 0xFFFF_FFFF
+            for byte in bytes {
+                crc ^= UInt32(byte) << 24
+                for _ in 0..<8 {
+                    crc = (crc & 0x8000_0000) != 0 ? ((crc << 1) ^ 0x04C1_1DB7) : (crc << 1)
+                }
+            }
+            return crc
+        }
+
+        func makePsiPacket(pid: UInt16, body: [UInt8]) -> Data {
+            var pkt = [UInt8](repeating: 0xFF, count: 188)
+            pkt[0] = 0x47
+            pkt[1] = 0x40 | UInt8((pid >> 8) & 0x1F)
+            pkt[2] = UInt8(pid & 0xFF)
+            pkt[3] = 0x10
+            pkt[4] = 0x00 // pointer_field
+            for (i, b) in body.enumerated() where 5 + i < 184 {
+                pkt[5 + i] = b
+            }
+            let crc = crc32Mpeg2(body)
+            let crcPos = 5 + body.count
+            if crcPos + 4 <= 188 {
+                pkt[crcPos] = UInt8((crc >> 24) & 0xFF)
+                pkt[crcPos + 1] = UInt8((crc >> 16) & 0xFF)
+                pkt[crcPos + 2] = UInt8((crc >> 8) & 0xFF)
+                pkt[crcPos + 3] = UInt8(crc & 0xFF)
+            }
+            return Data(pkt)
+        }
+
+        let patBody: [UInt8] = [0x00, 0xB0, 13, 0x00, 0x01, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xF0, 0x00]
+        let pmtBody: [UInt8] = [0x02, 0xB0, 18, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x00, 0xF0, 0x00, 0x1B, 0xE1, 0x00, 0xF0, 0x00]
+
+        var tsData = Data()
+        tsData.append(makePsiPacket(pid: 0x0000, body: patBody))
+        tsData.append(makePsiPacket(pid: 0x1000, body: pmtBody))
+
+        var continuityCounter: UInt8 = 0
+        func emitPes(annexB: Data, pts90k: UInt64, includePcr: Bool) {
+            let t = pts90k & 0x1_FFFF_FFFF
+            let pesHeader: [UInt8] = [
+                0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05,
+                0x21 | UInt8((t >> 29) & 0x0E),
+                UInt8((t >> 22) & 0xFF),
+                0x01 | UInt8((t >> 14) & 0xFE),
+                UInt8((t >> 7) & 0xFF),
+                0x01 | UInt8((t << 1) & 0xFE)
+            ]
+            var fullPayload = Data(pesHeader)
+            fullPayload.append(Data([0x00, 0x00, 0x00, 0x01, 0x09, 0xF0])) // AUD
+            fullPayload.append(annexB)
+
+            let payloadBytes = [UInt8](fullPayload)
+            var offset = 0
+            var isFirst = true
+            while offset < payloadBytes.count {
+                let remaining = payloadBytes.count - offset
+                var pkt = [UInt8](repeating: 0xFF, count: 188)
+                pkt[0] = 0x47
+                pkt[1] = (isFirst ? 0x40 : 0x00) | 0x01
+                pkt[2] = 0x00
+
+                let pcrLen = (isFirst && includePcr) ? 6 : 0
+                let maxData = 182 - pcrLen
+                if remaining >= 184 && pcrLen == 0 {
+                    pkt[3] = 0x10 | continuityCounter
+                    for i in 0..<184 {
+                        pkt[4 + i] = payloadBytes[offset + i]
+                    }
+                    offset += 184
+                } else {
+                    let take = min(remaining, maxData)
+                    let afLen = 183 - take
+                    pkt[3] = 0x30 | continuityCounter
+                    pkt[4] = UInt8(afLen)
+                    pkt[5] = pcrLen > 0 ? 0x50 : 0x00
+                    if pcrLen > 0 {
+                        pkt[6] = UInt8((t >> 25) & 0xFF)
+                        pkt[7] = UInt8((t >> 17) & 0xFF)
+                        pkt[8] = UInt8((t >> 9) & 0xFF)
+                        pkt[9] = UInt8((t >> 1) & 0xFF)
+                        pkt[10] = UInt8(((t & 1) << 7) | 0x7E)
+                        pkt[11] = 0x00
+                    }
+                    let dataStart = 5 + afLen
+                    for i in 0..<take {
+                        pkt[dataStart + i] = payloadBytes[offset + i]
+                    }
+                    offset += take
+                }
+                continuityCounter = (continuityCounter + 1) & 0x0F
+                isFirst = false
+                tsData.append(contentsOf: pkt)
+            }
+        }
+
+        let clampedDuration = max(0.5, min(30.0, durationSeconds))
+        let deltaTicks = max(UInt64(3_754), UInt64((clampedDuration * 90_000.0).rounded()) - 3_754)
+        emitPes(annexB: keyAnnexB, pts90k: ptsStart90k, includePcr: true)
+        emitPes(annexB: deltaAnnexB, pts90k: ptsStart90k &+ deltaTicks, includePcr: false)
+        return tsData
     }
 
     // MARK: - Annex-B & H.264 SPS Parsing

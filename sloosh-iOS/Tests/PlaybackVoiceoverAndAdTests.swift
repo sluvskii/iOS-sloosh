@@ -356,11 +356,68 @@ struct PlaybackVoiceoverAndAdTests {
         var origReq = URLRequest(url: v1SegmentUrl)
         origReq.setValue("https://api.example.com/", forHTTPHeaderField: "Referer")
         origReq.setValue("https://api.example.com", forHTTPHeaderField: "Origin")
-        let switchedReq = HlsSegmentShield.buildFailoverRequest(from: origReq, failoverHost: "x-bc.interkh.com", stripRefererOrigin: false)
+        let switchedReq = HlsSegmentShield.buildFailoverRequest(from: origReq, failoverHost: "x-bc.interkh.com", stripRefererOrigin: false, forceCloseConnection: true)
         check(switchedReq?.url?.absoluteString == "https://x-bc.interkh.com/hls/seg-59-v1.ts", "Failover request swaps host preserving path")
         check(switchedReq?.value(forHTTPHeaderField: "Referer") == "https://api.example.com/", "Failover request preserves Referer by default")
+        check(switchedReq?.value(forHTTPHeaderField: "Connection") == "close", "Failover request sets Connection: close when requested")
         let strippedReq = HlsSegmentShield.buildFailoverRequest(from: origReq, failoverHost: nil, stripRefererOrigin: true)
         check(strippedReq?.value(forHTTPHeaderField: "Referer") == nil && strippedReq?.value(forHTTPHeaderField: "Origin") == nil, "Stripped fallback clears Referer and Origin")
+
+        // 11. PTS extraction, playlist timeline extraction, and clean black MPEG-TS synthesis
+        let ptsTicks: UInt64 = UInt64(3662.5 * 90_000.0)
+        let bannerWithPtsTs = makeSyntheticTsPrefix(sps: bannerSpsData, pts90k: ptsTicks)
+        let extractedPts = HlsSegmentShield.extractFirstVideoPts90k(from: bannerWithPtsTs)
+        check(extractedPts == ptsTicks, "Extracts exact 33-bit 90kHz PTS from Video PES prefix")
+
+        let dims720 = HlsSegmentShield.resolveStreamDimensions(fromBaselineSps: movie720Sps)
+        check(dims720.width == 1280 && dims720.height == 720, "Resolves dimensions from clean baseline SPS")
+
+        for (w, h, label) in [(640, 360, "360p"), (1280, 720, "720p"), (1920, 1080, "1080p")] {
+            let blackTs = HlsSegmentShield.buildBlackReplacementTs(width: w, height: h, ptsStart90k: ptsTicks, durationSeconds: 8.317)
+            check(blackTs != nil && (blackTs?.count ?? 0) >= 564 && ((blackTs?.count ?? 0) % 188 == 0), "Synthesizes valid 188B-aligned black MPEG-TS for \(label)")
+            if let blackTs {
+                let inspected = HlsSegmentShield.inspectVideoPrefix(blackTs, isComplete: true)
+                if case .videoSps(let info) = inspected {
+                    check(info.width == w && info.height == h, "Black MPEG-TS \(label) parses back with \(w)x\(h)")
+                } else {
+                    check(false, "Black MPEG-TS \(label) failed SPS inspection: \(inspected)")
+                }
+                check(HlsSegmentShield.extractFirstVideoPts90k(from: blackTs) == ptsTicks, "Black MPEG-TS \(label) preserves exact replacement PTS")
+                let selfVerdict = HlsSegmentShield.evaluateSegment(
+                    prefixData: blackTs,
+                    isComplete: true,
+                    expectedContentLength: Int64(blackTs.count),
+                    eTag: nil,
+                    baselineSps: nil,
+                    declaredMaxFps: 24.0
+                )
+                if case .clean = selfVerdict {
+                    check(true, "Black MPEG-TS \(label) does not trigger ad-swap heuristics")
+                } else {
+                    check(false, "Black MPEG-TS \(label) wrongly flagged as ad: \(String(describing: selfVerdict))")
+                }
+            }
+        }
+
+        let sampleMediaM3u8 = """
+        #EXTM3U
+        #EXT-X-VERSION:3
+        #EXT-X-TARGETDURATION:10
+        #EXTINF:8.317,
+        seg-1-v1.ts?rt=abc
+        #EXTINF:10.000,
+        seg-2-v1.ts?rt=abc
+        """
+        let timeline = PlaybackHlsRewriter.extractSegmentTimeline(fromMediaPlaylist: sampleMediaM3u8)
+        check(abs((timeline.durations["seg-1-v1.ts"] ?? 0) - 8.317) < 0.001, "Extracts exact segment duration from EXTINF")
+        check(timeline.startPts90k["seg-2-v1.ts"] == UInt64((8.317 * 90_000.0).rounded()), "Accumulates 90kHz start offset across EXTINF")
+
+        let embedWithDecoy = """
+        var lol = ', d91c86db6bcd0d827e82="decoy00"';
+        var lok = 1, d91c86db6bcd0d827e82="9dad1bc8";
+        function add(o,k){ o[k]+='&'+d91c86db6bcd0d827e82; }
+        """
+        check(CollapsParser.extractVpToken(from: embedWithDecoy) == "9dad1bc8", "Extracts real dynamic _vp token ignoring lol decoy")
 
         print("PASS: \(count) playback voiceover and ad-filtering tests")
     }
@@ -449,7 +506,7 @@ struct PlaybackVoiceoverAndAdTests {
         return nal
     }
 
-    private static func makeSyntheticTsPrefix(sps: Data) -> Data {
+    private static func makeSyntheticTsPrefix(sps: Data, pts90k: UInt64 = 90_000) -> Data {
         func padPacket(_ bytes: [UInt8]) -> Data {
             var pkt = bytes
             if pkt.count < 188 {
@@ -482,10 +539,16 @@ struct PlaybackVoiceoverAndAdTests {
             0x00, 0x00, 0x00, 0x00
         ])
 
-        // Packet 2: Video PES containing complete Annex-B SPS followed by PPS start code
+        // Packet 2: Video PES with 5-byte PTS followed by complete Annex-B SPS + terminating PPS start code
+        let t = pts90k & 0x1_FFFF_FFFF
         var vid: [UInt8] = [
             0x47, 0x41, 0x00, 0x10,
-            0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x00, 0x00, // PES header
+            0x00, 0x00, 0x01, 0xE0, 0x00, 0x00, 0x80, 0x80, 0x05,
+            0x21 | UInt8((t >> 29) & 0x0E),
+            UInt8((t >> 22) & 0xFF),
+            0x01 | UInt8((t >> 14) & 0xFE),
+            UInt8((t >> 7) & 0xFF),
+            0x01 | UInt8((t << 1) & 0xFE),
             0x00, 0x00, 0x00, 0x01 // SPS start code
         ]
         vid.append(contentsOf: sps)

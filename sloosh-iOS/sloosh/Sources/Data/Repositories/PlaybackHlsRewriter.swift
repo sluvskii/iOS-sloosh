@@ -360,6 +360,40 @@ class PlaybackHlsRewriter {
         return maxFps
     }
 
+    /// Extracts segment durations and cumulative 90 kHz PTS estimates from a media playlist.
+    static func extractSegmentTimeline(fromMediaPlaylist playlist: String) -> (durations: [String: Double], startPts90k: [String: UInt64]) {
+        let lines = playlist.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+
+        var durations: [String: Double] = [:]
+        var startPts90k: [String: UInt64] = [:]
+        var pendingDuration: Double? = nil
+        var elapsedSeconds: Double = 0
+
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            if line.hasPrefix("#EXTINF:") {
+                let afterPrefix = line.dropFirst(8)
+                let numPart = afterPrefix.split(separator: ",", maxSplits: 1).first.map(String.init) ?? ""
+                if let dur = Double(numPart.trimmingCharacters(in: .whitespaces)), dur > 0 {
+                    pendingDuration = dur
+                }
+            } else if !line.isEmpty && !line.hasPrefix("#") {
+                let pathOnly = line.components(separatedBy: "?").first ?? line
+                let name = URL(string: pathOnly)?.lastPathComponent ?? (pathOnly as NSString).lastPathComponent
+                if !name.isEmpty {
+                    let dur = pendingDuration ?? 8.0
+                    durations[name] = dur
+                    startPts90k[name] = UInt64((elapsedSeconds * 90_000.0).rounded())
+                    elapsedSeconds += dur
+                }
+                pendingDuration = nil
+            }
+        }
+        return (durations, startPts90k)
+    }
+
     private static func filterFailoverDuplicates(lines: [String]) -> [String] {
         var filtered: [String] = []
         var seenVariantKeys = Set<String>()

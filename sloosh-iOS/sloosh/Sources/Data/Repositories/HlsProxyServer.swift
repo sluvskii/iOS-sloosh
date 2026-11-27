@@ -20,6 +20,10 @@ class HlsProxyServer {
     private var failoverHosts: [String] = []
     private var streamDeclaredMaxFps: Double? = nil
     private var segmentBaselineSpsByTier: [String: Data] = [:]
+    private var hostPoisonedUntil: [String: Date] = [:]
+    private var preferredHealthyHost: String? = nil
+    private var segmentDurationsByName: [String: Double] = [:]
+    private var segmentStartPtsByName: [String: UInt64] = [:]
 
     // Фоновая задача iOS: не даёт системе заморозить процесс пока прокси активен в фоне
     private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
@@ -31,7 +35,7 @@ class HlsProxyServer {
     var isAlive: Bool { stateLock.withLock { isListenerAlive && listener != nil } }
 
     private let sessionDelegate = ProxyTrustAllSessionDelegate()
-    private var playlistCache: [String: (content: String, timestamp: Date, failoverHosts: [String], maxFps: Double?)] = [:]
+    private var playlistCache: [String: (content: String, timestamp: Date, failoverHosts: [String], maxFps: Double?, durations: [String: Double], startPts: [String: UInt64])] = [:]
     private let playlistCacheLock = NSLock()
 
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
@@ -44,6 +48,19 @@ class HlsProxyServer {
         config.httpShouldUsePipelining = true
         config.urlCache = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 0, diskPath: nil)
         config.requestCachePolicy = .useProtocolCachePolicy
+        return URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
+    }()
+
+    /// Isolated uncached session for failover segment retries (avoids reusing a poisoned socket/worker).
+    private lazy var failoverSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.httpMaximumConnectionsPerHost = 6
+        config.timeoutIntervalForRequest = 12
+        config.timeoutIntervalForResource = 45
+        config.waitsForConnectivity = true
+        config.httpShouldUsePipelining = false
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
     }()
 
@@ -118,6 +135,10 @@ class HlsProxyServer {
             self.failoverHosts = []
             self.streamDeclaredMaxFps = nil
             self.segmentBaselineSpsByTier.removeAll()
+            self.hostPoisonedUntil.removeAll()
+            self.preferredHealthyHost = nil
+            self.segmentDurationsByName.removeAll()
+            self.segmentStartPtsByName.removeAll()
             if let preferredVoiceName, !preferredVoiceName.isEmpty {
                 self.preferredVoiceName = preferredVoiceName
             }
@@ -210,6 +231,10 @@ class HlsProxyServer {
                 self.failoverHosts = []
                 self.streamDeclaredMaxFps = nil
                 self.segmentBaselineSpsByTier.removeAll()
+                self.hostPoisonedUntil.removeAll()
+                self.preferredHealthyHost = nil
+                self.segmentDurationsByName.removeAll()
+                self.segmentStartPtsByName.removeAll()
             }
             currentMasterUrl = parsed
         }
@@ -231,6 +256,10 @@ class HlsProxyServer {
             self.failoverHosts = []
             self.streamDeclaredMaxFps = nil
             self.segmentBaselineSpsByTier.removeAll()
+            self.hostPoisonedUntil.removeAll()
+            self.preferredHealthyHost = nil
+            self.segmentDurationsByName.removeAll()
+            self.segmentStartPtsByName.removeAll()
             self.voices = []
             self.subtitles = []
             self.mediaId = ""
@@ -466,19 +495,23 @@ class HlsProxyServer {
         do {
             if isPlaylist {
                 let cacheKey = "\(realUrl.absoluteString)_\(targetQuality ?? "")_\(currentPreferredVoice ?? "")_\(currentIsCollaps)"
-                if let cached = playlistCacheLock.withLock({ () -> (content: String, failoverHosts: [String], maxFps: Double?)? in
+                if let cached = playlistCacheLock.withLock({ () -> (content: String, failoverHosts: [String], maxFps: Double?, durations: [String: Double], startPts: [String: UInt64])? in
                     if let entry = self.playlistCache[cacheKey], Date().timeIntervalSince(entry.timestamp) < 30.0 {
-                        return (entry.content, entry.failoverHosts, entry.maxFps)
+                        return (entry.content, entry.failoverHosts, entry.maxFps, entry.durations, entry.startPts)
                     }
                     return nil
                 }) {
-                    if !cached.failoverHosts.isEmpty || cached.maxFps != nil {
+                    if !cached.failoverHosts.isEmpty || cached.maxFps != nil || !cached.durations.isEmpty {
                         stateLock.withLock {
                             if !cached.failoverHosts.isEmpty && self.failoverHosts.isEmpty {
                                 self.failoverHosts = cached.failoverHosts
                             }
                             if self.streamDeclaredMaxFps == nil, let maxFps = cached.maxFps {
                                 self.streamDeclaredMaxFps = maxFps
+                            }
+                            if !cached.durations.isEmpty {
+                                self.segmentDurationsByName.merge(cached.durations) { _, new in new }
+                                self.segmentStartPtsByName.merge(cached.startPts) { _, new in new }
                             }
                         }
                     }
@@ -518,6 +551,8 @@ class HlsProxyServer {
                     let rewritten: String
                     var masterFailoverHosts: [String] = []
                     var masterMaxFps: Double? = nil
+                    var mediaDurations: [String: Double] = [:]
+                    var mediaStartPts: [String: UInt64] = [:]
                     if content.contains("#EXT-X-STREAM-INF") {
                         var extractedFailoverHosts = PlaybackHlsRewriter.extractFailoverHosts(from: content, primaryHost: finalUrl.host)
                         if (currentIsCollaps || (finalUrl.host?.lowercased().contains("interkh") == true)),
@@ -549,12 +584,24 @@ class HlsProxyServer {
                         AppDiagnostics.shared.log("HlsProxyServer: master playlist rewritten (\(playlistRewritten.count) bytes)")
                         rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl, isCollaps: currentIsCollaps)
                     } else {
+                        let lowerFile = realUrl.lastPathComponent.lowercased()
+                        if !lowerFile.contains("-a") {
+                            let timeline = PlaybackHlsRewriter.extractSegmentTimeline(fromMediaPlaylist: content)
+                            mediaDurations = timeline.durations
+                            mediaStartPts = timeline.startPts90k
+                            if !mediaDurations.isEmpty {
+                                stateLock.withLock {
+                                    self.segmentDurationsByName.merge(mediaDurations) { _, new in new }
+                                    self.segmentStartPtsByName.merge(mediaStartPts) { _, new in new }
+                                }
+                            }
+                        }
                         AppDiagnostics.shared.log("HlsProxyServer: media playlist served for \(realUrl.lastPathComponent) (\(content.count) bytes)")
                         rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl, isCollaps: currentIsCollaps)
                     }
 
                     playlistCacheLock.withLock {
-                        self.playlistCache[cacheKey] = (content: rewritten, timestamp: Date(), failoverHosts: masterFailoverHosts, maxFps: masterMaxFps)
+                        self.playlistCache[cacheKey] = (content: rewritten, timestamp: Date(), failoverHosts: masterFailoverHosts, maxFps: masterMaxFps, durations: mediaDurations, startPts: mediaStartPts)
                     }
 
                     let rewrittenData = rewritten.data(using: .utf8) ?? Data()
@@ -590,7 +637,7 @@ class HlsProxyServer {
                     self.sendResponse(data: normalized, statusCode: statusCode, contentType: "text/vtt", contentRange: nil, connection: connection)
                 } else {
                     // Direct chunk-by-chunk streaming for media segments (.ts, .m4s, .mp4, etc.)
-                    // with lightweight prefix inspection & automatic failover retry on swapped TS ads.
+                    // with lightweight prefix inspection, adaptive host cooldown, and zero-ad fallback.
                     self.streamMediaSegment(
                         request: request,
                         realUrl: realUrl,
@@ -624,18 +671,43 @@ class HlsProxyServer {
             rangeHeader: incomingRange
         )
         let tierKey = inspectEnabled ? HlsSegmentShield.tierKey(for: realUrl) : ""
-        let fallbackRequests = inspectEnabled
-            ? Self.buildFallbackRequests(from: request, realUrl: realUrl, failoverHosts: failoverHosts, isCollaps: isCollaps)
-            : []
+        let segName = realUrl.lastPathComponent
+        let originalHostLower = realUrl.host?.lowercased() ?? ""
+
+        let (poisonedSnapshot, promotedHost, segDuration, segStartPts) = stateLock.withLock {
+            (
+                self.hostPoisonedUntil,
+                self.preferredHealthyHost,
+                self.segmentDurationsByName[segName] ?? 8.0,
+                self.segmentStartPtsByName[segName] ?? 0
+            )
+        }
+
+        let plan: (initial: ProxySegmentAttempt, fallbacks: [ProxySegmentAttempt])
+        if inspectEnabled {
+            plan = Self.buildAttemptPlan(
+                from: request,
+                realUrl: realUrl,
+                failoverHosts: failoverHosts,
+                isCollaps: isCollaps,
+                hostPoisonedUntil: poisonedSnapshot,
+                preferredHealthyHost: promotedHost
+            )
+        } else {
+            plan = (ProxySegmentAttempt(request: request, useFailoverSession: false, delayMs: 0), [])
+        }
 
         let streamContext = ProxyStreamContext(
             connection: connection,
             realUrl: realUrl,
-            session: self.session,
+            primarySession: self.session,
+            failoverSession: self.failoverSession,
             sessionDelegate: self.sessionDelegate,
             inspectEnabled: inspectEnabled,
-            fallbackRequests: fallbackRequests,
+            fallbackAttempts: plan.fallbacks,
             declaredMaxFps: declaredMaxFps,
+            fallbackDurationSeconds: segDuration,
+            fallbackStartPts90k: segStartPts,
             baselineSpsProvider: inspectEnabled ? { [weak self] in
                 self?.stateLock.withLock { self?.segmentBaselineSpsByTier[tierKey] }
             } : nil,
@@ -645,10 +717,31 @@ class HlsProxyServer {
                         self?.segmentBaselineSpsByTier[tierKey] = sps
                     }
                 }
+            } : nil,
+            onHostPoisoned: inspectEnabled ? { [weak self] poisonedHost in
+                let lower = poisonedHost.lowercased()
+                guard !lower.isEmpty else { return }
+                self?.stateLock.withLock {
+                    self?.hostPoisonedUntil[lower] = Date().addingTimeInterval(25.0)
+                    if self?.preferredHealthyHost == lower {
+                        self?.preferredHealthyHost = nil
+                    }
+                }
+            } : nil,
+            onHostClean: inspectEnabled ? { [weak self] cleanHost in
+                let lower = cleanHost.lowercased()
+                guard !lower.isEmpty else { return }
+                self?.stateLock.withLock {
+                    self?.hostPoisonedUntil.removeValue(forKey: lower)
+                    if lower != originalHostLower {
+                        self?.preferredHealthyHost = lower
+                    }
+                }
             } : nil
         )
 
-        let task = self.session.dataTask(with: request)
+        let startSession = plan.initial.useFailoverSession ? self.failoverSession : self.session
+        let task = startSession.dataTask(with: plan.initial.request)
         streamContext.start(initialTask: task)
 
         connection.stateUpdateHandler = { state in
@@ -661,34 +754,71 @@ class HlsProxyServer {
         }
     }
 
-    private static func buildFallbackRequests(
+    private static func buildAttemptPlan(
         from originalRequest: URLRequest,
         realUrl: URL,
         failoverHosts: [String],
-        isCollaps: Bool
-    ) -> [URLRequest] {
-        var hosts = failoverHosts
-        let originalHostLower = realUrl.host?.lowercased() ?? ""
-        if (isCollaps || originalHostLower.contains("interkh")),
-           originalHostLower != "x-bc.interkh.com",
-           !hosts.contains(where: { $0.caseInsensitiveCompare("x-bc.interkh.com") == .orderedSame }) {
-            hosts.append("x-bc.interkh.com")
+        isCollaps: Bool,
+        hostPoisonedUntil: [String: Date],
+        preferredHealthyHost: String?
+    ) -> (initial: ProxySegmentAttempt, fallbacks: [ProxySegmentAttempt]) {
+        let now = Date()
+        let originalHost = realUrl.host?.lowercased() ?? ""
+
+        var pool: [String] = []
+        func appendUnique(_ h: String?) {
+            guard let h = h?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !h.isEmpty else { return }
+            if !pool.contains(h) { pool.append(h) }
         }
 
-        var candidates: [URLRequest] = []
-        for host in hosts.prefix(2) {
-            if let req = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: host, stripRefererOrigin: false) {
-                candidates.append(req)
+        appendUnique(originalHost)
+        for h in failoverHosts { appendUnique(h) }
+        if isCollaps || originalHost.contains("interkh") {
+            appendUnique("x-bc.interkh.com")
+            appendUnique("hye1eaipby4w.interkh.com")
+        }
+
+        var healthy: [String] = []
+        var cooled: [String] = []
+        for h in pool {
+            if let until = hostPoisonedUntil[h], until > now {
+                cooled.append(h)
+            } else {
+                healthy.append(h)
             }
         }
-        if let firstFailover = hosts.first,
-           let secondPass = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: firstFailover, stripRefererOrigin: false) {
-            candidates.append(secondPass)
+        if let preferred = preferredHealthyHost?.lowercased(),
+           let idx = healthy.firstIndex(of: preferred), idx > 0 {
+            healthy.remove(at: idx)
+            healthy.insert(preferred, at: 0)
         }
-        if let stripped = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: nil, stripRefererOrigin: true) {
-            candidates.append(stripped)
+
+        let orderedHosts = healthy + cooled
+        let initialHost = orderedHosts.first ?? originalHost
+        let initialAttempt: ProxySegmentAttempt
+        if initialHost.isEmpty || initialHost == originalHost {
+            initialAttempt = ProxySegmentAttempt(request: originalRequest, useFailoverSession: false, delayMs: 0)
+        } else if let promotedReq = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: initialHost, stripRefererOrigin: false, forceCloseConnection: false) {
+            initialAttempt = ProxySegmentAttempt(request: promotedReq, useFailoverSession: true, delayMs: 0)
+        } else {
+            initialAttempt = ProxySegmentAttempt(request: originalRequest, useFailoverSession: false, delayMs: 0)
         }
-        return Array(candidates.prefix(3))
+
+        var fallbacks: [ProxySegmentAttempt] = []
+        for host in orderedHosts.dropFirst() {
+            if let req = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: host, stripRefererOrigin: false, forceCloseConnection: true) {
+                fallbacks.append(ProxySegmentAttempt(request: req, useFailoverSession: true, delayMs: 0))
+            }
+        }
+        if let retryHost = healthy.first ?? failoverHosts.first ?? (isCollaps || originalHost.contains("interkh") ? "x-bc.interkh.com" : nil),
+           let pacedReq = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: retryHost, stripRefererOrigin: false, forceCloseConnection: true) {
+            fallbacks.append(ProxySegmentAttempt(request: pacedReq, useFailoverSession: true, delayMs: 250))
+        }
+        if let stripped = HlsSegmentShield.buildFailoverRequest(from: originalRequest, failoverHost: nil, stripRefererOrigin: true, forceCloseConnection: true) {
+            fallbacks.append(ProxySegmentAttempt(request: stripped, useFailoverSession: true, delayMs: 150))
+        }
+
+        return (initialAttempt, Array(fallbacks.prefix(4)))
     }
     
     private func rewriteM3u8(content: String, baseUrl: URL, isCollaps: Bool = false) -> String {
@@ -834,16 +964,27 @@ class HlsProxyServer {
 
 // MARK: - Streaming Segment Context
 
+struct ProxySegmentAttempt {
+    let request: URLRequest
+    let useFailoverSession: Bool
+    let delayMs: Int
+}
+
 final class ProxyStreamContext: @unchecked Sendable {
     let connection: NWConnection
     let realUrl: URL
-    private let session: URLSession
+    private let primarySession: URLSession
+    private let failoverSession: URLSession
     private weak var sessionDelegate: ProxyTrustAllSessionDelegate?
     private let inspectEnabled: Bool
-    private let fallbackRequests: [URLRequest]
+    private let fallbackAttempts: [ProxySegmentAttempt]
     private let declaredMaxFps: Double?
+    private let fallbackDurationSeconds: Double
+    private let fallbackStartPts90k: UInt64
     private let baselineSpsProvider: (() -> Data?)?
     private let onRecordBaseline: ((Data) -> Void)?
+    private let onHostPoisoned: ((String) -> Void)?
+    private let onHostClean: ((String) -> Void)?
 
     private let lock = NSLock()
     private var isCancelled = false
@@ -856,27 +997,38 @@ final class ProxyStreamContext: @unchecked Sendable {
     private var pendingExpectedContentLength: Int64?
     private var pendingETag: String?
     private var pendingBuffer = Data()
+    private var lastSuspectPts90k: UInt64?
 
     init(
         connection: NWConnection,
         realUrl: URL,
-        session: URLSession,
+        primarySession: URLSession,
+        failoverSession: URLSession,
         sessionDelegate: ProxyTrustAllSessionDelegate,
         inspectEnabled: Bool,
-        fallbackRequests: [URLRequest],
+        fallbackAttempts: [ProxySegmentAttempt],
         declaredMaxFps: Double?,
+        fallbackDurationSeconds: Double,
+        fallbackStartPts90k: UInt64,
         baselineSpsProvider: (() -> Data?)?,
-        onRecordBaseline: ((Data) -> Void)?
+        onRecordBaseline: ((Data) -> Void)?,
+        onHostPoisoned: ((String) -> Void)?,
+        onHostClean: ((String) -> Void)?
     ) {
         self.connection = connection
         self.realUrl = realUrl
-        self.session = session
+        self.primarySession = primarySession
+        self.failoverSession = failoverSession
         self.sessionDelegate = sessionDelegate
         self.inspectEnabled = inspectEnabled
-        self.fallbackRequests = fallbackRequests
+        self.fallbackAttempts = fallbackAttempts
         self.declaredMaxFps = declaredMaxFps
+        self.fallbackDurationSeconds = fallbackDurationSeconds
+        self.fallbackStartPts90k = fallbackStartPts90k
         self.baselineSpsProvider = baselineSpsProvider
         self.onRecordBaseline = onRecordBaseline
+        self.onHostPoisoned = onHostPoisoned
+        self.onHostClean = onHostClean
     }
 
     func start(initialTask: URLSessionDataTask) {
@@ -892,31 +1044,48 @@ final class ProxyStreamContext: @unchecked Sendable {
     }
 
     func cancel() {
-        let taskToCancel: URLSessionDataTask? = lock.withLock {
+        let (taskToCancel, oldId): (URLSessionDataTask?, Int) = lock.withLock {
             isCancelled = true
             let current = activeTask
+            let prevId = activeTaskId
             activeTask = nil
+            activeTaskId = -1
             pendingHeaderData = nil
             pendingBuffer.removeAll()
-            return current
+            return (current, prevId)
+        }
+        if oldId >= 0 {
+            sessionDelegate?.unregister(taskId: oldId)
         }
         taskToCancel?.cancel()
     }
 
     private enum FallbackSwitchResult {
-        case launched(newTask: URLSessionDataTask, oldTask: URLSessionDataTask?)
+        case launched(newTask: URLSessionDataTask, oldTask: URLSessionDataTask?, delayMs: Int)
         case unavailable
+    }
+
+    private func resumeIfStillActive(task: URLSessionDataTask) {
+        let shouldResume = lock.withLock {
+            !isCancelled && activeTaskId == task.taskIdentifier
+        }
+        if shouldResume {
+            task.resume()
+        } else {
+            sessionDelegate?.unregister(taskId: task.taskIdentifier)
+        }
     }
 
     private func trySwitchToFallback(fromTaskId taskId: Int, cancelOldTask: Bool) -> Bool {
         let result: FallbackSwitchResult = lock.withLock {
             guard !isCancelled, taskId == activeTaskId, !pendingDecisionCommitted,
-                  fallbackIndex < fallbackRequests.count else {
+                  fallbackIndex < fallbackAttempts.count else {
                 return .unavailable
             }
-            let nextRequest = fallbackRequests[fallbackIndex]
+            let nextAttempt = fallbackAttempts[fallbackIndex]
             fallbackIndex += 1
-            let newTask = session.dataTask(with: nextRequest)
+            let targetSession = nextAttempt.useFailoverSession ? failoverSession : primarySession
+            let newTask = targetSession.dataTask(with: nextAttempt.request)
             let oldTask = activeTask
             activeTask = newTask
             activeTaskId = newTask.taskIdentifier
@@ -924,16 +1093,22 @@ final class ProxyStreamContext: @unchecked Sendable {
             pendingExpectedContentLength = nil
             pendingETag = nil
             pendingBuffer.removeAll(keepingCapacity: true)
-            return .launched(newTask: newTask, oldTask: oldTask)
+            return .launched(newTask: newTask, oldTask: oldTask, delayMs: nextAttempt.delayMs)
         }
 
         switch result {
-        case .launched(let newTask, let oldTask):
+        case .launched(let newTask, let oldTask, let delayMs):
             sessionDelegate?.register(taskId: newTask.taskIdentifier, context: self)
             if cancelOldTask {
                 oldTask?.cancel()
             }
-            newTask.resume()
+            if delayMs > 0 {
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(delayMs)) { [weak self] in
+                    self?.resumeIfStillActive(task: newTask)
+                }
+            } else {
+                newTask.resume()
+            }
             return true
         case .unavailable:
             return false
@@ -945,8 +1120,8 @@ final class ProxyStreamContext: @unchecked Sendable {
         response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
-        let stateCheck: (active: Bool, hasFallback: Bool) = lock.withLock {
-            (!isCancelled && taskId == activeTaskId, fallbackIndex < fallbackRequests.count)
+        let stateCheck: (active: Bool, hasFallback: Bool, savedSuspectPts: UInt64?) = lock.withLock {
+            (!isCancelled && taskId == activeTaskId, fallbackIndex < fallbackAttempts.count, lastSuspectPts90k)
         }
         guard stateCheck.active else {
             completionHandler(.cancel)
@@ -955,6 +1130,11 @@ final class ProxyStreamContext: @unchecked Sendable {
 
         guard let httpResponse = response as? HTTPURLResponse else {
             if stateCheck.hasFallback && trySwitchToFallback(fromTaskId: taskId, cancelOldTask: false) {
+                completionHandler(.cancel)
+                return
+            }
+            if let savedSuspectPts = stateCheck.savedSuspectPts,
+               sendBlackReplacementIfNeeded(taskId: taskId, buffer: Data(), overridePts90k: savedSuspectPts) {
                 completionHandler(.cancel)
                 return
             }
@@ -967,7 +1147,12 @@ final class ProxyStreamContext: @unchecked Sendable {
         let statusCode = httpResponse.statusCode
         guard statusCode >= 200 && statusCode < 400 else {
             if stateCheck.hasFallback && trySwitchToFallback(fromTaskId: taskId, cancelOldTask: false) {
-                AppDiagnostics.shared.log("HlsProxyServer: upstream HTTP \(statusCode) on \(httpResponse.url?.host ?? realUrl.host ?? ""), switching to fallback")
+                AppDiagnostics.shared.log("HlsProxyServer: upstream HTTP \(statusCode) on \(httpResponse.url?.host ?? realUrl.host ?? "") (\(realUrl.lastPathComponent)), switching to fallback")
+                completionHandler(.cancel)
+                return
+            }
+            if let savedSuspectPts = stateCheck.savedSuspectPts,
+               sendBlackReplacementIfNeeded(taskId: taskId, buffer: Data(), overridePts90k: savedSuspectPts) {
                 completionHandler(.cancel)
                 return
             }
@@ -979,16 +1164,21 @@ final class ProxyStreamContext: @unchecked Sendable {
 
         let rawContentLength = httpResponse.value(forHTTPHeaderField: "Content-Length").flatMap { Int64($0) }
         let eTag = httpResponse.value(forHTTPHeaderField: "ETag")
+        let respHost = httpResponse.url?.host ?? realUrl.host ?? ""
 
+        // When fallbacks remain, short-circuit unambiguous 268088B banner headers immediately.
+        // On the final attempt, allow receiving the first ~564B so we can extract exact PTS before black substitution.
         if inspectEnabled,
            stateCheck.hasFallback,
            let rawContentLength,
            rawContentLength == HlsSegmentShield.knownBannerByteLength,
-           eTag?.lowercased().hasSuffix(HlsSegmentShield.knownBannerETagSuffix) == true,
-           trySwitchToFallback(fromTaskId: taskId, cancelOldTask: false) {
-            AppDiagnostics.shared.log("HlsProxyServer: blocked swapped segment (Content-Length 268088 + banner ETag) on \(httpResponse.url?.host ?? realUrl.host ?? ""), switching to fallback")
-            completionHandler(.cancel)
-            return
+           eTag?.lowercased().hasSuffix(HlsSegmentShield.knownBannerETagSuffix) == true {
+            onHostPoisoned?(respHost)
+            if trySwitchToFallback(fromTaskId: taskId, cancelOldTask: false) {
+                AppDiagnostics.shared.log("HlsProxyServer: blocked swapped segment (Content-Length 268088 + banner ETag) on \(respHost) (\(realUrl.lastPathComponent)), switching to fallback")
+                completionHandler(.cancel)
+                return
+            }
         }
 
         let reason = statusCode == 206 ? "Partial Content" : (statusCode == 200 ? "OK" : "Error")
@@ -1016,7 +1206,7 @@ final class ProxyStreamContext: @unchecked Sendable {
 
         let plan: ResponsePlan = lock.withLock {
             guard !isCancelled, taskId == activeTaskId else { return .ignore }
-            if inspectEnabled && fallbackIndex < fallbackRequests.count {
+            if inspectEnabled {
                 pendingHeaderData = headerData
                 pendingExpectedContentLength = rawContentLength
                 pendingETag = eTag
@@ -1050,7 +1240,7 @@ final class ProxyStreamContext: @unchecked Sendable {
         enum DataAction {
             case ignore
             case passthrough
-            case inspect(buffer: Data, expectedCL: Int64?, eTag: String?)
+            case inspect(buffer: Data, expectedCL: Int64?, eTag: String?, activeHost: String)
         }
 
         let action: DataAction = lock.withLock {
@@ -1059,10 +1249,12 @@ final class ProxyStreamContext: @unchecked Sendable {
                 return .passthrough
             }
             pendingBuffer.append(data)
+            let activeHost = activeTask?.currentRequest?.url?.host ?? realUrl.host ?? ""
             return .inspect(
                 buffer: pendingBuffer,
                 expectedCL: pendingExpectedContentLength,
-                eTag: pendingETag
+                eTag: pendingETag,
+                activeHost: activeHost
             )
         }
 
@@ -1077,7 +1269,7 @@ final class ProxyStreamContext: @unchecked Sendable {
                 }
             })
 
-        case .inspect(let buffer, let expectedCL, let eTag):
+        case .inspect(let buffer, let expectedCL, let eTag, let activeHost):
             let baseline = baselineSpsProvider?()
             guard let verdict = HlsSegmentShield.evaluateSegment(
                 prefixData: buffer,
@@ -1095,18 +1287,69 @@ final class ProxyStreamContext: @unchecked Sendable {
                 if let baselineToRecord {
                     onRecordBaseline?(baselineToRecord)
                 }
+                onHostClean?(activeHost)
                 flushPendingPayload(taskId: taskId)
 
             case .suspectAdSwap(let reason):
-                let failingHost = lock.withLock { activeTask?.currentRequest?.url?.host } ?? realUrl.host ?? ""
+                onHostPoisoned?(activeHost)
+                let ptsInPacket = HlsSegmentShield.extractFirstVideoPts90k(from: buffer)
+                if let ptsInPacket {
+                    lock.withLock { self.lastSuspectPts90k = ptsInPacket }
+                }
                 if trySwitchToFallback(fromTaskId: taskId, cancelOldTask: true) {
-                    AppDiagnostics.shared.log("HlsProxyServer: blocked swapped segment (\(reason)) on \(failingHost), switching to fallback")
+                    AppDiagnostics.shared.log("HlsProxyServer: blocked swapped segment (\(reason)) on \(activeHost) (\(realUrl.lastPathComponent)), switching to fallback")
                     return
                 }
-                // No more fallback candidates left — flush rather than stalling playback
-                flushPendingPayload(taskId: taskId)
+                if sendBlackReplacementIfNeeded(taskId: taskId, buffer: buffer, overridePts90k: ptsInPacket) {
+                    return
+                }
+                lock.withLock { isCancelled = true }
+                HlsProxyServer.send503(on: connection)
             }
         }
+    }
+
+    private func sendBlackReplacementIfNeeded(taskId: Int, buffer: Data, overridePts90k: UInt64? = nil) -> Bool {
+        let baseline = baselineSpsProvider?()
+        let dims = HlsSegmentShield.resolveStreamDimensions(fromBaselineSps: baseline)
+        let savedPts = lock.withLock { lastSuspectPts90k }
+        let ptsStart90k = overridePts90k
+            ?? HlsSegmentShield.extractFirstVideoPts90k(from: buffer)
+            ?? savedPts
+            ?? fallbackStartPts90k
+
+        guard let replacementTs = HlsSegmentShield.buildBlackReplacementTs(
+            width: dims.width,
+            height: dims.height,
+            ptsStart90k: ptsStart90k,
+            durationSeconds: fallbackDurationSeconds
+        ) else {
+            return false
+        }
+
+        let responseHeader = "HTTP/1.1 200 OK\r\nContent-Type: video/MP2T\r\nContent-Length: \(replacementTs.count)\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
+        guard let headerData = responseHeader.data(using: .utf8) else { return false }
+
+        let cancelledTask: (oldTask: URLSessionDataTask?, payload: Data)? = lock.withLock {
+            guard !isCancelled, taskId == activeTaskId, !pendingDecisionCommitted else { return nil }
+            pendingDecisionCommitted = true
+            hasSentHeaders = true
+            let current = activeTask
+            activeTask = nil
+            pendingHeaderData = nil
+            pendingBuffer.removeAll(keepingCapacity: false)
+            var full = headerData
+            full.append(replacementTs)
+            return (current, full)
+        }
+        guard let item = cancelledTask else { return false }
+
+        item.oldTask?.cancel()
+        AppDiagnostics.shared.log("HlsProxyServer: all hosts returned banner on \(realUrl.lastPathComponent), substituted clean black \(dims.width)x\(dims.height) TS (\(replacementTs.count)B, pts=\(ptsStart90k / 90_000)s)")
+        connection.send(content: item.payload, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { [weak self] _ in
+            self?.connection.cancel()
+        })
+        return true
     }
 
     private func flushPendingPayload(taskId: Int) {
@@ -1133,8 +1376,8 @@ final class ProxyStreamContext: @unchecked Sendable {
         enum CompletionState {
             case ignore
             case committed(error: Error?)
-            case bufferedComplete(headerData: Data, buffer: Data, expectedCL: Int64?, eTag: String?)
-            case failedBeforeCommit
+            case bufferedComplete(headerData: Data, buffer: Data, expectedCL: Int64?, eTag: String?, activeHost: String)
+            case failedBeforeCommit(savedSuspectPts: UInt64?)
         }
 
         let state: CompletionState = lock.withLock {
@@ -1143,14 +1386,16 @@ final class ProxyStreamContext: @unchecked Sendable {
                 return .committed(error: error)
             }
             if error == nil, let headerData = pendingHeaderData {
+                let activeHost = activeTask?.currentRequest?.url?.host ?? realUrl.host ?? ""
                 return .bufferedComplete(
                     headerData: headerData,
                     buffer: pendingBuffer,
                     expectedCL: pendingExpectedContentLength,
-                    eTag: pendingETag
+                    eTag: pendingETag,
+                    activeHost: activeHost
                 )
             }
-            return .failedBeforeCommit
+            return .failedBeforeCommit(savedSuspectPts: lastSuspectPts90k)
         }
 
         switch state {
@@ -1166,7 +1411,7 @@ final class ProxyStreamContext: @unchecked Sendable {
                 })
             }
 
-        case .bufferedComplete(let headerData, let buffer, let expectedCL, let eTag):
+        case .bufferedComplete(let headerData, let buffer, let expectedCL, let eTag, let activeHost):
             let baseline = baselineSpsProvider?()
             if !buffer.isEmpty,
                let verdict = HlsSegmentShield.evaluateSegment(
@@ -1179,15 +1424,27 @@ final class ProxyStreamContext: @unchecked Sendable {
                ) {
                 switch verdict {
                 case .suspectAdSwap(let reason):
-                    let failingHost = lock.withLock { activeTask?.currentRequest?.url?.host } ?? realUrl.host ?? ""
+                    onHostPoisoned?(activeHost)
+                    let ptsInPacket = HlsSegmentShield.extractFirstVideoPts90k(from: buffer)
+                    if let ptsInPacket {
+                        lock.withLock { self.lastSuspectPts90k = ptsInPacket }
+                    }
                     if trySwitchToFallback(fromTaskId: taskId, cancelOldTask: false) {
-                        AppDiagnostics.shared.log("HlsProxyServer: blocked swapped short segment (\(reason)) on \(failingHost), switching to fallback")
+                        AppDiagnostics.shared.log("HlsProxyServer: blocked swapped short segment (\(reason)) on \(activeHost) (\(realUrl.lastPathComponent)), switching to fallback")
                         return
                     }
+                    if sendBlackReplacementIfNeeded(taskId: taskId, buffer: buffer, overridePts90k: ptsInPacket) {
+                        return
+                    }
+                    lock.withLock { isCancelled = true }
+                    HlsProxyServer.send503(on: connection)
+                    return
+
                 case .clean(let baselineToRecord):
                     if let baselineToRecord {
                         onRecordBaseline?(baselineToRecord)
                     }
+                    onHostClean?(activeHost)
                 }
             }
 
@@ -1207,9 +1464,13 @@ final class ProxyStreamContext: @unchecked Sendable {
                 })
             }
 
-        case .failedBeforeCommit:
+        case .failedBeforeCommit(let savedSuspectPts):
             if trySwitchToFallback(fromTaskId: taskId, cancelOldTask: false) {
                 AppDiagnostics.shared.log("HlsProxyServer: segment fetch error before commit on \(realUrl.lastPathComponent), trying fallback")
+                return
+            }
+            if let savedSuspectPts,
+               sendBlackReplacementIfNeeded(taskId: taskId, buffer: Data(), overridePts90k: savedSuspectPts) {
                 return
             }
             lock.withLock { isCancelled = true }
