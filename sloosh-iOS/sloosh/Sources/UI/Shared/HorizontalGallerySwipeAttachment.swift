@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import QuartzCore
 
 /// Snapshot of vertical scroll geometry used to align incoming horizontal gallery pages
 /// without disturbing the enclosing native ScrollView and iOS 26 progressive edge effects.
@@ -36,26 +37,60 @@ final class HorizontalGalleryMetricsBox<Category: Hashable> {
     }
 
     /// Computes how far an incoming scrolled pane must bleed upward behind the translucent top bar
-    /// so it fills from screen top down even when the outgoing page is at offset 0.
+    /// so it fills from screen top down even when the outgoing page is at scroll offset 0.
     func topBleed(isActive: Bool, savedY: CGFloat, extraTopMargin: CGFloat) -> CGFloat {
         guard !isActive, savedY > 0 else { return 0 }
         return min(savedY, topInset + extraTopMargin)
     }
 }
 
-/// Shared state machine and velocity-aware native spring driver for horizontal category paging
-/// inside a single native vertical ScrollView.
+private final class DisplayLinkProxy: NSObject {
+    private weak var owner: AnyObject?
+    private let callback: (AnyObject, CADisplayLink) -> Void
+
+    init<T: AnyObject>(owner: T, callback: @escaping (T, CADisplayLink) -> Void) {
+        self.owner = owner
+        self.callback = { obj, link in
+            if let typed = obj as? T {
+                callback(typed, link)
+            }
+        }
+        super.init()
+    }
+
+    @objc func tick(_ link: CADisplayLink) {
+        guard let owner else {
+            link.invalidate()
+            return
+        }
+        callback(owner, link)
+    }
+}
+
+/// Shared 120Hz CADisplayLink spring driver and unblockable swipe state machine for horizontal
+/// category paging inside a single native vertical ScrollView.
 @MainActor
 final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObject {
     @Published var dragOffset: CGFloat = 0
     @Published var slideDirection: Int = 0
     @Published var overridePreviewCategory: Category? = nil
 
-    var isAnimatingSnap: Bool = false
-    var snapGeneration: Int = 0
     weak var attachedScrollView: UIScrollView? = nil
 
     static var pageGap: CGFloat { 16 }
+
+    nonisolated(unsafe) private var displayLink: CADisplayLink?
+    private var displayLinkProxy: DisplayLinkProxy?
+    private var springTargetOffset: CGFloat = 0
+    private var springVelocity: CGFloat = 0
+    private var springStartTime: CFTimeInterval = 0
+    private var springCompletion: (() -> Void)?
+    private var springGeneration: Int = 0
+    private var dragBaseOffset: CGFloat = 0
+
+    deinit {
+        displayLink?.invalidate()
+    }
 
     func relativeCategory(from current: Category, in all: [Category], step: Int) -> Category? {
         guard let currentIndex = all.firstIndex(of: current) else { return nil }
@@ -94,6 +129,33 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         return sign * (absX * 0.25 / (1 + absX / limit))
     }
 
+    func handlePanBegan(
+        _ translationX: CGFloat,
+        current: Category,
+        in all: [Category],
+        pageWidth: CGFloat,
+        preloadIfNeeded: ((Category?) -> Void)? = nil,
+        onPreviewCandidate: ((Category?, CGFloat) -> Void)? = nil
+    ) {
+        if let completion = springCompletion,
+           springTargetOffset != 0,
+           abs(dragOffset - springTargetOffset) < 2 {
+            stopSpringOnly()
+            completion()
+        } else {
+            stopSpringOnly()
+        }
+        dragBaseOffset = dragOffset
+        updateDrag(
+            totalX: dragBaseOffset + translationX,
+            current: current,
+            in: all,
+            pageWidth: pageWidth,
+            preloadIfNeeded: preloadIfNeeded,
+            onPreviewCandidate: onPreviewCandidate
+        )
+    }
+
     func handlePanChanged(
         _ translationX: CGFloat,
         current: Category,
@@ -102,20 +164,45 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         preloadIfNeeded: ((Category?) -> Void)? = nil,
         onPreviewCandidate: ((Category?, CGFloat) -> Void)? = nil
     ) {
-        guard !isAnimatingSnap else { return }
-        if translationX < -2 {
-            slideDirection = 1
-            preloadIfNeeded?(relativeCategory(from: current, in: all, step: 1))
-        } else if translationX > 2 {
-            slideDirection = -1
-            preloadIfNeeded?(relativeCategory(from: current, in: all, step: -1))
-        }
-        dragOffset = translationX
+        updateDrag(
+            totalX: dragBaseOffset + translationX,
+            current: current,
+            in: all,
+            pageWidth: pageWidth,
+            preloadIfNeeded: preloadIfNeeded,
+            onPreviewCandidate: onPreviewCandidate
+        )
+    }
 
-        let candidate = translationX < 0
-            ? relativeCategory(from: current, in: all, step: 1)
-            : relativeCategory(from: current, in: all, step: -1)
-        onPreviewCandidate?(candidate, translationX)
+    private func updateDrag(
+        totalX: CGFloat,
+        current: Category,
+        in all: [Category],
+        pageWidth: CGFloat,
+        preloadIfNeeded: ((Category?) -> Void)?,
+        onPreviewCandidate: ((Category?, CGFloat) -> Void)?
+    ) {
+        if overridePreviewCategory == nil {
+            if totalX < -2 {
+                slideDirection = 1
+                preloadIfNeeded?(relativeCategory(from: current, in: all, step: 1))
+            } else if totalX > 2 {
+                slideDirection = -1
+                preloadIfNeeded?(relativeCategory(from: current, in: all, step: -1))
+            }
+        }
+        dragOffset = totalX
+
+        let candidate: Category?
+        if let override = overridePreviewCategory {
+            candidate = abs(totalX) > pageWidth * 0.42 ? override : nil
+        } else {
+            let rawCandidate = totalX < 0
+                ? relativeCategory(from: current, in: all, step: 1)
+                : relativeCategory(from: current, in: all, step: -1)
+            candidate = abs(totalX) > pageWidth * 0.42 ? rawCandidate : nil
+        }
+        onPreviewCandidate?(candidate, totalX)
     }
 
     func handlePanEnded(
@@ -132,14 +219,37 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         isStillCurrent: @escaping (Category) -> Bool,
         onCommitState: @escaping (Category) -> Void
     ) {
-        guard !isAnimatingSnap else { return }
+        let totalX = dragBaseOffset + translationX
+        dragBaseOffset = 0
+
         guard didFinish else {
             cancelSwipe(velocityX: 0, onPrepareHeader: onPrepareCancelHeader)
             return
         }
+
         let stepStride = pageWidth + Self.pageGap
         let threshold = pageWidth * 0.25
-        let projectedX = translationX + velocityX * 0.14
+        let projectedX = totalX + velocityX * 0.14
+
+        if let override = overridePreviewCategory {
+            let isForward = slideDirection > 0
+            let signMatches = isForward ? (projectedX < -threshold || velocityX < -320) : (projectedX > threshold || velocityX > 320)
+            if signMatches {
+                commitSwitch(
+                    metrics: metrics,
+                    outgoingCategory: current,
+                    targetCategory: override,
+                    finalOffset: isForward ? -stepStride : stepStride,
+                    velocityX: velocityX,
+                    onPrepareHeader: { onPrepareCommitHeader?(override) },
+                    isStillCurrent: isStillCurrent,
+                    onCommitState: { onCommitState(override) }
+                )
+            } else {
+                cancelSwipe(velocityX: velocityX, onPrepareHeader: onPrepareCancelHeader)
+            }
+            return
+        }
 
         if let next = relativeCategory(from: current, in: all, step: 1),
            ((projectedX < -threshold && velocityX <= 120) || velocityX < -320) {
@@ -185,20 +295,27 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         isStillCurrent: @escaping (Category) -> Bool,
         onCommitState: @escaping (Category) -> Void
     ) {
-        guard !isAnimatingSnap else { return }
-        if target == current {
+        stopSpringOnly()
+        dragBaseOffset = 0
+
+        if target == current && dragOffset == 0 {
             metrics.savedScrollOffsets[target] = 0
             scrollToTop()
             return
         }
-        guard let currentIndex = all.firstIndex(of: current),
+        guard target != current,
+              let currentIndex = all.firstIndex(of: current),
               let targetIndex = all.firstIndex(of: target) else {
-            onCommitState(target)
+            cancelSwipe(velocityX: 0)
             return
         }
         let isForward = targetIndex > currentIndex
+        let newDirection = isForward ? 1 : -1
+        if slideDirection != newDirection {
+            dragOffset = 0
+        }
         overridePreviewCategory = target
-        slideDirection = isForward ? 1 : -1
+        slideDirection = newDirection
         preloadIfNeeded?(target)
         let stride = max(1, metrics.width) + Self.pageGap
         commitSwitch(
@@ -223,26 +340,23 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         isStillCurrent: @escaping (Category) -> Bool,
         onCommitState: @escaping () -> Void
     ) {
-        snapGeneration += 1
-        let generation = snapGeneration
-        isAnimatingSnap = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         onPrepareHeader?()
 
-        let finalizeSwitch = { [weak self] in
-            guard let self, self.snapGeneration == generation, self.isAnimatingSnap else { return }
-            metrics.savedScrollOffsets[outgoingCategory] = metrics.topOffset
+        startSpring(to: finalOffset, initialVelocity: velocityX) { [weak self] in
+            guard let self else { return }
+            let outgoingTop = metrics.topOffset
+            metrics.savedScrollOffsets[outgoingCategory] = outgoingTop
             let targetY = metrics.savedScrollOffsets[targetCategory] ?? 0
 
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            if let sv = self.attachedScrollView {
+            if abs(targetY - outgoingTop) > 0.5, let sv = self.attachedScrollView {
                 let topY = -sv.adjustedContentInset.top
                 let desiredY = topY + targetY
                 if abs(sv.contentOffset.y - desiredY) > 0.5 {
                     sv.setContentOffset(CGPoint(x: 0, y: desiredY), animated: false)
                 }
             }
+
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
@@ -252,10 +366,8 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
                 metrics.topOffset = targetY
                 onCommitState()
             }
-            CATransaction.commit()
-            self.isAnimatingSnap = false
 
-            if targetY > 0, let sv = self.attachedScrollView {
+            if abs(targetY - outgoingTop) > 0.5, targetY > 0, let sv = self.attachedScrollView {
                 DispatchQueue.main.async { [weak sv] in
                     guard let sv,
                           isStillCurrent(targetCategory),
@@ -271,32 +383,12 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
                 }
             }
         }
-
-        let speed = abs(velocityX)
-        let clampedRatio = min(1.0, max(0.0, speed / 1200.0))
-        let response = max(0.32, 0.44 - Double(clampedRatio) * 0.12)
-        let pageWidth = max(1, metrics.width)
-        let remaining = abs(finalOffset - dragOffset)
-        let damping: Double = remaining < pageWidth * 0.35 ? 0.90 : 0.86
-
-        withAnimation(.spring(response: response, dampingFraction: damping)) {
-            dragOffset = finalOffset
-        } completion: {
-            finalizeSwitch()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + response + 0.45) {
-            finalizeSwitch()
-        }
     }
 
     func cancelSwipe(velocityX: CGFloat = 0, onPrepareHeader: (() -> Void)? = nil) {
-        snapGeneration += 1
-        let generation = snapGeneration
-        isAnimatingSnap = true
         onPrepareHeader?()
-
-        let finalizeCancel = { [weak self] in
-            guard let self, self.snapGeneration == generation, self.isAnimatingSnap else { return }
+        startSpring(to: 0, initialVelocity: velocityX) { [weak self] in
+            guard let self else { return }
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
@@ -304,23 +396,12 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
                 self.slideDirection = 0
                 self.overridePreviewCategory = nil
             }
-            self.isAnimatingSnap = false
-        }
-
-        let speed = abs(velocityX)
-        let response = speed > 600 ? 0.34 : 0.40
-        withAnimation(.spring(response: response, dampingFraction: 0.82)) {
-            dragOffset = 0
-        } completion: {
-            finalizeCancel()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + response + 0.40) {
-            finalizeCancel()
         }
     }
 
     func resetImmediately(onResetHeader: (() -> Void)? = nil) {
-        snapGeneration += 1
+        stopSpringOnly()
+        dragBaseOffset = 0
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
@@ -329,40 +410,83 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
             overridePreviewCategory = nil
             onResetHeader?()
         }
-        isAnimatingSnap = false
     }
-}
 
-extension View {
-    /// Gently softens the top edge of a scrolled incoming gallery preview before native
-    /// vertical scroll-edge blur engages at transition completion.
-    func horizontalGalleryIncomingTopFade(
-        isActive: Bool,
-        outgoingTopOffset: CGFloat,
-        topBleed: CGFloat
-    ) -> some View {
-        let shouldFade = !isActive && topBleed > 0 && outgoingTopOffset < 4
-        return overlay(alignment: .top) {
-            LinearGradient(
-                stops: [
-                    .init(color: Color(uiColor: .systemBackground).opacity(0.78), location: 0),
-                    .init(color: Color(uiColor: .systemBackground).opacity(0.42), location: 0.68),
-                    .init(color: Color(uiColor: .systemBackground).opacity(0), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: shouldFade ? topBleed : 0)
-            .opacity(shouldFade ? 1 : 0)
-            .allowsHitTesting(false)
+    private func stopSpringOnly() {
+        springGeneration += 1
+        displayLink?.invalidate()
+        displayLink = nil
+        displayLinkProxy = nil
+        springCompletion = nil
+    }
+
+    private func startSpring(to target: CGFloat, initialVelocity: CGFloat, completion: @escaping () -> Void) {
+        stopSpringOnly()
+
+        if abs(dragOffset - target) < 0.35 && abs(initialVelocity) < 10 {
+            dragOffset = target
+            completion()
+            return
+        }
+
+        springTargetOffset = target
+        springVelocity = max(-2600, min(2600, initialVelocity))
+        springStartTime = CACurrentMediaTime()
+        springCompletion = completion
+
+        let proxy = DisplayLinkProxy(owner: self) { controller, link in
+            controller.stepSpring(link)
+        }
+        let link = CADisplayLink(target: proxy, selector: #selector(DisplayLinkProxy.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        displayLinkProxy = proxy
+        displayLink = link
+    }
+
+    private func stepSpring(_ link: CADisplayLink) {
+        let elapsed = CACurrentMediaTime() - springStartTime
+        let rawDt = link.targetTimestamp - link.timestamp
+        let dt = CGFloat(min(1.0 / 30.0, max(1.0 / 240.0, rawDt > 0 ? rawDt : (1.0 / 60.0))))
+
+        let stiffness: CGFloat = 210.0
+        let damping: CGFloat = 24.5
+        let subSteps = 2
+        let subDt = dt / CGFloat(subSteps)
+
+        var x = dragOffset
+        var v = springVelocity
+        for _ in 0..<subSteps {
+            let disp = x - springTargetOffset
+            let accel = -stiffness * disp - damping * v
+            v += accel * subDt
+            x += v * subDt
+        }
+
+        springVelocity = v
+
+        if elapsed > 1.35 || (abs(x - springTargetOffset) < 0.35 && abs(v) < 12.0) {
+            let done = springCompletion
+            displayLink?.invalidate()
+            displayLink = nil
+            displayLinkProxy = nil
+            dragOffset = springTargetOffset
+            let generation = springGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.springGeneration == generation else { return }
+                self.springCompletion = nil
+                done?()
+            }
+        } else {
+            dragOffset = x
         }
     }
 }
 
-/// Attaches a horizontal pan gesture recognizer directly to the enclosing vertical UIScrollView
-/// so horizontal swipes never fight vertical scrolling or block interactive pop / edge gestures.
+/// Attaches a non-blocking horizontal pan gesture recognizer directly to the enclosing vertical
+/// UIScrollView so horizontal swipes feel 1:1 and never deadlock vertical scrolling.
 struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
-    let isLocked: Bool
+    let onBegan: (CGFloat) -> Void
     let onChanged: (CGFloat) -> Void
     let onEnded: (CGFloat, CGFloat, Bool) -> Void
     let onScrollViewFound: (UIScrollView) -> Void
@@ -383,7 +507,7 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: AnchorView, context: Context) {
-        context.coordinator.isLocked = isLocked
+        context.coordinator.onBegan = onBegan
         context.coordinator.onChanged = onChanged
         context.coordinator.onEnded = onEnded
         context.coordinator.onScrollViewFound = onScrollViewFound
@@ -397,7 +521,7 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
-            isLocked: isLocked,
+            onBegan: onBegan,
             onChanged: onChanged,
             onEnded: onEnded,
             onScrollViewFound: onScrollViewFound,
@@ -415,7 +539,7 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var isLocked: Bool
+        var onBegan: (CGFloat) -> Void
         var onChanged: (CGFloat) -> Void
         var onEnded: (CGFloat, CGFloat, Bool) -> Void
         var onScrollViewFound: (UIScrollView) -> Void
@@ -425,13 +549,13 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
         private var panGesture: UIPanGestureRecognizer?
 
         init(
-            isLocked: Bool,
+            onBegan: @escaping (CGFloat) -> Void,
             onChanged: @escaping (CGFloat) -> Void,
             onEnded: @escaping (CGFloat, CGFloat, Bool) -> Void,
             onScrollViewFound: @escaping (UIScrollView) -> Void,
             onWindowDismiss: @escaping () -> Void
         ) {
-            self.isLocked = isLocked
+            self.onBegan = onBegan
             self.onChanged = onChanged
             self.onEnded = onEnded
             self.onScrollViewFound = onScrollViewFound
@@ -469,8 +593,11 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
                 if let sv = attachedScrollView {
                     sv.panGestureRecognizer.isEnabled = false
                     sv.panGestureRecognizer.isEnabled = true
+                    if sv.isDecelerating {
+                        sv.setContentOffset(sv.contentOffset, animated: false)
+                    }
                 }
-                onChanged(tx)
+                onBegan(tx)
             case .changed:
                 onChanged(tx)
             case .ended:
@@ -483,20 +610,19 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard !isLocked else { return false }
             guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
                   let view = pan.view,
                   view.window != nil else { return false }
             if let sv = attachedScrollView, sv.isDragging {
                 let svTy = abs(sv.panGestureRecognizer.translation(in: sv).y)
-                if svTy > 8 {
+                if svTy > 10 {
                     return false
                 }
             }
             let velocity = pan.velocity(in: view)
             let absX = abs(velocity.x)
             let absY = abs(velocity.y)
-            guard absX > 10, absX > absY * 1.15 else {
+            guard absX > 5, absX > absY * 1.1 else {
                 return false
             }
             if let hit = view.hitTest(pan.location(in: view), with: nil),
@@ -510,7 +636,8 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
         ) -> Bool {
-            false
+            guard let sv = attachedScrollView else { return false }
+            return otherGestureRecognizer === sv.panGestureRecognizer
         }
 
         private static func findVerticalScrollView(from view: UIView) -> UIScrollView? {
@@ -518,7 +645,7 @@ struct HorizontalGallerySwipeAttachment: UIViewRepresentable {
             while let current = cursor {
                 if let sv = current as? UIScrollView,
                    !sv.alwaysBounceHorizontal,
-                   sv.contentSize.width <= sv.bounds.width + 2 {
+                   (sv.bounds.width < 1 || sv.contentSize.width <= sv.bounds.width + 2) {
                     return sv
                 }
                 cursor = current.superview

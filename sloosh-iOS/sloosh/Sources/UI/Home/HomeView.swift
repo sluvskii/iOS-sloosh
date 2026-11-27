@@ -362,7 +362,6 @@ private struct HomeGalleryStageView: View {
                 let rawSavedY = isActive ? 0 : (metrics.savedScrollOffsets[cat] ?? 0)
                 let savedY = hasContent ? rawSavedY : 0
                 let topBleed = metrics.topBleed(isActive: isActive, savedY: savedY, extraTopMargin: extraTopBleedMargin)
-                let delta = max(0, savedY - topBleed)
                 let xPos = isActive ? offset : (offset + (swipe.slideDirection > 0 ? stepStride : -stepStride))
                 let yPos = isActive ? 0 : (metrics.topOffset - topBleed)
                 let clipHeight: CGFloat? = isActive ? nil : (fullPageHeight + topBleed)
@@ -386,14 +385,9 @@ private struct HomeGalleryStageView: View {
                         }
                     )
                 )
-                .padding(.top, isActive ? 0 : -delta)
+                .offset(y: isActive ? 0 : -(savedY - topBleed))
                 .frame(width: pageWidth, height: clipHeight, alignment: .top)
                 .clipped()
-                .horizontalGalleryIncomingTopFade(
-                    isActive: isActive,
-                    outgoingTopOffset: metrics.topOffset,
-                    topBleed: topBleed
-                )
                 .allowsHitTesting(isActive)
                 .offset(x: xPos, y: yPos)
             }
@@ -401,16 +395,15 @@ private struct HomeGalleryStageView: View {
         .animation(.easeInOut(duration: 0.18), value: viewModel.selectedFilter)
         .background(
             HorizontalGallerySwipeAttachment(
-                isLocked: swipe.isAnimatingSnap,
-                onChanged: { translationX in
-                    swipe.handlePanChanged(
+                onBegan: { translationX in
+                    swipe.handlePanBegan(
                         translationX,
                         current: viewModel.selectedCategory,
                         in: all,
                         pageWidth: pageWidth,
                         preloadIfNeeded: preloadIfNeeded,
-                        onPreviewCandidate: { candidate, tx in
-                            if let candidate, abs(tx) > pageWidth * 0.42 {
+                        onPreviewCandidate: { candidate, totalX in
+                            if let candidate {
                                 if headerCategory != candidate {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
                                         headerCategory = candidate
@@ -421,6 +414,30 @@ private struct HomeGalleryStageView: View {
                                     headerCategory = nil
                                 }
                             }
+                            _ = totalX
+                        }
+                    )
+                },
+                onChanged: { translationX in
+                    swipe.handlePanChanged(
+                        translationX,
+                        current: viewModel.selectedCategory,
+                        in: all,
+                        pageWidth: pageWidth,
+                        preloadIfNeeded: preloadIfNeeded,
+                        onPreviewCandidate: { candidate, totalX in
+                            if let candidate {
+                                if headerCategory != candidate {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                        headerCategory = candidate
+                                    }
+                                }
+                            } else if headerCategory != nil {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                    headerCategory = nil
+                                }
+                            }
+                            _ = totalX
                         }
                     )
                 },
@@ -463,7 +480,7 @@ private struct HomeGalleryStageView: View {
                     }
                 },
                 onWindowDismiss: {
-                    if swipe.dragOffset != 0 || swipe.slideDirection != 0 || swipe.isAnimatingSnap {
+                    if swipe.dragOffset != 0 || swipe.slideDirection != 0 {
                         swipe.resetImmediately {
                             headerCategory = nil
                         }

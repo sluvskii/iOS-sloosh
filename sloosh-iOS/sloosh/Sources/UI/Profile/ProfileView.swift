@@ -416,7 +416,6 @@ private struct ProfileGalleryStageView: View {
                 let rawSavedY = isActive ? 0 : (metrics.savedScrollOffsets[cat] ?? 0)
                 let savedY = hasContent ? rawSavedY : 0
                 let topBleed = metrics.topBleed(isActive: isActive, savedY: savedY, extraTopMargin: 6)
-                let delta = max(0, savedY - topBleed)
                 let xPos = isActive ? offset : (offset + (swipe.slideDirection > 0 ? stepStride : -stepStride))
                 let yPos = isActive ? 0 : (metrics.topOffset - topBleed)
                 let clipHeight: CGFloat? = isActive ? nil : (fullPageHeight + topBleed)
@@ -443,21 +442,23 @@ private struct ProfileGalleryStageView: View {
                         }
                     )
                 )
-                .padding(.top, isActive ? 0 : -delta)
+                .offset(y: isActive ? 0 : -(savedY - topBleed))
                 .frame(width: pageWidth, height: clipHeight, alignment: .top)
                 .clipped()
-                .horizontalGalleryIncomingTopFade(
-                    isActive: isActive,
-                    outgoingTopOffset: metrics.topOffset,
-                    topBleed: topBleed
-                )
                 .allowsHitTesting(isActive)
                 .offset(x: xPos, y: yPos)
             }
         }
         .background(
             HorizontalGallerySwipeAttachment(
-                isLocked: swipe.isAnimatingSnap,
+                onBegan: { translationX in
+                    swipe.handlePanBegan(
+                        translationX,
+                        current: selectedCategory,
+                        in: all,
+                        pageWidth: pageWidth
+                    )
+                },
                 onChanged: { translationX in
                     swipe.handlePanChanged(
                         translationX,
@@ -489,7 +490,7 @@ private struct ProfileGalleryStageView: View {
                     }
                 },
                 onWindowDismiss: {
-                    if swipe.dragOffset != 0 || swipe.slideDirection != 0 || swipe.isAnimatingSnap {
+                    if swipe.dragOffset != 0 || swipe.slideDirection != 0 {
                         swipe.resetImmediately()
                     }
                 }
