@@ -23,6 +23,9 @@ public struct VariableBlurView: View {
     public var haloSpread: CGFloat = 0.2
     /// Во сколько раз радиус блюра ореола больше базового.
     public var haloRadiusBoost: CGFloat = 3.0
+    /// Отложенные принудительные переустановки фильтра и 1с таймер проверки.
+    /// Для кратких транзиентных оверлеев отключается, чтобы не вызывать миганий при появлении.
+    public var allowsDelayedHeals: Bool = true
 
     public init(
         maxBlurRadius: CGFloat = 2,
@@ -32,7 +35,8 @@ public struct VariableBlurView: View {
         style: UIBlurEffect.Style = .systemMaterial,
         haloIntensity: Double = 0.65,
         haloSpread: CGFloat = 0.2,
-        haloRadiusBoost: CGFloat = 3.0
+        haloRadiusBoost: CGFloat = 3.0,
+        allowsDelayedHeals: Bool = true
     ) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
@@ -42,6 +46,7 @@ public struct VariableBlurView: View {
         self.haloIntensity = haloIntensity
         self.haloSpread = haloSpread
         self.haloRadiusBoost = haloRadiusBoost
+        self.allowsDelayedHeals = allowsDelayedHeals
     }
 
     public var body: some View {
@@ -51,7 +56,8 @@ public struct VariableBlurView: View {
             style: style,
             haloIntensity: haloIntensity,
             haloSpread: haloSpread,
-            haloRadiusBoost: haloRadiusBoost
+            haloRadiusBoost: haloRadiusBoost,
+            allowsDelayedHeals: allowsDelayedHeals
         )
         .overlay(
             LinearGradient(
@@ -110,6 +116,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
     public var haloIntensity: Double = 0.65
     public var haloSpread: CGFloat = 0.2
     public var haloRadiusBoost: CGFloat = 3.0
+    public var allowsDelayedHeals: Bool = true
 
     public enum BlurDirection {
         case blurredTopClearBottom
@@ -124,7 +131,8 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         style: UIBlurEffect.Style = .systemMaterial,
         haloIntensity: Double = 0.65,
         haloSpread: CGFloat = 0.2,
-        haloRadiusBoost: CGFloat = 3.0
+        haloRadiusBoost: CGFloat = 3.0,
+        allowsDelayedHeals: Bool = true
     ) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
@@ -132,6 +140,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         self.haloIntensity = haloIntensity
         self.haloSpread = haloSpread
         self.haloRadiusBoost = haloRadiusBoost
+        self.allowsDelayedHeals = allowsDelayedHeals
     }
 
     public func makeUIView(context: Context) -> VariableBlurUIView {
@@ -141,11 +150,15 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
             style: style,
             haloIntensity: haloIntensity,
             haloSpread: haloSpread,
-            haloRadiusBoost: haloRadiusBoost
+            haloRadiusBoost: haloRadiusBoost,
+            allowsDelayedHeals: allowsDelayedHeals
         )
     }
 
     public func updateUIView(_ uiView: VariableBlurUIView, context: Context) {
+        if uiView.allowsDelayedHeals != allowsDelayedHeals {
+            uiView.allowsDelayedHeals = allowsDelayedHeals
+        }
         if uiView.maxBlurRadius != maxBlurRadius || uiView.direction != direction || uiView.style != style
             || uiView.haloIntensity != haloIntensity || uiView.haloSpread != haloSpread || uiView.haloRadiusBoost != haloRadiusBoost {
             uiView.maxBlurRadius = maxBlurRadius
@@ -202,6 +215,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
     }
 
+    public var allowsDelayedHeals: Bool = true
+
     private let haloEffectView = UIVisualEffectView(effect: nil)
     /// Периодическая проверка целостности приватных фильтров (их срывает
     /// пересоздание backdrop-слоя после переходов/модалок/плеера).
@@ -213,7 +228,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
         style: UIBlurEffect.Style = .systemMaterial,
         haloIntensity: Double = 0.65,
         haloSpread: CGFloat = 0.2,
-        haloRadiusBoost: CGFloat = 3.0
+        haloRadiusBoost: CGFloat = 3.0,
+        allowsDelayedHeals: Bool = true
     ) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
@@ -221,6 +237,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
         self.haloIntensity = haloIntensity
         self.haloSpread = haloSpread
         self.haloRadiusBoost = haloRadiusBoost
+        self.allowsDelayedHeals = allowsDelayedHeals
         super.init(effect: UIBlurEffect(style: style))
 
         hideTintOverlays()
@@ -274,8 +291,10 @@ public final class VariableBlurUIView: UIVisualEffectView {
         hideTintOverlays()
         if window != nil {
             healLostFiltersIfNeeded(force: false)
-            scheduleDelayedHeals()
-            startHealthTimer()
+            if allowsDelayedHeals {
+                scheduleDelayedHeals()
+                startHealthTimer()
+            }
         } else {
             stopHealthTimer()
         }
@@ -284,7 +303,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
     @objc private func appDidBecomeActive() {
         guard window != nil else { return }
         // Активация после плеера/модалок — слой мог быть пересоздан, ставим заново
-        healLostFiltersIfNeeded(force: true)
+        healLostFiltersIfNeeded(force: allowsDelayedHeals)
     }
 
     deinit {

@@ -158,13 +158,13 @@ final class HorizontalGallerySwipeController<Category: Hashable>: ObservableObje
         let gen = handoverGeneration
         handoverTopBlurOpacity = 1.0
         isTopBlurHandoverMounted = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
             guard let self, self.handoverGeneration == gen else { return }
-            withAnimation(.easeOut(duration: 0.42)) {
+            withAnimation(.easeOut(duration: 0.22)) {
                 self.handoverTopBlurOpacity = 0
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.27) { [weak self] in
             guard let self, self.handoverGeneration == gen else { return }
             self.isTopBlurHandoverMounted = false
         }
@@ -887,17 +887,18 @@ struct HorizontalGalleryTopBlurOverlay<Category: Hashable>: View {
             .allowsHitTesting(false)
             .overlay(alignment: .topLeading) {
                 if let activeX {
-                    let topSafeBand = max(96, metrics.topInset + 28)
+                    let topSafeBand = max(108, metrics.topInset + 36)
                     ZStack(alignment: .topLeading) {
                         VariableBlurView(
-                            maxBlurRadius: 3.0,
+                            maxBlurRadius: 10.0,
                             direction: .blurredTopClearBottom,
                             tintColor: Color(uiColor: .systemBackground),
-                            tintOpacity: 0.84,
+                            tintOpacity: 0.36,
                             style: .systemMaterial,
-                            haloIntensity: 0.35,
-                            haloSpread: 0.2,
-                            haloRadiusBoost: 2.0
+                            haloIntensity: 0.42,
+                            haloSpread: 0.20,
+                            haloRadiusBoost: 2.0,
+                            allowsDelayedHeals: false
                         )
                         .frame(width: pageWidth, height: topSafeBand)
                         .clipped()
