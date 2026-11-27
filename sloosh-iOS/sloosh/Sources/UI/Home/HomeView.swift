@@ -24,6 +24,16 @@ enum HomeCategory: String, CaseIterable {
             return "Аниме"
         }
     }
+
+    var icon: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .movies: return "movieclapper.fill"
+        case .tvShows: return "tv.fill"
+        case .cartoons: return "teddybear.fill"
+        case .anime: return "character.ja"
+        }
+    }
 }
 
 enum HomeFilter: String, CaseIterable, Identifiable {
@@ -105,14 +115,18 @@ struct HomeView: View {
                                 if viewModel.selectedCategory == category {
                                     Label(category.title, systemImage: "checkmark")
                                 } else {
-                                    Text(category.title)
+                                    Label(category.title, systemImage: category.icon)
                                 }
                             }
                         }
                     } label: {
                         let displayedCategory = headerCategory ?? viewModel.selectedCategory
                         VStack(spacing: 1) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 5) {
+                                Image(systemName: displayedCategory.icon)
+                                    .font(.system(size: 13.5, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                    .contentTransition(.symbolEffect(.replace))
                                 Text(displayedCategory.title)
                                     .font(.system(size: 17, weight: .semibold))
                                     .foregroundStyle(.primary)

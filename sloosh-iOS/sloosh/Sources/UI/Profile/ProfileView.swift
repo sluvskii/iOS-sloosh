@@ -8,6 +8,15 @@ enum FavoriteCategory: String, CaseIterable {
     case cartoons = "Мульты"
 
     var title: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .movies: return "movieclapper.fill"
+        case .tvShows: return "tv.fill"
+        case .cartoons: return "teddybear.fill"
+        }
+    }
     
     var filterType: String? {
         switch self {
@@ -140,7 +149,7 @@ struct ProfileView: View {
                                 if selectedCategory == category {
                                     Label(menuTitle, systemImage: "checkmark")
                                 } else {
-                                    Text(menuTitle)
+                                    Label(menuTitle, systemImage: category.icon)
                                 }
                             }
                         }
@@ -152,7 +161,11 @@ struct ProfileView: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
 
-                            HStack(spacing: 3) {
+                            HStack(spacing: 4) {
+                                Image(systemName: displayedCategory.icon)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .contentTransition(.symbolEffect(.replace))
                                 Text(displayedCategory.title)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
