@@ -1201,8 +1201,7 @@ struct DetailsView: View {
         }
 
         .environment(\.colorScheme, .dark)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarVisibility(.hidden, for: .tabBar)
+        .preferredColorScheme(.dark)
     }
 
 
