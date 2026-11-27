@@ -141,7 +141,7 @@ struct PlayerControlsView: View {
                     .ignoresSafeArea()
             }
             .opacity(showControls ? 1 : 0)
-            .scaleEffect(showControls ? 1.0 : 0.98)
+            .blur(radius: showControls ? 0 : 16)
             .animation(.easeInOut(duration: 0.24), value: showControls)
             .tint(.white)
         }

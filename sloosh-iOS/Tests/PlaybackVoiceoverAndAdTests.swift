@@ -93,6 +93,10 @@ struct PlaybackVoiceoverAndAdTests {
         #EXTINF:5.0,
         https://distribrey.com/ad/banner.ts
         #EXT-X-DISCONTINUITY
+        #EXT-X-CUE-OUT:DURATION=5
+        #EXTINF:5.0,
+        https://liftapp.ink/promo.ts
+        #EXT-X-CUE-IN
         #EXTINF:10.0,
         seg-2-v1.ts
         #EXT-X-ENDLIST
@@ -103,7 +107,7 @@ struct PlaybackVoiceoverAndAdTests {
             isCollaps: true
         ) { "proxy/\($0)" }
         check(filteredMedia.contains("#EXT-X-START:TIME-OFFSET=4.0,PRECISE=YES"), "Explicit isCollaps flag adds 4.0s offset on mirror domains too")
-        check(!filteredMedia.contains("preroll.ts") && !filteredMedia.contains("distribrey.com"), "Spliced SCTE35 and external ad discontinuity segments are stripped")
+        check(!filteredMedia.contains("preroll.ts") && !filteredMedia.contains("distribrey.com") && !filteredMedia.contains("liftapp.ink"), "Spliced SCTE35 and external ad discontinuity segments are stripped")
         check(filteredMedia.contains("proxy/seg-1-v1.ts") && filteredMedia.contains("proxy/seg-2-v1.ts"), "Genuine content segments are preserved and rewritten")
 
         let multiCdnMedia = """

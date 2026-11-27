@@ -461,7 +461,7 @@ class PlaybackHlsRewriter {
             let trimmed = rawUri.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return false }
             let lower = trimmed.lowercased()
-            let adMarkers = ["/ad/", "/ads/", "preroll", "midroll", "postroll", "vast", "/promo/", "doubleclick", "googlesyndication", "distribrey", "/lift", "lift_", "-lift"]
+            let adMarkers = ["/ad/", "/ads/", "preroll", "midroll", "postroll", "vast", "/promo/", "doubleclick", "googlesyndication", "distribrey", "liftapp", "/lift", "lift_", "-lift"]
             if adMarkers.contains(where: { lower.contains($0) }) {
                 return true
             }

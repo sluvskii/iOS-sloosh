@@ -70,6 +70,7 @@ struct SeekBarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .clipShape(Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")
