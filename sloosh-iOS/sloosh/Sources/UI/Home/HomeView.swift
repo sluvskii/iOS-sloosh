@@ -211,31 +211,6 @@ struct HomeView: View {
     }
 }
 
-private struct HomeScrollMetrics: Equatable {
-    var topOffset: CGFloat
-    var width: CGFloat
-    var fullHeight: CGFloat
-    var topInset: CGFloat
-}
-
-private final class HomeSwipeMetricsBox {
-    var topOffset: CGFloat = 0
-    var width: CGFloat = UIScreen.main.bounds.width
-    var fullHeight: CGFloat = UIScreen.main.bounds.height
-    var topInset: CGFloat = 0
-    var savedScrollOffsets: [HomeCategory: CGFloat] = [:]
-}
-
-@MainActor
-private final class HomeSwipeController: ObservableObject {
-    @Published var dragOffset: CGFloat = 0
-    @Published var slideDirection: Int = 0
-    @Published var overridePreviewCategory: HomeCategory? = nil
-    var isAnimatingSnap: Bool = false
-    var snapGeneration: Int = 0
-    weak var attachedScrollView: UIScrollView? = nil
-}
-
 private struct HomeCategoryGridView: View, Equatable {
     let category: HomeCategory
     let filter: HomeFilter
@@ -355,53 +330,13 @@ private struct HomeGalleryStageView: View {
     let cardDensity: CardDensity
     let spacing: CGFloat
     let padding: CGFloat
-    let metrics: HomeSwipeMetricsBox
+    let extraTopBleedMargin: CGFloat
+    let metrics: HorizontalGalleryMetricsBox<HomeCategory>
     let scrollProxy: ScrollViewProxy
     @Binding var requestedCategory: HomeCategory?
     @Binding var headerCategory: HomeCategory?
 
-    @StateObject private var swipe = HomeSwipeController()
-
-    private let pageGap: CGFloat = 12
-
-    private func relativeCategory(step: Int) -> HomeCategory? {
-        let all = HomeCategory.allCases
-        guard let currentIndex = all.firstIndex(of: viewModel.selectedCategory) else { return nil }
-        let targetIndex = currentIndex + step
-        guard targetIndex >= 0 && targetIndex < all.count else { return nil }
-        return all[targetIndex]
-    }
-
-    private var incomingCategory: HomeCategory? {
-        if let override = swipe.overridePreviewCategory {
-            return override
-        }
-        guard swipe.slideDirection != 0 else { return nil }
-        return relativeCategory(step: swipe.slideDirection > 0 ? 1 : -1)
-    }
-
-    private var visibleCategories: [HomeCategory] {
-        let active = viewModel.selectedCategory
-        if let incoming = incomingCategory, incoming != active {
-            return [active, incoming]
-        }
-        return [active]
-    }
-
-    private func effectiveOffset(pageWidth: CGFloat) -> CGFloat {
-        if swipe.overridePreviewCategory != nil {
-            return swipe.dragOffset
-        }
-        guard swipe.dragOffset != 0 else { return 0 }
-        let step = swipe.dragOffset < 0 ? 1 : -1
-        if relativeCategory(step: step) != nil {
-            return swipe.dragOffset
-        }
-        let sign: CGFloat = swipe.dragOffset >= 0 ? 1 : -1
-        let absX = abs(swipe.dragOffset)
-        let limit = max(240, pageWidth * 0.75)
-        return sign * (absX * 0.25 / (1 + absX / limit))
-    }
+    @StateObject private var swipe = HorizontalGallerySwipeController<HomeCategory>()
 
     private func preloadIfNeeded(_ cat: HomeCategory?) {
         guard let cat else { return }
@@ -410,142 +345,24 @@ private struct HomeGalleryStageView: View {
         Task { await viewModel.loadData(for: cat, force: false, prefetchAdjacent: false) }
     }
 
-    private func commitSwitch(to targetCategory: HomeCategory, finalOffset: CGFloat, velocityX: CGFloat = 0) {
-        let outgoingCategory = viewModel.selectedCategory
-        swipe.snapGeneration += 1
-        let generation = swipe.snapGeneration
-        swipe.isAnimatingSnap = true
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        if headerCategory != targetCategory {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                headerCategory = targetCategory
-            }
-        }
-        let finalizeSwitch = {
-            guard swipe.snapGeneration == generation, swipe.isAnimatingSnap else { return }
-            metrics.savedScrollOffsets[outgoingCategory] = metrics.topOffset
-            let targetY = metrics.savedScrollOffsets[targetCategory] ?? 0
-
-            if let sv = swipe.attachedScrollView {
-                let topY = -sv.adjustedContentInset.top
-                let desiredY = topY + targetY
-                if abs(sv.contentOffset.y - desiredY) > 0.5 {
-                    sv.setContentOffset(CGPoint(x: 0, y: desiredY), animated: false)
-                }
-            }
-            var tx = Transaction()
-            tx.disablesAnimations = true
-            withTransaction(tx) {
-                swipe.dragOffset = 0
-                swipe.slideDirection = 0
-                swipe.overridePreviewCategory = nil
-                metrics.topOffset = targetY
-                headerCategory = nil
-                viewModel.selectedCategory = targetCategory
-            }
-            swipe.isAnimatingSnap = false
-
-            if targetY > 0, let sv = swipe.attachedScrollView {
-                DispatchQueue.main.async { [weak sv] in
-                    guard let sv, self.viewModel.selectedCategory == targetCategory else { return }
-                    let topY = -sv.adjustedContentInset.top
-                    let maxY = max(topY, sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom)
-                    let clampedY = min(topY + targetY, maxY)
-                    if abs(sv.contentOffset.y - clampedY) > 1 {
-                        sv.setContentOffset(CGPoint(x: 0, y: clampedY), animated: false)
-                    }
-                }
-            }
-        }
-
-        let remaining = abs(finalOffset - swipe.dragOffset)
-        let speed = max(320, abs(velocityX))
-        let duration = min(0.28, max(0.14, TimeInterval(remaining / speed) * 1.1))
-        withAnimation(.timingCurve(0.18, 0.88, 0.30, 1.0, duration: duration)) {
-            swipe.dragOffset = finalOffset
-        } completion: {
-            finalizeSwitch()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.15) {
-            finalizeSwitch()
-        }
-    }
-
-    private func cancelSwipe() {
-        swipe.snapGeneration += 1
-        let generation = swipe.snapGeneration
-        swipe.isAnimatingSnap = true
-        if headerCategory != nil {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                headerCategory = nil
-            }
-        }
-        let finalizeCancel = {
-            guard swipe.snapGeneration == generation, swipe.isAnimatingSnap else { return }
-            swipe.dragOffset = 0
-            swipe.slideDirection = 0
-            swipe.overridePreviewCategory = nil
-            swipe.isAnimatingSnap = false
-        }
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-            swipe.dragOffset = 0
-        } completion: {
-            finalizeCancel()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
-            finalizeCancel()
-        }
-    }
-
-    private func resetSwipeImmediately() {
-        swipe.snapGeneration += 1
-        var tx = Transaction()
-        tx.disablesAnimations = true
-        withTransaction(tx) {
-            swipe.dragOffset = 0
-            swipe.slideDirection = 0
-            swipe.overridePreviewCategory = nil
-            headerCategory = nil
-        }
-        swipe.isAnimatingSnap = false
-    }
-
-    private func handleRequestedCategoryChange(_ target: HomeCategory) {
-        guard !swipe.isAnimatingSnap else { return }
-        if target == viewModel.selectedCategory {
-            metrics.savedScrollOffsets[target] = 0
-            withAnimation(.easeOut(duration: 0.24)) {
-                scrollProxy.scrollTo("home-scroll-top", anchor: .top)
-            }
-            return
-        }
-        let all = HomeCategory.allCases
-        guard let currentIndex = all.firstIndex(of: viewModel.selectedCategory),
-              let targetIndex = all.firstIndex(of: target) else {
-            viewModel.selectedCategory = target
-            return
-        }
-        let isForward = targetIndex > currentIndex
-        swipe.overridePreviewCategory = target
-        swipe.slideDirection = isForward ? 1 : -1
-        preloadIfNeeded(target)
-        let stride = max(1, metrics.width) + pageGap
-        commitSwitch(to: target, finalOffset: isForward ? -stride : stride)
-    }
-
     var body: some View {
+        let all = HomeCategory.allCases
         let activeCategory = viewModel.selectedCategory
         let pageWidth = max(1, metrics.width)
         let fullPageHeight = max(UIScreen.main.bounds.height, metrics.fullHeight)
-        let stepStride = pageWidth + pageGap
-        let offset = effectiveOffset(pageWidth: pageWidth)
+        let stepStride = pageWidth + HorizontalGallerySwipeController<HomeCategory>.pageGap
+        let offset = swipe.effectiveOffset(current: activeCategory, in: all, pageWidth: pageWidth)
 
         ZStack(alignment: .topLeading) {
-            ForEach(visibleCategories, id: \.self) { cat in
+            ForEach(swipe.visibleCategories(current: activeCategory, in: all), id: \.self) { cat in
                 let isActive = cat == activeCategory
                 let key = HomeCacheKey(category: cat, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
-                let savedY = isActive ? 0 : (metrics.savedScrollOffsets[cat] ?? 0)
-                let topBleed = (!isActive && metrics.topOffset > 0 && savedY > 0) ? min(savedY, metrics.topInset) : 0
+                let items = viewModel.cachedItems[key]
+                let hasContent = !(items?.isEmpty ?? false)
+                let rawSavedY = isActive ? 0 : (metrics.savedScrollOffsets[cat] ?? 0)
+                let savedY = hasContent ? rawSavedY : 0
+                let topBleed = metrics.topBleed(isActive: isActive, savedY: savedY, extraTopMargin: extraTopBleedMargin)
+                let delta = max(0, savedY - topBleed)
                 let xPos = isActive ? offset : (offset + (swipe.slideDirection > 0 ? stepStride : -stepStride))
                 let yPos = isActive ? 0 : (metrics.topOffset - topBleed)
                 let clipHeight: CGFloat? = isActive ? nil : (fullPageHeight + topBleed)
@@ -554,7 +371,7 @@ private struct HomeGalleryStageView: View {
                     content: HomeCategoryGridView(
                         category: cat,
                         filter: viewModel.selectedFilter,
-                        items: viewModel.cachedItems[key],
+                        items: items,
                         isLoading: viewModel.isLoading[key] ?? false,
                         isLoadingMore: isActive && (viewModel.isLoadingMore[key] ?? false),
                         cardDensity: cardDensity,
@@ -569,62 +386,76 @@ private struct HomeGalleryStageView: View {
                         }
                     )
                 )
-                .offset(y: isActive ? 0 : -(savedY - topBleed))
+                .padding(.top, isActive ? 0 : -delta)
                 .frame(width: pageWidth, height: clipHeight, alignment: .top)
                 .clipped()
+                .horizontalGalleryIncomingTopFade(
+                    isActive: isActive,
+                    outgoingTopOffset: metrics.topOffset,
+                    topBleed: topBleed
+                )
                 .allowsHitTesting(isActive)
                 .offset(x: xPos, y: yPos)
             }
         }
         .animation(.easeInOut(duration: 0.18), value: viewModel.selectedFilter)
         .background(
-            HomeSwipeAttachmentView(
+            HorizontalGallerySwipeAttachment(
                 isLocked: swipe.isAnimatingSnap,
                 onChanged: { translationX in
-                    guard !swipe.isAnimatingSnap else { return }
-                    if translationX < -2 {
-                        swipe.slideDirection = 1
-                        preloadIfNeeded(relativeCategory(step: 1))
-                    } else if translationX > 2 {
-                        swipe.slideDirection = -1
-                        preloadIfNeeded(relativeCategory(step: -1))
-                    }
-                    swipe.dragOffset = translationX
-
-                    let candidate = translationX < 0 ? relativeCategory(step: 1) : relativeCategory(step: -1)
-                    if candidate != nil, abs(translationX) > pageWidth * 0.45 {
-                        if headerCategory != candidate {
-                            withAnimation(.easeInOut(duration: 0.14)) {
-                                headerCategory = candidate
+                    swipe.handlePanChanged(
+                        translationX,
+                        current: viewModel.selectedCategory,
+                        in: all,
+                        pageWidth: pageWidth,
+                        preloadIfNeeded: preloadIfNeeded,
+                        onPreviewCandidate: { candidate, tx in
+                            if let candidate, abs(tx) > pageWidth * 0.42 {
+                                if headerCategory != candidate {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                        headerCategory = candidate
+                                    }
+                                }
+                            } else if headerCategory != nil {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                    headerCategory = nil
+                                }
                             }
                         }
-                    } else if headerCategory != nil {
-                        withAnimation(.easeInOut(duration: 0.14)) {
-                            headerCategory = nil
-                        }
-                    }
+                    )
                 },
                 onEnded: { translationX, velocityX, didFinish in
-                    guard !swipe.isAnimatingSnap else { return }
-                    guard didFinish else {
-                        cancelSwipe()
-                        return
-                    }
-                    let threshold = pageWidth * 0.25
-                    let projectedX = translationX + velocityX * 0.14
-                    if let next = relativeCategory(step: 1),
-                       ((projectedX < -threshold && velocityX <= 120) || velocityX < -320) {
-                        swipe.slideDirection = 1
-                        preloadIfNeeded(next)
-                        commitSwitch(to: next, finalOffset: -stepStride, velocityX: velocityX)
-                    } else if let prev = relativeCategory(step: -1),
-                              ((projectedX > threshold && velocityX >= -120) || velocityX > 320) {
-                        swipe.slideDirection = -1
-                        preloadIfNeeded(prev)
-                        commitSwitch(to: prev, finalOffset: stepStride, velocityX: velocityX)
-                    } else {
-                        cancelSwipe()
-                    }
+                    swipe.handlePanEnded(
+                        translationX,
+                        velocityX: velocityX,
+                        didFinish: didFinish,
+                        metrics: metrics,
+                        current: viewModel.selectedCategory,
+                        in: all,
+                        pageWidth: pageWidth,
+                        preloadIfNeeded: preloadIfNeeded,
+                        onPrepareCommitHeader: { target in
+                            if headerCategory != target {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                                    headerCategory = target
+                                }
+                            }
+                        },
+                        onPrepareCancelHeader: {
+                            if headerCategory != nil {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                    headerCategory = nil
+                                }
+                            }
+                        },
+                        isStillCurrent: { target in
+                            viewModel.selectedCategory == target
+                        },
+                        onCommitState: { target in
+                            headerCategory = nil
+                            viewModel.selectedCategory = target
+                        }
+                    )
                 },
                 onScrollViewFound: { sv in
                     if swipe.attachedScrollView !== sv {
@@ -633,7 +464,9 @@ private struct HomeGalleryStageView: View {
                 },
                 onWindowDismiss: {
                     if swipe.dragOffset != 0 || swipe.slideDirection != 0 || swipe.isAnimatingSnap {
-                        resetSwipeImmediately()
+                        swipe.resetImmediately {
+                            headerCategory = nil
+                        }
                     }
                 }
             )
@@ -641,7 +474,32 @@ private struct HomeGalleryStageView: View {
         .onChange(of: requestedCategory) { _, target in
             guard let target else { return }
             requestedCategory = nil
-            handleRequestedCategoryChange(target)
+            swipe.handleRequestedCategoryChange(
+                to: target,
+                metrics: metrics,
+                current: viewModel.selectedCategory,
+                in: all,
+                scrollToTop: {
+                    withAnimation(.easeOut(duration: 0.24)) {
+                        scrollProxy.scrollTo("home-scroll-top", anchor: .top)
+                    }
+                },
+                preloadIfNeeded: preloadIfNeeded,
+                onPrepareCommitHeader: { next in
+                    if headerCategory != next {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                            headerCategory = next
+                        }
+                    }
+                },
+                isStillCurrent: { next in
+                    viewModel.selectedCategory == next
+                },
+                onCommitState: { next in
+                    headerCategory = nil
+                    viewModel.selectedCategory = next
+                }
+            )
         }
     }
 }
@@ -653,7 +511,7 @@ struct HomeCategoryContentView: View {
     @Binding var headerCategory: HomeCategory?
 
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
-    @State private var metrics = HomeSwipeMetricsBox()
+    @State private var metrics = HorizontalGalleryMetricsBox<HomeCategory>()
 
     var body: some View {
         let category = viewModel.selectedCategory
@@ -678,6 +536,7 @@ struct HomeCategoryContentView: View {
                         cardDensity: cardDensity,
                         spacing: spacing,
                         padding: padding,
+                        extraTopBleedMargin: viewModel.searchFilters.isEmpty ? 10 : 58,
                         metrics: metrics,
                         scrollProxy: proxy,
                         requestedCategory: $requestedCategory,
@@ -688,18 +547,10 @@ struct HomeCategoryContentView: View {
                 .padding(.bottom, 16)
                 .animation(.spring(response: 0.32, dampingFraction: 0.85), value: viewModel.searchFilters.isEmpty)
             }
-            .onScrollGeometryChange(for: HomeScrollMetrics.self) { geometry in
-                HomeScrollMetrics(
-                    topOffset: max(0, geometry.contentOffset.y + geometry.contentInsets.top),
-                    width: max(1, geometry.containerSize.width),
-                    fullHeight: max(200, geometry.containerSize.height + geometry.contentInsets.bottom),
-                    topInset: max(0, geometry.contentInsets.top)
-                )
+            .onScrollGeometryChange(for: HorizontalGalleryScrollMetrics.self) { geometry in
+                HorizontalGalleryScrollMetrics.from(geometry)
             } action: { _, newMetrics in
-                metrics.topOffset = newMetrics.topOffset
-                metrics.width = newMetrics.width
-                metrics.fullHeight = newMetrics.fullHeight
-                metrics.topInset = newMetrics.topInset
+                metrics.apply(newMetrics)
             }
             .scrollIndicators(.hidden)
             .scrollEdgeEffectStyle(.soft, for: .all)
@@ -718,182 +569,6 @@ struct HomeCategoryContentView: View {
                     proxy.scrollTo("home-scroll-top", anchor: .top)
                 }
             }
-        }
-    }
-}
-
-private struct HomeSwipeAttachmentView: UIViewRepresentable {
-    let isLocked: Bool
-    let onChanged: (CGFloat) -> Void
-    let onEnded: (CGFloat, CGFloat, Bool) -> Void
-    let onScrollViewFound: (UIScrollView) -> Void
-    let onWindowDismiss: () -> Void
-
-    func makeUIView(context: Context) -> AnchorView {
-        let view = AnchorView()
-        view.isUserInteractionEnabled = false
-        view.backgroundColor = .clear
-        view.onWindowChanged = { anchor, hasWindow in
-            if hasWindow {
-                context.coordinator.attachIfNeeded(from: anchor)
-            } else {
-                context.coordinator.onWindowDismiss()
-            }
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: AnchorView, context: Context) {
-        context.coordinator.isLocked = isLocked
-        context.coordinator.onChanged = onChanged
-        context.coordinator.onEnded = onEnded
-        context.coordinator.onScrollViewFound = onScrollViewFound
-        context.coordinator.onWindowDismiss = onWindowDismiss
-        context.coordinator.attachIfNeeded(from: uiView)
-    }
-
-    static func dismantleUIView(_ uiView: AnchorView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            isLocked: isLocked,
-            onChanged: onChanged,
-            onEnded: onEnded,
-            onScrollViewFound: onScrollViewFound,
-            onWindowDismiss: onWindowDismiss
-        )
-    }
-
-    final class AnchorView: UIView {
-        var onWindowChanged: ((AnchorView, Bool) -> Void)?
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            onWindowChanged?(self, window != nil)
-        }
-    }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var isLocked: Bool
-        var onChanged: (CGFloat) -> Void
-        var onEnded: (CGFloat, CGFloat, Bool) -> Void
-        var onScrollViewFound: (UIScrollView) -> Void
-        var onWindowDismiss: () -> Void
-
-        weak var attachedScrollView: UIScrollView?
-        private var panGesture: UIPanGestureRecognizer?
-
-        init(
-            isLocked: Bool,
-            onChanged: @escaping (CGFloat) -> Void,
-            onEnded: @escaping (CGFloat, CGFloat, Bool) -> Void,
-            onScrollViewFound: @escaping (UIScrollView) -> Void,
-            onWindowDismiss: @escaping () -> Void
-        ) {
-            self.isLocked = isLocked
-            self.onChanged = onChanged
-            self.onEnded = onEnded
-            self.onScrollViewFound = onScrollViewFound
-            self.onWindowDismiss = onWindowDismiss
-        }
-
-        func attachIfNeeded(from view: UIView) {
-            guard let sv = Self.findVerticalScrollView(from: view) else { return }
-            if attachedScrollView !== sv {
-                detach()
-                let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-                pan.maximumNumberOfTouches = 1
-                pan.cancelsTouchesInView = true
-                pan.delegate = self
-                sv.addGestureRecognizer(pan)
-                panGesture = pan
-                attachedScrollView = sv
-                onScrollViewFound(sv)
-            }
-        }
-
-        func detach() {
-            if let pan = panGesture, let owner = pan.view {
-                owner.removeGestureRecognizer(pan)
-            }
-            panGesture = nil
-            attachedScrollView = nil
-        }
-
-        @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-            guard let view = gesture.view else { return }
-            let tx = gesture.translation(in: view).x
-            switch gesture.state {
-            case .began:
-                if let sv = attachedScrollView {
-                    sv.panGestureRecognizer.isEnabled = false
-                    sv.panGestureRecognizer.isEnabled = true
-                }
-                onChanged(tx)
-            case .changed:
-                onChanged(tx)
-            case .ended:
-                onEnded(tx, gesture.velocity(in: view).x, true)
-            case .cancelled, .failed:
-                onEnded(tx, 0, false)
-            default:
-                break
-            }
-        }
-
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard !isLocked else { return false }
-            guard let pan = gestureRecognizer as? UIPanGestureRecognizer,
-                  let view = pan.view,
-                  view.window != nil else { return false }
-            if let sv = attachedScrollView, sv.isDragging {
-                let svTy = abs(sv.panGestureRecognizer.translation(in: sv).y)
-                if svTy > 8 {
-                    return false
-                }
-            }
-            let velocity = pan.velocity(in: view)
-            let absX = abs(velocity.x)
-            let absY = abs(velocity.y)
-            guard absX > 10, absX > absY * 1.15 else {
-                return false
-            }
-            if let hit = view.hitTest(pan.location(in: view), with: nil),
-               Self.isInsideHorizontalScrollView(hit, root: view) {
-                return false
-            }
-            return true
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            false
-        }
-
-        private static func findVerticalScrollView(from view: UIView) -> UIScrollView? {
-            var cursor = view.superview
-            while let current = cursor {
-                if let sv = current as? UIScrollView,
-                   !sv.alwaysBounceHorizontal,
-                   sv.contentSize.width <= sv.bounds.width + 2 {
-                    return sv
-                }
-                cursor = current.superview
-            }
-            return nil
-        }
-
-        private static func isInsideHorizontalScrollView(_ hitView: UIView, root: UIView) -> Bool {
-            var cursor: UIView? = hitView
-            while let current = cursor, current !== root {
-                if let sv = current as? UIScrollView,
-                   sv.alwaysBounceHorizontal || sv.contentSize.width > sv.bounds.width + 2 {
-                    return true
-                }
-                cursor = current.superview
-            }
-            return false
         }
     }
 }

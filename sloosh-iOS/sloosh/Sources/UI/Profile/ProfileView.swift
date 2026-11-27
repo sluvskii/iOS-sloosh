@@ -17,6 +17,27 @@ enum FavoriteCategory: String, CaseIterable {
         case .cartoons: return "cartoon"
         }
     }
+
+    func filterFavorites(_ items: [FavoriteDto]) -> [FavoriteDto] {
+        switch self {
+        case .all:
+            return items
+        case .movies:
+            return items.filter { fav in
+                guard fav.type == "movie" else { return false }
+                return !isCartoonByTitle(fav.title)
+            }
+        case .tvShows:
+            return items.filter { fav in
+                guard fav.type == "tv" else { return false }
+                return !isCartoonByTitle(fav.title)
+            }
+        case .cartoons:
+            return items.filter { fav in
+                isCartoonByTitle(fav.title)
+            }
+        }
+    }
 }
 
 struct ProfileView: View {
@@ -55,24 +76,7 @@ struct ProfileView: View {
     }
 
     private func favorites(for category: FavoriteCategory) -> [FavoriteDto] {
-        switch category {
-        case .all:
-            return favoritesRepo.favorites
-        case .movies:
-            return favoritesRepo.favorites.filter { fav in
-                guard fav.type == "movie" else { return false }
-                return !isCartoonByTitle(fav.title)
-            }
-        case .tvShows:
-            return favoritesRepo.favorites.filter { fav in
-                guard fav.type == "tv" else { return false }
-                return !isCartoonByTitle(fav.title)
-            }
-        case .cartoons:
-            return favoritesRepo.favorites.filter { fav in
-                isCartoonByTitle(fav.title)
-            }
-        }
+        category.filterFavorites(favoritesRepo.favorites)
     }
 
     var filteredFavorites: [FavoriteDto] {
@@ -342,104 +346,280 @@ struct ProfileCategoryContentView: View {
     let cardDensity: CardDensity
     @Binding var directPlaybackMovie: MediaDto?
 
-    private func switchCategory(by step: Int) {
-        let all = FavoriteCategory.allCases
-        guard let currentIndex = all.firstIndex(of: selectedCategory) else { return }
-        let targetIndex = currentIndex + step
-        guard targetIndex >= 0 && targetIndex < all.count else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-            selectedCategory = all[targetIndex]
-        }
-    }
+    @State private var requestedCategory: FavoriteCategory? = nil
+    @State private var metrics = HorizontalGalleryMetricsBox<FavoriteCategory>()
 
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 Color.clear.frame(height: 0).id("profile-scroll-top")
 
-                VStack(spacing: 14) {
-                    ProfileCategoryPillStrip(
-                        selectedCategory: $selectedCategory,
-                        categoryCounts: categoryCounts
-                    )
-
-                    Group {
-                        if favoritesRepo.favorites.isEmpty {
-                            ProfileEmptyState(
-                                icon: "heart.slash",
-                                title: "Пока ничего не добавлено",
-                                message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
-                            )
-                            .padding(.top, 72)
-                            .padding(.bottom, 48)
-                        } else if favorites.isEmpty {
-                            ProfileEmptyState(
-                                icon: "film.stack",
-                                title: "В этой подборке пока пусто",
-                                message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
-                            )
-                            .padding(.top, 72)
-                            .padding(.bottom, 48)
-                        } else {
-                            let spacing: CGFloat = cardDensity == .compact ? 8 : 16
-                            let padding: CGFloat = cardDensity == .compact ? 12 : 16
-                            LazyVGrid(columns: columns, spacing: spacing) {
-                                ForEach(favorites, id: \.artworkIdentifier) { favorite in
-                                    let media = favorite.toMediaDto()
-                                    MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition, refreshArtwork: true)
-                                    .contextMenu {
-                                        Group {
-                                            Button {
-                                                directPlaybackMovie = media
-                                            } label: {
-                                                Label("Смотреть", systemImage: "play.fill")
-                                            }
-
-                                            NavigationLink(destination: DetailsView(movieId: media.id, mediaType: media.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                                Label("Подробнее", systemImage: "info.circle")
-                                            }
-
-                                            Button(role: .destructive) {
-                                                if let mediaId = favorite.mediaId, let type = favorite.type {
-                                                    favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
-                                                }
-                                            } label: {
-                                                Label("Удалить", systemImage: "trash")
-                                            }
-                                        }
-                                        .tint(nil)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, padding)
-                        }
-                    }
-                    .id(selectedCategory)
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.18), value: selectedCategory)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 45, coordinateSpace: .local)
-                            .onEnded { value in
-                                let dx = value.translation.width
-                                let dy = value.translation.height
-                                guard abs(dx) > 70, abs(dx) > abs(dy) * 1.8, abs(value.predictedEndTranslation.width) > 90 else { return }
-                                switchCategory(by: dx < 0 ? 1 : -1)
-                            }
-                    )
-                }
+                ProfileGalleryStageView(
+                    selectedCategory: $selectedCategory,
+                    requestedCategory: $requestedCategory,
+                    categoryCounts: categoryCounts,
+                    favoritesRepo: favoritesRepo,
+                    activeFavorites: favorites,
+                    navigationTransition: navigationTransition,
+                    columns: columns,
+                    cardDensity: cardDensity,
+                    metrics: metrics,
+                    scrollProxy: scrollProxy,
+                    directPlaybackMovie: $directPlaybackMovie
+                )
                 .padding(.top, 4)
                 .padding(.bottom, 16)
             }
+            .onScrollGeometryChange(for: HorizontalGalleryScrollMetrics.self) { geometry in
+                HorizontalGalleryScrollMetrics.from(geometry)
+            } action: { _, newMetrics in
+                metrics.apply(newMetrics)
+            }
+            .scrollIndicators(.hidden)
             .scrollEdgeEffectStyle(.soft, for: .all)
             .refreshable {
                 await CloudSyncService.shared.syncAllDataAsync(force: true)
                 favoritesRepo.reloadFromDb()
             }
-            .onChange(of: selectedCategory) { _, _ in
-                withAnimation(.easeOut(duration: 0.22)) {
-                    scrollProxy.scrollTo("profile-scroll-top", anchor: .top)
+        }
+    }
+}
+
+private struct ProfileGalleryStageView: View {
+    @Binding var selectedCategory: FavoriteCategory
+    @Binding var requestedCategory: FavoriteCategory?
+    let categoryCounts: [FavoriteCategory: Int]
+    @ObservedObject var favoritesRepo: FavoritesRepository
+    let activeFavorites: [FavoriteDto]
+    let navigationTransition: Namespace.ID
+    let columns: [GridItem]
+    let cardDensity: CardDensity
+    let metrics: HorizontalGalleryMetricsBox<FavoriteCategory>
+    let scrollProxy: ScrollViewProxy
+    @Binding var directPlaybackMovie: MediaDto?
+
+    @StateObject private var swipe = HorizontalGallerySwipeController<FavoriteCategory>()
+
+    var body: some View {
+        let all = FavoriteCategory.allCases
+        let activeCategory = selectedCategory
+        let pageWidth = max(1, metrics.width)
+        let fullPageHeight = max(UIScreen.main.bounds.height, metrics.fullHeight)
+        let stepStride = pageWidth + HorizontalGallerySwipeController<FavoriteCategory>.pageGap
+        let offset = swipe.effectiveOffset(current: activeCategory, in: all, pageWidth: pageWidth)
+
+        ZStack(alignment: .topLeading) {
+            ForEach(swipe.visibleCategories(current: activeCategory, in: all), id: \.self) { cat in
+                let isActive = cat == activeCategory
+                let catFavorites = isActive ? activeFavorites : cat.filterFavorites(favoritesRepo.favorites)
+                let hasContent = !favoritesRepo.favorites.isEmpty && !catFavorites.isEmpty
+                let rawSavedY = isActive ? 0 : (metrics.savedScrollOffsets[cat] ?? 0)
+                let savedY = hasContent ? rawSavedY : 0
+                let topBleed = metrics.topBleed(isActive: isActive, savedY: savedY, extraTopMargin: 6)
+                let delta = max(0, savedY - topBleed)
+                let xPos = isActive ? offset : (offset + (swipe.slideDirection > 0 ? stepStride : -stepStride))
+                let yPos = isActive ? 0 : (metrics.topOffset - topBleed)
+                let clipHeight: CGFloat? = isActive ? nil : (fullPageHeight + topBleed)
+
+                EquatableView(
+                    content: ProfileFavoritePageView(
+                        category: cat,
+                        categoryCounts: categoryCounts,
+                        hasAnyFavorites: !favoritesRepo.favorites.isEmpty,
+                        favorites: catFavorites,
+                        columns: columns,
+                        cardDensity: cardDensity,
+                        navigationTransition: navigationTransition,
+                        onSelectCategory: { tapped in
+                            requestedCategory = tapped
+                        },
+                        onDirectPlay: { media in
+                            directPlaybackMovie = media
+                        },
+                        onDeleteFavorite: { favorite in
+                            if let mediaId = favorite.mediaId, let type = favorite.type {
+                                favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                            }
+                        }
+                    )
+                )
+                .padding(.top, isActive ? 0 : -delta)
+                .frame(width: pageWidth, height: clipHeight, alignment: .top)
+                .clipped()
+                .horizontalGalleryIncomingTopFade(
+                    isActive: isActive,
+                    outgoingTopOffset: metrics.topOffset,
+                    topBleed: topBleed
+                )
+                .allowsHitTesting(isActive)
+                .offset(x: xPos, y: yPos)
+            }
+        }
+        .background(
+            HorizontalGallerySwipeAttachment(
+                isLocked: swipe.isAnimatingSnap,
+                onChanged: { translationX in
+                    swipe.handlePanChanged(
+                        translationX,
+                        current: selectedCategory,
+                        in: all,
+                        pageWidth: pageWidth
+                    )
+                },
+                onEnded: { translationX, velocityX, didFinish in
+                    swipe.handlePanEnded(
+                        translationX,
+                        velocityX: velocityX,
+                        didFinish: didFinish,
+                        metrics: metrics,
+                        current: selectedCategory,
+                        in: all,
+                        pageWidth: pageWidth,
+                        isStillCurrent: { target in
+                            selectedCategory == target
+                        },
+                        onCommitState: { target in
+                            selectedCategory = target
+                        }
+                    )
+                },
+                onScrollViewFound: { sv in
+                    if swipe.attachedScrollView !== sv {
+                        swipe.attachedScrollView = sv
+                    }
+                },
+                onWindowDismiss: {
+                    if swipe.dragOffset != 0 || swipe.slideDirection != 0 || swipe.isAnimatingSnap {
+                        swipe.resetImmediately()
+                    }
                 }
+            )
+        )
+        .onChange(of: requestedCategory) { _, target in
+            guard let target else { return }
+            requestedCategory = nil
+            swipe.handleRequestedCategoryChange(
+                to: target,
+                metrics: metrics,
+                current: selectedCategory,
+                in: all,
+                scrollToTop: {
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        scrollProxy.scrollTo("profile-scroll-top", anchor: .top)
+                    }
+                },
+                isStillCurrent: { next in
+                    selectedCategory == next
+                },
+                onCommitState: { next in
+                    selectedCategory = next
+                }
+            )
+        }
+    }
+}
+
+private struct ProfileFavoritePageView: View, Equatable {
+    let category: FavoriteCategory
+    let categoryCounts: [FavoriteCategory: Int]
+    let hasAnyFavorites: Bool
+    let favorites: [FavoriteDto]
+    let columns: [GridItem]
+    let cardDensity: CardDensity
+    let navigationTransition: Namespace.ID
+    let onSelectCategory: (FavoriteCategory) -> Void
+    let onDirectPlay: (MediaDto) -> Void
+    let onDeleteFavorite: (FavoriteDto) -> Void
+
+    private let itemIds: [String]
+
+    init(
+        category: FavoriteCategory,
+        categoryCounts: [FavoriteCategory: Int],
+        hasAnyFavorites: Bool,
+        favorites: [FavoriteDto],
+        columns: [GridItem],
+        cardDensity: CardDensity,
+        navigationTransition: Namespace.ID,
+        onSelectCategory: @escaping (FavoriteCategory) -> Void,
+        onDirectPlay: @escaping (MediaDto) -> Void,
+        onDeleteFavorite: @escaping (FavoriteDto) -> Void
+    ) {
+        self.category = category
+        self.categoryCounts = categoryCounts
+        self.hasAnyFavorites = hasAnyFavorites
+        self.favorites = favorites
+        self.columns = columns
+        self.cardDensity = cardDensity
+        self.navigationTransition = navigationTransition
+        self.onSelectCategory = onSelectCategory
+        self.onDirectPlay = onDirectPlay
+        self.onDeleteFavorite = onDeleteFavorite
+        self.itemIds = favorites.map(\.artworkIdentifier)
+    }
+
+    static func == (lhs: ProfileFavoritePageView, rhs: ProfileFavoritePageView) -> Bool {
+        lhs.category == rhs.category &&
+        lhs.categoryCounts == rhs.categoryCounts &&
+        lhs.hasAnyFavorites == rhs.hasAnyFavorites &&
+        lhs.cardDensity == rhs.cardDensity &&
+        lhs.itemIds == rhs.itemIds
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ProfileCategoryPillStrip(
+                selectedCategory: category,
+                categoryCounts: categoryCounts,
+                onSelect: onSelectCategory
+            )
+
+            if !hasAnyFavorites {
+                ProfileEmptyState(
+                    icon: "heart.slash",
+                    title: "Пока ничего не добавлено",
+                    message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
+                )
+                .padding(.top, 56)
+                .padding(.bottom, 48)
+            } else if favorites.isEmpty {
+                ProfileEmptyState(
+                    icon: "film.stack",
+                    title: "В этой подборке пока пусто",
+                    message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
+                )
+                .padding(.top, 56)
+                .padding(.bottom, 48)
+            } else {
+                let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+                let padding: CGFloat = cardDensity == .compact ? 12 : 16
+                LazyVGrid(columns: columns, spacing: spacing) {
+                    ForEach(favorites, id: \.artworkIdentifier) { favorite in
+                        let media = favorite.toMediaDto()
+                        MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition, refreshArtwork: true)
+                            .contextMenu {
+                                Group {
+                                    Button {
+                                        onDirectPlay(media)
+                                    } label: {
+                                        Label("Смотреть", systemImage: "play.fill")
+                                    }
+
+                                    NavigationLink(destination: DetailsView(movieId: media.id, mediaType: media.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+
+                                    Button(role: .destructive) {
+                                        onDeleteFavorite(favorite)
+                                    } label: {
+                                        Label("Удалить", systemImage: "trash")
+                                    }
+                                }
+                                .tint(nil)
+                            }
+                    }
+                }
+                .padding(.horizontal, padding)
             }
         }
     }
@@ -460,8 +640,9 @@ private struct ProfileEmptyState: View {
 }
 
 private struct ProfileCategoryPillStrip: View {
-    @Binding var selectedCategory: FavoriteCategory
+    let selectedCategory: FavoriteCategory
     let categoryCounts: [FavoriteCategory: Int]
+    let onSelect: (FavoriteCategory) -> Void
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -471,11 +652,7 @@ private struct ProfileCategoryPillStrip: View {
                         let isSelected = selectedCategory == category
                         let count = categoryCounts[category] ?? 0
                         Button {
-                            guard !isSelected else { return }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                selectedCategory = category
-                            }
+                            onSelect(category)
                         } label: {
                             HStack(spacing: 5) {
                                 Text(category.title)
@@ -508,6 +685,7 @@ private struct ProfileCategoryPillStrip: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .scrollClipDisabled()
             .onAppear {
                 scrollProxy.scrollTo(selectedCategory, anchor: .center)
