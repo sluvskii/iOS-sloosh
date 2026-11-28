@@ -422,6 +422,196 @@ struct PlaybackVoiceoverAndAdTests {
         """
         check(CollapsParser.extractVpToken(from: embedWithDecoy) == "9dad1bc8", "Extracts real dynamic _vp token ignoring lol decoy")
 
+        // 12. VUI 23.976fps multi-frame black TS and Silent AAC audio shield checks
+        if let black720 = HlsSegmentShield.buildBlackReplacementTs(width: 1280, height: 720, ptsStart90k: ptsTicks, durationSeconds: 10.0),
+           case .videoSps(let blackInfo) = HlsSegmentShield.inspectVideoPrefix(black720, isComplete: true) {
+            check(abs((blackInfo.fps ?? 0) - 23.976) < 0.05, "Synthesized VUI black TS declares 23.976fps instead of nil (got \(blackInfo.fps ?? -1))")
+        } else {
+            check(false, "Synthesized VUI black TS failed SPS extraction")
+        }
+
+        let a1Url = URL(string: "https://cdnr.interkh.com/hls/seg-357-a1.ts")!
+        check(HlsSegmentShield.isInspectableAudioSegment(url: a1Url, isCollaps: true, rangeHeader: nil), "Audio shield activates on Collaps -a1.ts")
+        check(!HlsSegmentShield.isInspectableVideoSegment(url: a1Url, isCollaps: true, rangeHeader: nil), "Video shield stays disabled for -a1.ts")
+        check(HlsSegmentShield.tierKey(for: a1Url) == "a1", "Tier key groups audio tracks independently")
+
+        for (srIdx, sr, ch, label) in [(4, 44_100, 1, "44.1k-mono"), (4, 44_100, 2, "44.1k-stereo"), (3, 48_000, 2, "48k-stereo"), (3, 48_000, 6, "48k-5.1")] {
+            let silentTs = HlsSegmentShield.buildSilentAudioReplacementTs(
+                sampleRateIndex: srIdx,
+                channelConfig: ch,
+                ptsStart90k: ptsTicks,
+                durationSeconds: 10.0
+            )
+            check(silentTs.count >= 564 && silentTs.count % 188 == 0, "Silent AAC TS \(label) is 188B-aligned (\(silentTs.count)B)")
+            let inspected = HlsSegmentShield.inspectAudioPrefix(silentTs, isComplete: true)
+            if case .audioAdts(let info) = inspected {
+                check(info.sampleRate == sr && info.channelConfig == ch, "Silent AAC TS \(label) preserves sampleRate=\(sr) ch=\(ch)")
+                check(info.firstPts90k == ptsTicks, "Silent AAC TS \(label) preserves exact PTS")
+                check(info.isDigitalSilence, "Silent AAC TS \(label) is marked digital silence to avoid replay false positives")
+                check(abs(info.decodedDuration - 10.0) < 0.15, "Silent AAC TS \(label) matches target 10.0s duration (got \(info.decodedDuration))")
+            } else {
+                check(false, "Silent AAC TS \(label) failed audio inspection: \(inspected)")
+            }
+        }
+
+        // Synthesize realistic non-silence AAC TS segment (distinct non-minimal frame bytes)
+        func makeSyntheticAudioTs(sampleRateIndex: Int, channelConfig: Int, pts90k: UInt64, frameCount: Int, fillByte: UInt8) -> Data {
+            let raw = [UInt8](repeating: fillByte, count: 64)
+            let frameLen = 7 + raw.count
+            var adts = [UInt8](repeating: 0, count: frameLen)
+            adts[0] = 0xFF
+            adts[1] = 0xF1
+            adts[2] = UInt8((1 << 6) | ((sampleRateIndex & 0x0F) << 2) | ((channelConfig >> 2) & 0x01))
+            adts[3] = UInt8(((channelConfig & 0x03) << 6) | ((frameLen >> 11) & 0x03))
+            adts[4] = UInt8((frameLen >> 3) & 0xFF)
+            adts[5] = UInt8(((frameLen & 0x07) << 5) | 0x1F)
+            adts[6] = 0xFC
+            for i in 0..<raw.count { adts[7 + i] = raw[i] }
+
+            func crc32(_ b: [UInt8]) -> UInt32 {
+                var c: UInt32 = 0xFFFF_FFFF
+                for x in b {
+                    c ^= UInt32(x) << 24
+                    for _ in 0..<8 { c = (c & 0x8000_0000) != 0 ? ((c << 1) ^ 0x04C1_1DB7) : (c << 1) }
+                }
+                return c
+            }
+            func psi(_ pid: UInt16, _ body: [UInt8]) -> Data {
+                var p = [UInt8](repeating: 0xFF, count: 188)
+                p[0] = 0x47; p[1] = 0x40 | UInt8((pid >> 8) & 0x1F); p[2] = UInt8(pid & 0xFF); p[3] = 0x10; p[4] = 0
+                for (i, b) in body.enumerated() { p[5 + i] = b }
+                let crc = crc32(body)
+                let cp = 5 + body.count
+                p[cp] = UInt8((crc >> 24) & 0xFF); p[cp+1] = UInt8((crc >> 16) & 0xFF); p[cp+2] = UInt8((crc >> 8) & 0xFF); p[cp+3] = UInt8(crc & 0xFF)
+                return Data(p)
+            }
+            var out = Data()
+            out.append(psi(0x0000, [0x00, 0xB0, 13, 0x00, 0x01, 0xC1, 0x00, 0x00, 0x00, 0x01, 0xF0, 0x00]))
+            out.append(psi(0x1000, [0x02, 0xB0, 18, 0x00, 0x01, 0xC1, 0x00, 0x00, 0xE1, 0x00, 0xF0, 0x00, 0x0F, 0xE1, 0x00, 0xF0, 0x00]))
+
+            let t = pts90k & 0x1_FFFF_FFFF
+            var pes = Data([
+                0x00, 0x00, 0x01, 0xC0, 0x00, 0x00, 0x80, 0x80, 0x05,
+                0x21 | UInt8((t >> 29) & 0x0E), UInt8((t >> 22) & 0xFF),
+                0x01 | UInt8((t >> 14) & 0xFE), UInt8((t >> 7) & 0xFF), 0x01 | UInt8((t << 1) & 0xFE)
+            ])
+            for _ in 0..<frameCount { pes.append(contentsOf: adts) }
+            let bytes = [UInt8](pes)
+            var off = 0
+            var cc: UInt8 = 0
+            var first = true
+            while off < bytes.count {
+                var pkt = [UInt8](repeating: 0xFF, count: 188)
+                pkt[0] = 0x47; pkt[1] = (first ? 0x40 : 0x00) | 0x01; pkt[2] = 0x00
+                let rem = bytes.count - off
+                if rem >= 184 {
+                    pkt[3] = 0x10 | cc
+                    for i in 0..<184 { pkt[4 + i] = bytes[off + i] }
+                    off += 184
+                } else {
+                    let afLen = 183 - rem
+                    pkt[3] = 0x30 | cc; pkt[4] = UInt8(afLen); pkt[5] = 0x00
+                    for i in 0..<rem { pkt[5 + afLen + i] = bytes[off + i] }
+                    off += rem
+                }
+                cc = (cc + 1) & 0x0F
+                first = false
+                out.append(contentsOf: pkt)
+            }
+            return out
+        }
+
+        let cleanAudioSeg = makeSyntheticAudioTs(sampleRateIndex: 4, channelConfig: 2, pts90k: ptsTicks, frameCount: 430, fillByte: 0xA1)
+        let cleanVerdict = HlsSegmentShield.evaluateAudioSegment(
+            data: cleanAudioSeg,
+            isComplete: true,
+            expectedDurationSeconds: 10.0,
+            expectedStartPts90k: ptsTicks,
+            baseline: nil,
+            knownBannerFingerprints: []
+        )
+        var baselineAudio: HlsAudioStreamInfo? = nil
+        if case .clean(let info) = cleanVerdict, let info {
+            baselineAudio = info
+            check(true, "Accepts clean baseline audio segment")
+        } else {
+            check(false, "Expected clean audio baseline, got \(String(describing: cleanVerdict))")
+        }
+
+        // Video TS sent for -a1.ts must be blocked immediately
+        let videoMaskAsAudio = makeSyntheticTsPrefix(sps: bannerSpsData, pts90k: ptsTicks)
+        if case .suspectAdSwap = HlsSegmentShield.evaluateAudioSegment(
+            data: videoMaskAsAudio,
+            isComplete: true,
+            expectedDurationSeconds: 10.0,
+            expectedStartPts90k: ptsTicks,
+            baseline: baselineAudio,
+            knownBannerFingerprints: []
+        ) {
+            check(true, "Rejects muxed video stream delivered under -a1.ts URL")
+        } else {
+            check(false, "Failed to reject video stream inside audio chunk")
+        }
+
+        // ADTS sample rate change (e.g. 48kHz promo inside 44.1kHz movie track) must be rejected
+        let wrongRateAudio = makeSyntheticAudioTs(sampleRateIndex: 3, channelConfig: 2, pts90k: ptsTicks, frameCount: 468, fillByte: 0xB2)
+        if case .suspectAdSwap = HlsSegmentShield.evaluateAudioSegment(
+            data: wrongRateAudio,
+            isComplete: true,
+            expectedDurationSeconds: 10.0,
+            expectedStartPts90k: ptsTicks,
+            baseline: baselineAudio,
+            knownBannerFingerprints: []
+        ) {
+            check(true, "Rejects ADTS sample rate swap in audio segment")
+        } else {
+            check(false, "Failed to detect ADTS format mismatch")
+        }
+
+        // Short audio promo (e.g. 4s instead of 10s) must be rejected
+        let shortAudioPromo = makeSyntheticAudioTs(sampleRateIndex: 4, channelConfig: 2, pts90k: ptsTicks, frameCount: 170, fillByte: 0xC3)
+        if case .suspectAdSwap(_, let shortInfo) = HlsSegmentShield.evaluateAudioSegment(
+            data: shortAudioPromo,
+            isComplete: true,
+            expectedDurationSeconds: 10.0,
+            expectedStartPts90k: ptsTicks,
+            baseline: baselineAudio,
+            knownBannerFingerprints: []
+        ), let learnedFp = shortInfo?.payloadFingerprint {
+            check(true, "Rejects short audio promo segment")
+            // Once fingerprint is learned, even an equal-duration / matching-PTS jingle is blocked immediately
+            let fullLengthRepeat = makeSyntheticAudioTs(sampleRateIndex: 4, channelConfig: 2, pts90k: ptsTicks + 900_000, frameCount: 430, fillByte: 0xC3)
+            if case .suspectAdSwap = HlsSegmentShield.evaluateAudioSegment(
+                data: fullLengthRepeat,
+                isComplete: false,
+                expectedDurationSeconds: 10.0,
+                expectedStartPts90k: ptsTicks + 900_000,
+                baseline: baselineAudio,
+                knownBannerFingerprints: [learnedFp]
+            ) {
+                check(true, "Rejects learned banner audio fingerprint on subsequent segments")
+            } else {
+                check(false, "Failed to block learned banner audio fingerprint")
+            }
+        } else {
+            check(false, "Failed to reject short audio promo segment")
+        }
+
+        // Audio PTS jump > 3s must be rejected
+        let ptsJumpAudio = makeSyntheticAudioTs(sampleRateIndex: 4, channelConfig: 2, pts90k: ptsTicks - 5 * 90_000, frameCount: 430, fillByte: 0xD4)
+        if case .suspectAdSwap = HlsSegmentShield.evaluateAudioSegment(
+            data: ptsJumpAudio,
+            isComplete: true,
+            expectedDurationSeconds: 10.0,
+            expectedStartPts90k: ptsTicks,
+            baseline: baselineAudio,
+            knownBannerFingerprints: []
+        ) {
+            check(true, "Rejects regressed PTS inside audio segment")
+        } else {
+            check(false, "Failed to detect audio PTS jump")
+        }
+
         print("PASS: \(count) playback voiceover and ad-filtering tests")
     }
 

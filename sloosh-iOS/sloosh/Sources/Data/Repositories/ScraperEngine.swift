@@ -217,10 +217,33 @@ final class ScraperEngine: @unchecked Sendable {
 
     static let bundledCollapsScraper: String = """
     var SlooshCollapsScraper = (function() {
-      function normalizeStreamUrl(str) {
+      function extractVpToken(html) {
+        if (!html) return "";
+        var cleaned = String(html).replace(/lol\\s*=\\s*(['"])(?:\\\\.|(?!\\1).)*\\1/g, "");
+        var addVar = null;
+        var mAdd = cleaned.match(/['"]&['"]\\s*\\+\\s*([a-zA-Z_$][\\w$]{6,})/);
+        if (mAdd && mAdd[1]) addVar = mAdd[1];
+        if (!addVar) {
+          var mFn = cleaned.match(/add\\([^)]+\\)[^{]*\\{[\\s\\S]*?([a-zA-Z_$][\\w$]*)\\s*;?\\s*\\}\\s*\\}/);
+          if (mFn && mFn[1]) addVar = mFn[1];
+        }
+        if (addVar) {
+          var escaped = addVar.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
+          var reVal = new RegExp("\\\\b" + escaped + "\\\\s*=\\\\s*['\\"]([0-9a-fA-F]{6,})['\\"]");
+          var mv = cleaned.match(reVal);
+          if (mv && mv[1]) return mv[1];
+        }
+        var mFallback = cleaned.match(/var\\s+lok\\s*=\\s*[^,;]+,\\s*[a-zA-Z_$][\\w$]{6,}\\s*=\\s*['"]([0-9a-fA-F]{6,})['"]/);
+        return (mFallback && mFallback[1]) ? mFallback[1] : "";
+      }
+
+      function normalizeStreamUrl(str, vpToken) {
         if (!str) return null;
         str = String(str).trim().replace(/\\\\\\//g, "/");
         if (str.startsWith("//")) str = "https:" + str;
+        if (vpToken && str.indexOf(vpToken) === -1 && str.indexOf("master.m3u8") !== -1) {
+          str += (str.indexOf("?") !== -1 ? "&" : "?") + vpToken;
+        }
         return str;
       }
 
@@ -353,7 +376,7 @@ final class ScraperEngine: @unchecked Sendable {
         return null;
       }
 
-      function parseSeries(seasonsJson, title) {
+      function parseSeries(seasonsJson, title, vpToken) {
         try {
           var rawSeasons = JSON.parse(seasonsJson);
           if (!Array.isArray(rawSeasons)) return null;
@@ -367,8 +390,8 @@ final class ScraperEngine: @unchecked Sendable {
               var epObj = seasonObj.episodes[e];
               var episodeNum = parseInt(String(epObj.episode || ""), 10);
               if (isNaN(episodeNum)) continue;
-              var hls = normalizeStreamUrl(epObj.hls);
-              var dash = normalizeStreamUrl(epObj.dasha || epObj.dash);
+              var hls = normalizeStreamUrl(epObj.hls, vpToken);
+              var dash = normalizeStreamUrl(epObj.dasha || epObj.dash, vpToken);
               var primaryUrl = hls || dash || "";
               if (!primaryUrl) continue;
               var voices = extractOrderedVoices(epObj.audio);
@@ -414,12 +437,12 @@ final class ScraperEngine: @unchecked Sendable {
         }
       }
 
-      function parseMovie(html, title) {
+      function parseMovie(html, title, vpToken) {
         try {
-          var hlsMatch = html.match(/"hls"\\s*:\\s*"([^"]+)"/i);
-          var dashMatch = html.match(/"dash"\\s*:\\s*"([^"]+)"/i) || html.match(/"dasha"\\s*:\\s*"([^"]+)"/i);
-          var hls = hlsMatch ? normalizeStreamUrl(hlsMatch[1]) : null;
-          var dash = dashMatch ? normalizeStreamUrl(dashMatch[1]) : null;
+          var hlsMatch = html.match(/(?:"hls"|\\bhls)\\s*:\\s*["']([^"']+)["']/i);
+          var dashMatch = html.match(/(?:"dash"|\\bdash)\\s*:\\s*["']([^"']+)["']/i) || html.match(/(?:"dasha"|\\bdasha)\\s*:\\s*["']([^"']+)["']/i);
+          var hls = hlsMatch ? normalizeStreamUrl(hlsMatch[1], vpToken) : null;
+          var dash = dashMatch ? normalizeStreamUrl(dashMatch[1], vpToken) : null;
           var primaryUrl = hls || dash;
           if (!primaryUrl) return null;
 
@@ -480,23 +503,24 @@ final class ScraperEngine: @unchecked Sendable {
           params = params || {};
           var title = params.title || "Видео";
           var isTv = params.isTv;
+          var vpToken = extractVpToken(html);
 
           if (isTv === true) {
             var seasonsJson = extractSeasonsJson(html);
             if (seasonsJson) {
-              var resSeries = parseSeries(seasonsJson, title);
+              var resSeries = parseSeries(seasonsJson, title, vpToken);
               if (resSeries) return JSON.stringify(resSeries);
             }
           } else if (isTv === false) {
-            var resMovie = parseMovie(html, title);
+            var resMovie = parseMovie(html, title, vpToken);
             if (resMovie) return JSON.stringify(resMovie);
           } else {
             var seasonsJsonMaybe = extractSeasonsJson(html);
             if (seasonsJsonMaybe) {
-              var resSeriesMaybe = parseSeries(seasonsJsonMaybe, title);
+              var resSeriesMaybe = parseSeries(seasonsJsonMaybe, title, vpToken);
               if (resSeriesMaybe) return JSON.stringify(resSeriesMaybe);
             }
-            var resMovieMaybe = parseMovie(html, title);
+            var resMovieMaybe = parseMovie(html, title, vpToken);
             if (resMovieMaybe) return JSON.stringify(resMovieMaybe);
           }
           return null;

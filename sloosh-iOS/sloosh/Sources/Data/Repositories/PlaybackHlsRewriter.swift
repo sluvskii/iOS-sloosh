@@ -360,14 +360,22 @@ class PlaybackHlsRewriter {
         return maxFps
     }
 
-    /// Extracts segment durations and cumulative 90 kHz PTS estimates from a media playlist.
-    static func extractSegmentTimeline(fromMediaPlaylist playlist: String) -> (durations: [String: Double], startPts90k: [String: UInt64]) {
+    struct PlaylistTimelineEntry: Sendable {
+        let name: String
+        let uri: String
+        let duration: Double
+        let startSeconds: Double
+        let endSeconds: Double
+        let startPts90k: UInt64
+    }
+
+    /// Extracts ordered segment timing & URIs from a media playlist.
+    static func extractTimelineEntries(fromMediaPlaylist playlist: String) -> [PlaylistTimelineEntry] {
         let lines = playlist.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")
 
-        var durations: [String: Double] = [:]
-        var startPts90k: [String: UInt64] = [:]
+        var entries: [PlaylistTimelineEntry] = []
         var pendingDuration: Double? = nil
         var elapsedSeconds: Double = 0
 
@@ -384,12 +392,30 @@ class PlaybackHlsRewriter {
                 let name = URL(string: pathOnly)?.lastPathComponent ?? (pathOnly as NSString).lastPathComponent
                 if !name.isEmpty {
                     let dur = pendingDuration ?? 8.0
-                    durations[name] = dur
-                    startPts90k[name] = UInt64((elapsedSeconds * 90_000.0).rounded())
+                    let startPts = UInt64((elapsedSeconds * 90_000.0).rounded())
+                    entries.append(PlaylistTimelineEntry(
+                        name: name,
+                        uri: line,
+                        duration: dur,
+                        startSeconds: elapsedSeconds,
+                        endSeconds: elapsedSeconds + dur,
+                        startPts90k: startPts
+                    ))
                     elapsedSeconds += dur
                 }
                 pendingDuration = nil
             }
+        }
+        return entries
+    }
+
+    /// Extracts segment durations and cumulative 90 kHz PTS estimates from a media playlist.
+    static func extractSegmentTimeline(fromMediaPlaylist playlist: String) -> (durations: [String: Double], startPts90k: [String: UInt64]) {
+        var durations: [String: Double] = [:]
+        var startPts90k: [String: UInt64] = [:]
+        for entry in extractTimelineEntries(fromMediaPlaylist: playlist) {
+            durations[entry.name] = entry.duration
+            startPts90k[entry.name] = entry.startPts90k
         }
         return (durations, startPts90k)
     }
