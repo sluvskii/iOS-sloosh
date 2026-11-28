@@ -148,7 +148,7 @@ final class CollapsParser {
         )
         let addPatterns = [
             #"add\([^)]+\)[^{]*\{[\s\S]*?([a-zA-Z_$][\w$]*)\s*;?\s*\}\s*\}"#,
-            #"\+\s*['"]&['"]\s*\+\s*([a-zA-Z_$][\w$]{6,})"#
+            #"['"]&['"]\s*\+\s*([a-zA-Z_$][\w$]{6,})"#
         ]
         for pat in addPatterns {
             guard let regex = try? NSRegularExpression(pattern: pat, options: []),
